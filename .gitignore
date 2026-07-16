@@ -1,0 +1,70 @@
+# ===== 敏感业务数据（含真实客户/财务信息，禁止上传）=====
+data/raw/
+data/mappings/客户名单/
+data/mappings/客户统称名单/
+data/mappings/客户销售对应规则/
+data/mappings/部门事业部映射/
+
+# 系统输出目录（运行时生成）
+data/sheets/
+
+# ===== IDE / 工具本地数据 =====
+.codebuddy/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===== 测试 / 覆盖率 =====
+.tox/
+.coverage
+.cache
+.pytest_cache/
+htmlcov/
+
+# ===== 临时文件 =====
+*.tmp
+*.bak
+*.log
+
+# ===== Excel 临时锁文件 =====
+~$*.xlsx
+~$*.xls
+~$*.xlsm
+
+# ===== 操作系统 =====
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# ===== 环境变量 / 密钥 =====
+.env
+.env.local
+*.pem
+*.key
