@@ -5,11 +5,10 @@ import math
 
 
 def fmt_wan(amount: float | int | None) -> str:
-    """金额格式化为万元展示（保留 2 位小数 + 千分位）
+    """金额格式化为万元展示（千分位，无小数）
 
-    输入金额单位：原始元值（财务/运营）或万元（广东/湖南）
-    本函数不处理单位换算，仅按"万元"展示数字本身。
-    实际调用方在传入前应已统一为万元（÷10000）。
+    输入金额单位：元（清洗阶段已统一为元）
+    本函数按万元展示（÷10000 后的值取整）。
     """
     if amount is None or (isinstance(amount, float) and math.isnan(amount)):
         return "—"
@@ -18,8 +17,8 @@ def fmt_wan(amount: float | int | None) -> str:
     except (TypeError, ValueError):
         return "—"
     if v == 0:
-        return "0.00"
-    return f"{v:,.2f}"
+        return "0"
+    return f"{v:,.0f}"
 
 
 def fmt_pct(numerator: float | int | None, denominator: float | int | None) -> str:
