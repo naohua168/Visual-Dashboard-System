@@ -2,6 +2,12 @@
 销售拆分核心 — 4层匹配 + 金额不四舍五入 + 总额校验
 
 4层匹配：广东公司规则 -> 深圳公司规则 -> 其他规则 -> 默认规则 -> 待确认兜底
+
+旧规则格式兼容（2026-07-24）：
+  格式A: {"事业部": {"检测": {"销售": [...], "比例": {...}}}}  — 标准事业部级
+  格式B: {"销售": ["..."], "比例": {"...": 1.0}}              — 无事业部(全适用)
+  格式C: {"事业部": {}}                                        — 空事业部(全适用)
+  格式D: {"事业部": {"默认": {...}}}                           — 默认部门(全适用)
 """
 import pandas as pd
 from ..core.utils import log_step
@@ -15,8 +21,43 @@ class SalesSplitter:
         self.sz_rules = rules_data.get("深圳公司规则", {})
         self.other_rules = rules_data.get("其他规则", {})
         self.default_rules = rules_data.get("默认规则", {})
-        # 子公司→母公司映射（统称名单），用于规则继承
         self._subsidiary_to_parent = subsidiary_to_parent or {}
+
+    def _extract_sales(self, rule, customer, department):
+        """从规则中提取销售列表和比例（兼容4种格式变体）
+
+        返回 (sales_list, ratios) 或 ([], {})
+        """
+        # 格式C: {"事业部": {}} → 空事业部 = 无匹配
+        # 格式A: {"事业部": {"检测": {...}}} → 精确匹配部门
+        dept_config = rule.get("事业部", None)
+
+        if dept_config is not None and isinstance(dept_config, dict) and len(dept_config) > 0:
+            # 有事业部配置
+            if "默认" in dept_config and department not in dept_config:
+                # 格式D: {"事业部": {"默认": {...}}} → 无对应部门时用"默认"
+                real_dept = "默认"
+            elif department in dept_config:
+                # 格式A: 精确部门匹配
+                real_dept = department
+            else:
+                return [], {}
+
+            dept_rule = dept_config[real_dept]
+            if not isinstance(dept_rule, dict):
+                return [], {}
+            sales_list = dept_rule.get("销售", [])
+            ratios = dept_rule.get("比例", None)
+        else:
+            # 格式B / 格式C: 无事业部
+            sales_list = rule.get("销售", [])
+            ratios = rule.get("比例", None)
+
+        if not sales_list:
+            return [], {}
+        if ratios is None:
+            ratios = self._auto_ratio(sales_list)
+        return sales_list, ratios
 
     def _try_parent_inheritance(self, customer, department, is_guangdong, is_shenzhen):
         """当客户无直接规则时，尝试继承母公司的销售规则"""
@@ -25,7 +66,6 @@ class SalesSplitter:
             return [], {}, ""
 
         log_step("继承", "客户'%s'尝试继承母公司'%s'的规则" % (customer, parent))
-        # 用母公司名重新走4层匹配
         sales, ratios, layer = self.match(parent, department, is_guangdong, is_shenzhen, parent_attempt=True)
         if sales and layer != "待确认":
             return sales, ratios, "继承:%s(%s)" % (parent, layer)
@@ -35,43 +75,12 @@ class SalesSplitter:
         """在规则字典中查找客户+事业部的销售配置"""
         if customer not in rules_dict:
             return [], {}
-
         rule = rules_dict[customer]
         if not isinstance(rule, dict):
             return [], {}
-
-        # 跳过自动添加的"待确认"兜底规则（让母公司继承逻辑有机会执行）
         if rule.get("_来源") == "无匹配 -> 待确认":
-            return [], {}
-
-        dept_config = rule.get("事业部", None)
-        if dept_config is None:
-            # 无事业部配置，适用于所有事业部
-            sales_list = rule.get("销售", [])
-            ratios = rule.get("比例", None)
-            if not sales_list:
-                return [], {}
-            if ratios is None:
-                ratios = self._auto_ratio(sales_list)
-            return sales_list, ratios
-
-        if not isinstance(dept_config, dict):
-            return [], {}
-
-        if department not in dept_config:
-            return [], {}
-
-        dept_rule = dept_config[department]
-        if not isinstance(dept_rule, dict):
-            return [], {}
-
-        sales_list = dept_rule.get("销售", [])
-        ratios = dept_rule.get("比例", None)
-        if not sales_list:
-            return [], {}
-        if ratios is None:
-            ratios = self._auto_ratio(sales_list)
-        return sales_list, ratios
+            return [], []
+        return self._extract_sales(rule, customer, department)
 
     @staticmethod
     def _auto_ratio(sales_list):
@@ -84,60 +93,31 @@ class SalesSplitter:
 
     def match(self, customer, department, is_guangdong, is_shenzhen, parent_attempt=False):
         """4层匹配：广东->深圳->其他->默认->母公司继承->待确认"""
-        # 广东公司规则
         if is_guangdong == "是":
             sales, ratios = self._query_rule(self.gd_rules, customer, department)
             if sales:
                 return sales, ratios, "广东公司规则"
 
-        # 深圳公司规则
         if is_shenzhen == "是":
             sales, ratios = self._query_rule(self.sz_rules, customer, department)
             if sales:
                 return sales, ratios, "深圳公司规则"
 
-        # 其他规则
         sales, ratios = self._query_rule(self.other_rules, customer, department)
         if sales:
             return sales, ratios, "其他规则"
 
-        # 默认规则
         sales, ratios = self._query_rule(self.default_rules, customer, department)
         if sales:
             return sales, ratios, "默认规则"
 
-        # 母公司规则继承（仅对原始客户执行，避免无限递归）
+        # 母公司规则继承
         if not parent_attempt:
             sales, ratios, layer = self._try_parent_inheritance(
                 customer, department, is_guangdong, is_shenzhen)
             if sales:
                 return sales, ratios, layer
 
-        # 最终兜底
-        return ["待确认"], {"待确认": 1.0}, "待确认"
-        # 广东公司规则
-        if is_guangdong == "是":
-            sales, ratios = self._query_rule(self.gd_rules, customer, department)
-            if sales:
-                return sales, ratios, "广东公司规则"
-
-        # 深圳公司规则
-        if is_shenzhen == "是":
-            sales, ratios = self._query_rule(self.sz_rules, customer, department)
-            if sales:
-                return sales, ratios, "深圳公司规则"
-
-        # 其他规则
-        sales, ratios = self._query_rule(self.other_rules, customer, department)
-        if sales:
-            return sales, ratios, "其他规则"
-
-        # 默认规则
-        sales, ratios = self._query_rule(self.default_rules, customer, department)
-        if sales:
-            return sales, ratios, "默认规则"
-
-        # 最终兜底
         return ["待确认"], {"待确认": 1.0}, "待确认"
 
     def split(self, df):

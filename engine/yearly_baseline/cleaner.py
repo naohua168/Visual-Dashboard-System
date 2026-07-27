@@ -179,7 +179,7 @@ def run_clean(mapper=None):
 
     for label, df in results.items():
         dir_name = "年%s" % label
-        out_dir = BASE_DIR / "data" / "sheets" / dir_name
+        out_dir = BASE_DIR / "data" / "sheets" / "系统数据清理" / dir_name
         out_dir.mkdir(parents=True, exist_ok=True)
         file_name = "年%s.xlsx" % label
         out_path = out_dir / file_name

@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-本项目是一套面向销售运营场景的数据可视化看板生成系统。系统从财务端与运营端的原始 Excel 数据出发，经过年基线清洗、收入/回款清洗、销售拆分等处理流程，最终生成 7 页交互式 HTML 可视化看板。
+本项目是一套面向销售运营场景的数据可视化看板生成系统。系统从财务端与运营端的原始 Excel 数据出发，经过年基线清洗、收入/回款清洗、销售拆分等处理流程，最终生成 6 页交互式 HTML 可视化看板。
 
 核心特点：**全部配置驱动，清洗参数与代码分离，列名冗余匹配防错位。**
 
@@ -40,7 +40,7 @@
          │
          ▼
   Phase 4: 渲染 HTML 看板（processors/）
-  7 页分页：数据总览 / 年度达成 / 月度达成 / 月累计明细 / 销售达成 / 年度同比 / 季度分析
+  6 页分页：数据总览 / 年度达成 / 月度达成 / 销售达成 / 年度同比 / 季度分析
 ```
 
 ## 目录结构
@@ -94,15 +94,11 @@ Visual Dashboard_system/
 │   ├── page_overview.py            #   P1: 数据总览（6 KPI + 事业部条 + TOP5 + 趋势）
 │   ├── page_annual.py              #   P2: 年度达成（目标块 + 进度条 + 客户矩阵）
 │   ├── page_monthly.py             #   P3: 月度达成（当月 KPI + 客户月度明细）
-│   ├── page_monthly_cumul.py       #   P4: 月累计明细
-│   ├── page_sales.py               #   P5: 销售达成（4 KPI + 排名表 + 饼图）
-│   ├── page_yoy.py                 #   P6: 年度同比（事业部同比 + 重要客户同比）
-│   ├── page_quarterly.py           #   P7: 季度分析（季度趋势 + 事业部对比）
-│   └── run.py                      #   渲染主入口（7 页合并 + Chart.js）
+│   ├── page_sales.py               #   P4: 销售达成（3 卡片 + KPI + 待确认分析）
+│   ├── page_yoy.py                 #   P5: 年度同比（事业部同比 + 重要客户同比）
+│   ├── page_quarterly.py           #   P6: 季度分析（季度趋势 + 事业部对比）
+│   └── run.py                      #   渲染主入口（6 页合并 + Chart.js）
 ├── scripts/                        # 辅助脚本
-│   ├── health_check.py             #   mappings 健康度检查
-│   ├── extract_2024_yearly_baseline.py
-│   └── verify_2024_baseline.py
 ├── tests/                          # ★ 测试套件（pytest）
 │   ├── test_config.py              #   配置与映射加载（9 用例）
 │   ├── test_column_resolver.py     #   列名冗余匹配（8 用例）
@@ -115,8 +111,8 @@ Visual Dashboard_system/
 │   ├── test_render.py              #   端到端渲染生成 HTML（2 用例）
 │   ├── test_main.py                #   顶层调度器（7 用例）
 │   ├── test_e2e.py                 #   端到端流水线（5 用例，依赖真实数据）
-│   ├── test_yearly_baseline.py     #   年基线清洗（11 用例）
-│   └── test_page_renderers.py      #   渲染页面测试（10+ 用例）
+│   ├── test_yearly_baseline.py     #   年基线清洗（9 用例）
+│   └── test_page_renderers.py      #   渲染页面测试（6×页面渲染，依赖真实数据）
 ├── main.py                         # ★ 顶层调度器（argparse + subprocess + 日志）
 ├── pytest.ini                      # pytest 配置
 └── requirements.txt                # Python 依赖清单
@@ -179,10 +175,9 @@ python -m pytest tests/ -k "yearly"           # 按关键字
 | P1 | 数据总览 | `overview` | 6 KPI + 事业部分布 + 销售 TOP5 + 月度趋势 |
 | P2 | 年度达成 | `annual` | 总目标块 + 收入/回款进度条 + 4 事业部子条 + 客户矩阵 |
 | P3 | 月度达成 | `monthly` | 当月 KPI（收入+回款）+ 客户月度明细表 |
-| P4 | 月累计明细 | `monthly_cumul` | 月收入/月回款累计明细（独立页面） |
-| P5 | 销售达成 | `sales` | 4 KPI + 销售排名表（数据条+排名徽章+合计行）+ 饼图 |
-| P6 | 年度同比 | `yoy` | 去年→今年 KPI + 事业部同比表 + 重要客户同比表 |
-| P7 | 季度分析 | `quarterly` | 季度累计趋势 + 事业部季度对比 + 季度 Top 客户 |
+| P4 | 销售达成 | `sales` | 3 卡片 + KPI：销售排名 / 事业部矩阵 / 销售人员×各公司指标达成度 |
+| P5 | 年度同比 | `yoy` | 去年→今年 KPI + 事业部同比表 + 重要客户同比表 |
+| P6 | 季度分析 | `quarterly` | 季度累计趋势 + 事业部季度对比 + 季度 Top 客户 |
 
 UI 风格：Excel 仪表盘蓝白主题，条件格式数据条，纯色无渐变。
 

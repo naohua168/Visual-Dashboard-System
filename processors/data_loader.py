@@ -178,32 +178,36 @@ def load_all(base_dir: Path) -> DashboardData:
     """
     sheets = base_dir / "data" / "sheets"
 
+    # 路径前缀
+    SYS = "系统数据清理"
+    MAN = "手动维护"
+
     # 优先加载当年累计（全量数据），从文件夹自动查找xlsx
-    income = _read_optional(_find_xlsx(sheets / "当年累计收入"))
+    income = _read_optional(_find_xlsx(sheets / SYS / "当年累计收入"))
     if income is None:
-        raise FileNotFoundError(f"缺少核心数据: {sheets / '当年累计收入'}")
+        raise FileNotFoundError(f"缺少核心数据: {sheets / SYS / '当年累计收入'}")
 
-    payment = _read_optional(_find_xlsx(sheets / "当年累计回款"))
+    payment = _read_optional(_find_xlsx(sheets / SYS / "当年累计回款"))
     if payment is None:
-        raise FileNotFoundError(f"缺少核心数据: {sheets / '当年累计回款'}")
+        raise FileNotFoundError(f"缺少核心数据: {sheets / SYS / '当年累计回款'}")
 
-    sales_income = pd.read_excel(_find_xlsx(sheets / "销售收入"))
-    sales_payment = pd.read_excel(_find_xlsx(sheets / "销售回款"))
+    sales_income = pd.read_excel(_find_xlsx(sheets / SYS / "销售收入"))
+    sales_payment = pd.read_excel(_find_xlsx(sheets / SYS / "销售回款"))
 
-    total_targets = pd.read_excel(_find_xlsx(sheets / "总指标"))
-    monthly_income = pd.read_excel(_find_xlsx(sheets / "月度收入指标"))
-    monthly_payment = pd.read_excel(_find_xlsx(sheets / "月度回款指标"))
+    total_targets = pd.read_excel(_find_xlsx(sheets / MAN / "总指标"))
+    monthly_income = pd.read_excel(_find_xlsx(sheets / MAN / "月度收入指标"))
+    monthly_payment = pd.read_excel(_find_xlsx(sheets / MAN / "月度回款指标"))
 
-    yearly_income = _read_optional(_find_xlsx(sheets / "年收入"))
-    yearly_payment = _read_optional(_find_xlsx(sheets / "年回款"))
+    yearly_income = _read_optional(_find_xlsx(sheets / SYS / "年收入"))
+    yearly_payment = _read_optional(_find_xlsx(sheets / SYS / "年回款"))
 
     # 季度累计数据
-    quarterly_income = _read_optional(_find_xlsx(sheets / "季度累计收入"))
-    quarterly_payment = _read_optional(_find_xlsx(sheets / "季度累计回款"))
+    quarterly_income = _read_optional(_find_xlsx(sheets / SYS / "季度累计收入"))
+    quarterly_payment = _read_optional(_find_xlsx(sheets / SYS / "季度累计回款"))
 
     # 月明细数据
-    monthly_income_detail = _read_optional(_find_xlsx(sheets / "月收入"))
-    monthly_payment_detail = _read_optional(_find_xlsx(sheets / "月回款"))
+    monthly_income_detail = _read_optional(_find_xlsx(sheets / SYS / "月收入"))
+    monthly_payment_detail = _read_optional(_find_xlsx(sheets / SYS / "月回款"))
 
     # ── 统一客户名（子公司→母公司聚合）──
     unifier = CustomerUnifier(base_dir)
@@ -259,13 +263,17 @@ def _compute_sales_targets(base_dir: Path, total_targets: pd.DataFrame) -> dict[
     # 4 大事业部
     DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 
-    # 把总指标按 客户 索引，目标是 4 列事业部
-    tgt_by_cust = {}
+    # 总指标单位：万元（如 检测=5000 表示 5000 万年度目标）
+    # 把总指标按 客户 汇总（同一客户可能有多行），目标是 4 列事业部
+    tgt_by_cust: dict[str, dict[str, float]] = {}
     for _, row in total_targets.iterrows():
         cust = str(row.get("客户", "")).strip()
         if not cust:
             continue
-        tgt_by_cust[cust] = {d: safe_float(row.get(d, 0)) for d in DEPARTMENTS}
+        if cust not in tgt_by_cust:
+            tgt_by_cust[cust] = {d: 0.0 for d in DEPARTMENTS}
+        for d in DEPARTMENTS:
+            tgt_by_cust[cust][d] += safe_float(row.get(d, 0))
 
     # 累加每个销售的目标
     sales_tgt: dict[str, float] = {}
@@ -282,10 +290,13 @@ def _compute_sales_targets(base_dir: Path, total_targets: pd.DataFrame) -> dict[
             for dept, dcfg in dept_cfg.items():
                 if not isinstance(dcfg, dict) or "比例" not in dcfg:
                     continue
+                ratio_dict = dcfg["比例"]
+                if not isinstance(ratio_dict, dict):
+                    continue
                 dept_target = cust_tgt.get(dept, 0)
                 if not dept_target:
                     continue
-                for sales, ratio in dcfg["比例"].items():
+                for sales, ratio in ratio_dict.items():
                     sales_tgt[sales] = sales_tgt.get(sales, 0) + dept_target * float(ratio)
     return sales_tgt if sales_tgt else None
 

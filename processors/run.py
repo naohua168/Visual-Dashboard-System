@@ -15,7 +15,6 @@ from .page_annual import AnnualPage
 from .page_yoy import YoyPage
 from .page_quarterly import QuarterlyPage
 from .page_monthly import MonthlyPage
-from .page_monthly_cumul import MonthlyCumulPage
 from .page_sales import SalesPage
 
 BASE_DIR = Path(__file__).parent.parent.resolve()
@@ -41,7 +40,6 @@ def build_html(data, title: str) -> str:
         YoyPage(),
         QuarterlyPage(),
         MonthlyPage(),
-        MonthlyCumulPage(),
         SalesPage(),
     ]
     page_html = "".join(p.render(data) for p in pages)
@@ -71,8 +69,38 @@ def build_html(data, title: str) -> str:
     <div class="header-logo">V</div>
     <h1>{title}</h1>
   </div>
-  <div class="meta">数据截至 {today} &nbsp;|&nbsp; 生成于 {datetime.datetime.now().strftime('%H:%M')}</div>
+  <div class="header-right">
+    <div class="meta">数据截至 {today} &nbsp;|&nbsp; 生成于 {datetime.datetime.now().strftime('%H:%M')}</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏切换 (ESC退出)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+      </svg>
+      <span>全屏</span>
+    </button>
+  </div>
 </header>
+<script>
+function toggleFullscreen(){{
+  var el=document.documentElement;
+  var isFS=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement||document.msFullscreenElement;
+  if(!isFS){{
+    var fn=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen;
+    if(fn) fn.call(el).catch(function(e){{console.warn('全屏失败:',e)}});
+  }}else{{
+    var fn=document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen||document.msExitFullscreen;
+    if(fn) fn.call(document);
+  }}
+}}
+function _fsUpdate(){{
+  var fs=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement||document.msFullscreenElement;
+  var btn=document.querySelector('.fullscreen-btn span');
+  if(btn) btn.textContent = fs ? '退出' : '全屏';
+}}
+document.addEventListener('fullscreenchange',_fsUpdate);
+document.addEventListener('webkitfullscreenchange',_fsUpdate);
+document.addEventListener('mozfullscreenchange',_fsUpdate);
+document.addEventListener('MSFullscreenChange',_fsUpdate);
+</script>
 <nav class="nav">
 {nav_items}
 </nav>
@@ -94,7 +122,7 @@ def run_render(output_path: str | None = None) -> Path:
     _log("渲染", f"销售收入 {len(data.sales_income)} 行 / 销售回款 {len(data.sales_payment)} 行")
     _log("渲染", f"年基线: {'已就绪' if data.has_yearly_baseline else '未就绪'}")
 
-    _log("渲染", "构建 HTML（7 页分页）")
+    _log("渲染", "构建 HTML（6 页分页）")
     html = build_html(data, title)
 
     if output_path:
@@ -111,6 +139,31 @@ def run_render(output_path: str | None = None) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
     _log("渲染", f"已写入 {out.relative_to(BASE_DIR)}（{len(html)/1024:.1f} KB）", "OK")
+
+    # 输出汇总 Excel
+    _log("渲染", "生成汇总 Excel 数据表")
+    excel_path = out.parent / f"data_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
+    try:
+        with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+            data.income.to_excel(writer, sheet_name="收入", index=False)
+            data.payment.to_excel(writer, sheet_name="回款", index=False)
+            data.total_targets.to_excel(writer, sheet_name="总指标", index=False)
+            data.sales_income.to_excel(writer, sheet_name="销售收入", index=False)
+            data.sales_payment.to_excel(writer, sheet_name="销售回款", index=False)
+            data.monthly_income_targets.to_excel(writer, sheet_name="月度收入指标", index=False)
+            data.monthly_payment_targets.to_excel(writer, sheet_name="月度回款指标", index=False)
+            if data.yearly_income is not None:
+                data.yearly_income.to_excel(writer, sheet_name="2024年收入", index=False)
+            if data.yearly_payment is not None:
+                data.yearly_payment.to_excel(writer, sheet_name="2024年回款", index=False)
+            if data.monthly_income_detail is not None:
+                data.monthly_income_detail.to_excel(writer, sheet_name="月收入", index=False)
+            if data.monthly_payment_detail is not None:
+                data.monthly_payment_detail.to_excel(writer, sheet_name="月回款", index=False)
+        _log("渲染", f"已写入 {excel_path.relative_to(BASE_DIR)}（{excel_path.stat().st_size/1024:.1f} KB）", "OK")
+    except Exception as e:
+        _log("渲染", f"Excel 汇总失败: {e}", "WARN")
+
     return out
 
 

@@ -70,7 +70,14 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
   font-size:18px;font-weight:800;color:#2563eb;background:#ffffff;border-radius:8px;
 }
 .header h1{font-size:20px;font-weight:700;letter-spacing:0.02em;color:#f1f5f9;}
+.header-right{display:flex;align-items:center;gap:12px;}
 .header .meta{font-size:12px;opacity:0.7;color:#94a3b8;}
+.fullscreen-btn{
+  display:flex;align-items:center;gap:4px;padding:4px 10px;
+  background:rgba(255,255,255,0.1);color:#e2e8f0;border:1px solid rgba(255,255,255,0.2);
+  border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;transition:all .2s;
+}
+.fullscreen-btn:hover{background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.4);color:#fff;}
 
 /* ═══════════════════─ 导航栏 ─══════════════════ */
 .nav{
@@ -209,7 +216,7 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
 .kpi-card .kpi-value{font-size:24px;font-weight:800;color:#1e293b;line-height:1.2;}
 .kpi-card .kpi-sub{font-size:11px;color:#94a3b8;margin-top:2px;}
 
-/* 回款率徽章 */
+/* 状态徽章 */
 .rate-badge{
   display:inline-block;padding:1px 8px;border-radius:10px;
   font-size:11px;font-weight:600;white-space:nowrap;
@@ -904,31 +911,103 @@ table.yoy-matrix-table .td-empty{color:#cbd5e1;font-style:italic;}
 @media(max-width:480px){
   .kpi-grid.cols-9,.kpi-grid.cols-8,.kpi-grid.cols-3,.kpi-grid.cols-4,.kpi-grid.cols-6{grid-template-columns:1fr;}
 }
+
+/* ══════════════════════════════════════════════════════
+   动画系统 — 6项动画
+   ══════════════════════════════════════════════════════ */
+
+/* 1. 页面切换过渡 — pageIn */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page.active { animation: pageIn .35s ease-out; }
+
+/* 2. KPI卡片交错入场 — fadeUp (延迟由 JS 动态添加) */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.anim-fade-up { animation: fadeUp .45s ease-out both; }
+
+/* 3. 进度条填充动画 - 仅在 .mini-rate 内的 .bar-fill 加过渡 */
+.mini-rate .bar-fill { transition: width .6s cubic-bezier(0.22, 1, 0.36, 1); }
+.annual-hero-fill { transition: width 1s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* 4. Tab淡入切换 */
+@keyframes tabIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.tab-panel.active { animation: tabIn .2s ease; }
+
+/* 5. 页面容器预留动画空间 */
+.page { transform: translateY(0); }
 """
 
 GLOBAL_JS = """
 // ══════════════════════════════════════════════════════
-// 页面切换（Excel 工作表标签风格）
+// 页面切换 + 动画触发
 // ══════════════════════════════════════════════════════
 function showPage(id){
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.querySelectorAll('.nav a').forEach(function(a){a.classList.remove('active');});
-  document.getElementById(id).classList.add('active');
+  var pageEl=document.getElementById(id);
+  if(!pageEl){
+    console.warn('Page not found:', id);
+    return;
+  }
+  pageEl.classList.add('active');
+  // 触发卡片交错入场动画
+  delayAnim(pageEl, '.kpi, .hero-kpi, .ring-kpi, .mini-rate, .kpi-row>*', 80);
   var t=document.querySelector('.nav a[data-target="'+id+'"]');
   if(t)t.classList.add('active');
-  // 确保图表重绘到正确尺寸（切换页面时 canvas 尺寸变化）
   setTimeout(window.__resizeAllCharts, 100);
 }
 
+/* ══════════════════════════════════════════════════════
+   数字递增计数（#3）
+   ══════════════════════════════════════════════════════ */
+function animateNumber(el, target, suffix, duration){
+  if(!el) return;
+  var start=0;
+  var step=Math.max(1, Math.floor(target / (duration/16)));
+  var current=start;
+  function tick(){
+    current+=step;
+    if(current>=target){
+      el.textContent=target.toLocaleString('zh-CN')+(suffix||'');
+      return;
+    }
+    el.textContent=current.toLocaleString('zh-CN')+(suffix||'');
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+/* ══════════════════════════════════════════════════════
+   卡片交错入场（#2）
+   ══════════════════════════════════════════════════════ */
+function delayAnim(container, selector, delayMs){
+  if(!container) return;
+  var items=container.querySelectorAll(selector);
+  items.forEach(function(el,i){
+    el.classList.add('anim-fade-up');
+    el.style.animationDelay=(i*delayMs)+'ms';
+  });
+}
+
 // ══════════════════════════════════════════════════════
-// Chart.js 全局默认（蓝白主题）
+// Chart.js 全局默认（蓝白主题 + 自定义动画 #6）
 // ══════════════════════════════════════════════════════
 if(typeof Chart!=='undefined'){
   Chart.defaults.color='#595959';
   Chart.defaults.borderColor='#d4d4d4';
   Chart.defaults.font.family='"Segoe UI","Microsoft YaHei",Arial,sans-serif';
   Chart.defaults.font.size=10;
-  Chart.defaults.maintainAspectRatio=false;  // 允许 canvas 弹性填充容器
+  Chart.defaults.maintainAspectRatio=false;
+  // 自定义图表入场动画
+  Chart.defaults.animation={duration:1200,easing:'easeOutQuart'};
 }
 
 // ══════════════════════════════════════════════════════
@@ -952,12 +1031,12 @@ window.__resizeAllCharts=function(){
 };
 
 // ══════════════════════════════════════════════════════
-// 自动表格折叠（超过 500px 高度的表格自动加折叠入口）
+// 自动表格折叠
 // ══════════════════════════════════════════════════════
 function initTableCollapse(){
   document.querySelectorAll('.page.active .table-wrap').forEach(function(w){
     if(w.classList.contains('_collapsed'))return;
-    if(w.classList.contains('no-collapse'))return;  // 跳过不折叠的表
+    if(w.classList.contains('no-collapse'))return;
     var h=w.scrollHeight;
     if(h>500){
       w.classList.add('table-collapse','collapsed');
@@ -969,8 +1048,8 @@ function initTableCollapse(){
       btn.className='collapse-btn';
       btn.textContent='展开全部数据 ▾';
       btn.onclick=function(){
-        var c=w.classList.toggle('collapsed');
-        this.textContent=c?'展开全部数据 ▾':'收起多余 ▴';
+        w.classList.toggle('collapsed');
+        this.textContent=w.classList.contains('collapsed')?'展开全部数据 ▾':'收起多余 ▴';
       };
       w.parentNode.insertBefore(btn,w.nextSibling);
     }else{
@@ -979,42 +1058,42 @@ function initTableCollapse(){
   });
 }
 
-// 页面切换时触发折叠检测
+// 页面切换时触发
 var _origShowPage=showPage;
 showPage=function(id){
   _origShowPage(id);
   setTimeout(initTableCollapse,50);
 };
 setTimeout(initTableCollapse,200);
+// 首屏动画
+setTimeout(function(){
+  var firstPage=document.querySelector('.page.active');
+  if(firstPage) delayAnim(firstPage, '.kpi, .hero-kpi, .ring-kpi, .mini-rate, .kpi-row>*', 80);
+}, 300);
 
 // ══════════════════════════════════════════════════════
-// Tab 切换（支持 .yoy-cust-tabs 和 .cust-tabs）
+// Tab 切换（统一事件委托 + 淡入 #5）
 // ══════════════════════════════════════════════════════
 function switchTab(btn){
   var tabId = btn.getAttribute('data-tab');
   if(!tabId) return;
-  // 找到 btn 所在的 tab 容器
   var container = btn.closest('.yoy-cust-tabs, .cust-tabs');
   if(!container) return;
-  // 切换按钮 active
   container.querySelectorAll('.tab-btn, .cust-tab').forEach(function(b){
     b.classList.remove('active');
   });
   btn.classList.add('active');
-  // 切换面板
   container.querySelectorAll('.tab-panel, [id]').forEach(function(p){
     if(p.classList && p.classList.contains('tab-panel')){
       p.classList.remove('active');
       if(p.id === tabId) p.classList.add('active');
     }
   });
-  // 兼容旧版 .cust-tabs 用的 hidden 类
   var target = document.getElementById(tabId);
   if(target){
     if(target.classList.contains('tab-panel')){
-      // 已经在上面处理
+      // 已在上面处理
     } else {
-      // 旧版：显示 target，隐藏兄弟
       var parent = target.parentElement;
       if(parent){
         Array.from(parent.children).forEach(function(c){
@@ -1025,6 +1104,24 @@ function switchTab(btn){
     }
   }
 }
+// 统一 .cust-tab 事件委托
+document.addEventListener('click', function(e){
+  var tab = e.target.closest('.cust-tab');
+  if(!tab) return;
+  // 优先用 data-tab 属性触发 switchTab
+  if(tab.getAttribute('data-tab')){
+    switchTab(tab);
+    return;
+  }
+  // 否则自动根据 class 切换同容器内的 panel
+  var container = tab.closest('.cust-tabs');
+  if(!container) return;
+  var panels = container.parentElement.querySelectorAll('.tab-panel');
+  var m = tab.classList.contains('inc')?'inc':'pay';
+  panels.forEach(function(panel){panel.classList.remove('active');});
+  var target = container.parentElement.querySelector('.tab-panel.tab-panel-'+m);
+  if(target) target.classList.add('active');
+});
 """
 
 

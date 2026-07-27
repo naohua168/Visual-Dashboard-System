@@ -1,11 +1,10 @@
-"""测试渲染页面模块"""
+"""测试渲染页面模块 — 6 页看板"""
 from pathlib import Path
 import pytest
 from processors.data_loader import load_all
 from processors.page_overview import OverviewPage
 from processors.page_annual import AnnualPage
 from processors.page_monthly import MonthlyPage
-from processors.page_monthly_cumul import MonthlyCumulPage
 from processors.page_sales import SalesPage
 from processors.page_yoy import YoyPage
 from processors.page_quarterly import QuarterlyPage
@@ -26,7 +25,6 @@ PAGE_CLASSES = [
     (OverviewPage, "overview", "数据总览"),
     (AnnualPage, "annual", "年度达成"),
     (MonthlyPage, "monthly", "月度达成"),
-    (MonthlyCumulPage, "monthly_cumul", "月累计明细"),
     (SalesPage, "sales", "销售达成"),
     (YoyPage, "yoy", "年度同比"),
     (QuarterlyPage, "quarterly", "季度分析"),
