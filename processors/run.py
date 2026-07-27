@@ -130,11 +130,14 @@ def run_render(output_path: str | None = None) -> Path:
         if not out.is_absolute():
             out = BASE_DIR / output_path
     else:
-        out_dir = BASE_DIR / render_cfg.get("目录", "output")
-        out_dir.mkdir(parents=True, exist_ok=True)
+        base_out = BASE_DIR / "output"
+        html_dir = base_out / render_cfg.get("看板目录", "看板")
+        data_dir = base_out / render_cfg.get("数据目录", "数据")
+        html_dir.mkdir(parents=True, exist_ok=True)
+        data_dir.mkdir(parents=True, exist_ok=True)
         today = datetime.date.today().strftime("%Y%m%d")
         filename = render_cfg.get("文件名", "看板_{date}.html").format(date=today)
-        out = out_dir / filename
+        out = html_dir / filename
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
@@ -142,7 +145,11 @@ def run_render(output_path: str | None = None) -> Path:
 
     # 输出汇总 Excel
     _log("渲染", "生成汇总 Excel 数据表")
-    excel_path = out.parent / f"data_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
+    if output_path:
+        excel_dir = out.parent
+    else:
+        excel_dir = data_dir
+    excel_path = excel_dir / f"data_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
     try:
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             data.income.to_excel(writer, sheet_name="收入", index=False)
