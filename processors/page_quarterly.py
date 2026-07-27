@@ -1,343 +1,322 @@
-"""季度分析页 — 3 卡片设计
+"""季度达成页 — 设计理念参照月度达成（月度达成借鉴年度达成风格）
 
-卡片1 — 本季度完成情况（收入/回款/达成度/同比）
-卡片2 — 各部门收入回款完成度 + 去年同期差异
-卡片3 — 重点大客户收入回款详情
+布局（参考月度达成页的年度达成风格）：
+  [A] Hero大数字块 — 季度总目标 + 收入/回款进度条（可展开部门卡片）
+  [B] 事业部完成度 — mini-rate 进度条×4部门（收入/回款双卡并排）
+  [C] 季度内月度趋势 — Chart.js 柱状图（本季各月收入/回款）
+  [D] 客户矩阵表 — cell-bg实色填充, 收入/回款Tab切换
 """
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 
-from .base import BaseRenderer, completion_html, rate_cls
+from .base import BaseRenderer, rate_cls
 from .utils import fmt_wan, safe_float
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
-DEPT_COLORS = {"检测": "#2563eb", "信息": "#8b5cf6", "能源": "#f59e0b", "海外": "#0d9488"}
-CURRENT_Q_LABEL = "Q2"
+CURRENT_YEAR = 2026
 
 
 class QuarterlyPage(BaseRenderer):
     page_id = "quarterly"
-    nav_name = "季度分析"
+    nav_name = "季度达成"
 
     def render(self, data) -> str:
-        # ── 2026 Q2 数据（当年累计 = Q2）──
-        df_inc = data.income.copy()
-        df_pay = data.payment.copy()
-        df_inc["万"] = df_inc["金额"].apply(safe_float) / 10000.0
-        df_pay["万"] = df_pay["金额"].apply(safe_float) / 10000.0
+        # ── 确定本季度（依据最新季度累计数据中的日期）──
+        q_inc: pd.DataFrame | None = data.quarterly_income
+        q_pay: pd.DataFrame | None = data.quarterly_payment
 
-        # ── 2024 年基线数据 ──
-        y_inc_2024 = data.yearly_income.copy() if data.has_yearly_baseline else None
-        y_pay_2024 = data.yearly_payment.copy() if data.has_yearly_baseline else None
-        if y_inc_2024 is not None:
-            y_inc_2024["万"] = y_inc_2024["金额"].apply(safe_float) / 10000.0
-            y_inc_2024["季度"] = pd.to_datetime(y_inc_2024["日期"]).dt.quarter
-        if y_pay_2024 is not None:
-            y_pay_2024["万"] = y_pay_2024["金额"].apply(safe_float) / 10000.0
-            y_pay_2024["季度"] = pd.to_datetime(y_pay_2024["日期"]).dt.quarter
+        if q_inc is None or q_inc.empty or q_pay is None or q_pay.empty:
+            # 季度数据不可用，用收入/回款按季度过滤替代
+            fallback_inc = data.income.copy()
+            fallback_pay = data.payment.copy()
+            fallback_inc["金额_万"] = fallback_inc["金额"].apply(safe_float) / 10000.0
+            fallback_pay["金额_万"] = fallback_pay["金额"].apply(safe_float) / 10000.0
+            # 取当前季度（7月 → Q2）
+            q = 2
+        else:
+            q_inc = q_inc.copy(); q_pay = q_pay.copy()
+            q_inc["金额_万"] = q_inc["金额"].apply(safe_float) / 10000.0
+            q_pay["金额_万"] = q_pay["金额"].apply(safe_float) / 10000.0
+            # 从日期推导季度
+            latest_date = pd.to_datetime(q_inc["日期"].max(), errors="coerce")
+            if pd.isna(latest_date):
+                q = 2
+            else:
+                q = latest_date.quarter
+            fallback_inc = q_inc; fallback_pay = q_pay
 
-        # ── 年度目标 ──
-        tgt = data.total_targets.copy()
-        dept_cols = DEPARTMENTS
-        total_target = sum(safe_float(tgt[d].sum()) for d in dept_cols if d in tgt.columns)
-        dept_targets = {}
-        for d in dept_cols:
-            dept_targets[d] = safe_float(tgt[d].fillna(0).sum())
+        q_label = f"Q{q}"
+        month_map = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
+        # 用当年累计数据计算（季度累计 = 当年累计截止当前季度末）
+        # 但当年累计是全年的，所以过滤到本季度
+        all_inc = data.income.copy()
+        all_pay = data.payment.copy()
+        all_inc["金额_万"] = all_inc["金额"].apply(safe_float) / 10000.0
+        all_pay["金额_万"] = all_pay["金额"].apply(safe_float) / 10000.0
+        all_inc["月份"] = pd.to_datetime(all_inc["日期"], errors="coerce").dt.to_period("M").astype(str)
+        all_pay["月份"] = pd.to_datetime(all_pay["日期"], errors="coerce").dt.to_period("M").astype(str)
 
-        # ── 2026 Q2 汇总 ──
-        q_inc_total = float(df_inc["万"].sum())
-        q_pay_total = float(df_pay["万"].sum())
-        q_inc_dept = df_inc.groupby("事业部")["万"].sum().to_dict()
-        q_pay_dept = df_pay.groupby("事业部")["万"].sum().to_dict()
+        # 本季度月份
+        q_start = (q - 1) * 3 + 1
+        q_months = [f"{CURRENT_YEAR}-{m:02d}" for m in range(q_start, q_start + 3)]
+        q_inc_filtered = all_inc[all_inc["月份"].isin(q_months)]
+        q_pay_filtered = all_pay[all_pay["月份"].isin(q_months)]
 
-        # ── 2024 Q2 汇总 ──
-        last_q_inc_total = 0.0
-        last_q_pay_total = 0.0
-        last_q_inc_dept: dict[str, float] = {}
-        last_q_pay_dept: dict[str, float] = {}
-        if y_inc_2024 is not None:
-            yq2 = y_inc_2024[y_inc_2024["季度"] == 2]
-            last_q_inc_total = float(yq2["万"].sum())
-            last_q_inc_dept = dict(yq2.groupby("事业部")["万"].sum())
-        if y_pay_2024 is not None:
-            yq2 = y_pay_2024[y_pay_2024["季度"] == 2]
-            last_q_pay_total = float(yq2["万"].sum())
-            last_q_pay_dept = dict(yq2.groupby("事业部")["万"].sum())
+        # ── 季度汇总 ──
+        if q_inc is not None and not q_inc.empty:
+            total_inc = float(q_inc["金额_万"].sum())
+            total_pay = float(q_pay["金额_万"].sum())
+            dept_inc = q_inc.groupby("事业部")["金额_万"].sum().to_dict()
+            dept_pay = q_pay.groupby("事业部")["金额_万"].sum().to_dict()
+        else:
+            total_inc = float(q_inc_filtered["金额_万"].sum())
+            total_pay = float(q_pay_filtered["金额_万"].sum())
+            dept_inc = q_inc_filtered.groupby("事业部")["金额_万"].sum().to_dict()
+            dept_pay = q_pay_filtered.groupby("事业部")["金额_万"].sum().to_dict()
 
-        # ── 客户维度 ──
-        c_inc = df_inc.groupby("客户")["万"].sum().sort_values(ascending=False)
-        c_pay = df_pay.groupby("客户")["万"].sum()
-        all_cust = c_inc.head(15).index.tolist()
+        # ── 季度目标 = 年目标 / 4 ──
+        tgt_df = data.total_targets
+        inc_tgt = sum(safe_float(tgt_df[d].sum()) for d in DEPARTMENTS if d in tgt_df.columns) / 4.0
+        pay_tgt = inc_tgt
+        # 事业部季度目标
+        dept_tgt: dict[str, float] = {}
+        for d in DEPARTMENTS:
+            dept_tgt[d] = safe_float(tgt_df[d].sum()) / 4.0 if d in tgt_df.columns else 0.0
 
-        # 2024 Q2 客户收入
-        c_last_inc: dict[str, float] = {}
-        c_last_pay: dict[str, float] = {}
-        if y_inc_2024 is not None:
-            yq2 = y_inc_2024[y_inc_2024["季度"] == 2]
-            c_last_inc = dict(yq2.groupby("客户")["万"].sum())
-        if y_pay_2024 is not None:
-            yq2 = y_pay_2024[y_pay_2024["季度"] == 2]
-            c_last_pay = dict(yq2.groupby("客户")["万"].sum())
+        inc_r = total_inc / inc_tgt if inc_tgt else 0
+        pay_r = total_pay / pay_tgt if pay_tgt else 0
 
-        # ── 组装页面 ──
-        parts = [
-            self._kpi_row(q_inc_total, q_pay_total, total_target,
-                          last_q_inc_total, last_q_pay_total),
-            self._card1(q_inc_total, q_pay_total, total_target,
-                        last_q_inc_total, last_q_pay_total),
-            self._card2(q_inc_dept, q_pay_dept, last_q_inc_dept, last_q_pay_dept,
-                        dept_targets),
-            self._card3(all_cust, c_inc, c_pay, c_last_inc, c_last_pay,
-                        df_inc, df_pay),
-        ]
+        # ── 事业部实际（用于卡片B）──
+        inc_totals = {d: safe_float(dept_inc.get(d, 0)) for d in DEPARTMENTS}
+        pay_totals = {d: safe_float(dept_pay.get(d, 0)) for d in DEPARTMENTS}
+
+        parts = []
+        parts.append(self._hero_block(q_label, inc_tgt, pay_tgt, total_inc, total_pay, inc_r, pay_r))
+        parts.append(self._dept_card(q_inc_filtered, q_pay_filtered, dept_tgt, inc_totals, pay_totals, q_label))
+        parts.append(self._trend_chart(q_inc_filtered, q_pay_filtered, q_label))
+        parts.append(self._customer_matrix(q_inc_filtered, q_pay_filtered, tgt_df, dept_tgt, q_label))
         return self.wrap_page("".join(parts))
 
     # ════════════════════════════════════════════════════════════
-    # KPI 行
+    # [A] Hero 大数字块 — 季度总目标 + 收入/回款进度条
     # ════════════════════════════════════════════════════════════
-    def _kpi_row(self, q_inc, q_pay, tgt, last_inc, last_pay) -> str:
-        rate = q_inc / tgt * 100 if tgt else 0
-        inc_yoy = (q_inc - last_inc) / last_inc * 100 if last_inc else 0
-        pay_yoy = (q_pay - last_pay) / last_pay * 100 if last_pay else 0
-        return f"""<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
-  <div class="kpi kpi-inc">
-    <div class="kpi-label">{CURRENT_Q_LABEL} 收入</div>
-    <div class="kpi-value">{fmt_wan(q_inc)}<span class="kpi-unit">万元</span></div>
-    <div class="kpi-sub">同比 {"+" if inc_yoy>=0 else ""}{inc_yoy:.1f}%</div>
-  </div>
-  <div class="kpi kpi-pay">
-    <div class="kpi-label">{CURRENT_Q_LABEL} 回款</div>
-    <div class="kpi-value">{fmt_wan(q_pay)}<span class="kpi-unit">万元</span></div>
-    <div class="kpi-sub">同比 {"+" if pay_yoy>=0 else ""}{pay_yoy:.1f}%</div>
-  </div>
-  <div class="kpi kpi-tgt">
-    <div class="kpi-label">年度目标达成</div>
-    <div class="kpi-value">{rate:.1f}<span class="kpi-unit">%</span></div>
-    <div class="kpi-sub">目标 {fmt_wan(tgt)} 万</div>
+    def _hero_block(self, q_label: str, inc_tgt: float, pay_tgt: float,
+                    total_inc: float, total_pay: float, inc_r: float, pay_r: float) -> str:
+        """季度总目标 Hero — 收入/回款条，点击展开部门卡片"""
+        total_tgt = inc_tgt + pay_tgt
+        toggle_js = (
+            "document.getElementById('quarterly-dept-wrap').classList.toggle('hidden');"
+            "this.parentElement.querySelectorAll('.annual-hero-bar').forEach(b=>b.classList.remove('expanded'));"
+            "this.classList.add('expanded')"
+        )
+        return f"""<div class="annual-hero">
+  <div class="annual-hero-label">📊 季度总目标 · {q_label}</div>
+  <div class="annual-hero-value">{fmt_wan(total_tgt)}<span class="annual-hero-unit">万元</span></div>
+  <div class="annual-hero-bars">
+    <div class="annual-hero-bar" onclick="{toggle_js}" style="cursor:pointer">
+      <span class="annual-hero-name">收入</span>
+      <div class="annual-hero-track"><div class="annual-hero-fill inc" style="width:{min(inc_r*100,100):.1f}%">{inc_r*100:.1f}%</div></div>
+      <span class="annual-hero-val">{fmt_wan(total_inc)} <span style="font-size:10px;font-weight:400;color:#94a3b8">/ {fmt_wan(inc_tgt)}</span></span>
+      <span class="annual-hero-arrow">▸</span>
+    </div>
+    <div class="annual-hero-bar" onclick="{toggle_js}" style="cursor:pointer">
+      <span class="annual-hero-name">回款</span>
+      <div class="annual-hero-track"><div class="annual-hero-fill pay" style="width:{min(pay_r*100,100):.1f}%">{pay_r*100:.1f}%</div></div>
+      <span class="annual-hero-val">{fmt_wan(total_pay)} <span style="font-size:10px;font-weight:400;color:#94a3b8">/ {fmt_wan(pay_tgt)}</span></span>
+      <span class="annual-hero-arrow">▸</span>
+    </div>
   </div>
 </div>"""
 
     # ════════════════════════════════════════════════════════════
-    # 卡片1: 本季度完成情况
+    # [B] 事业部完成度 — mini-rate 双卡（收入/回款）
     # ════════════════════════════════════════════════════════════
-    def _card1(self, q_inc, q_pay, tgt, last_inc, last_pay) -> str:
-        rate = q_inc / tgt * 100 if tgt else 0
-        pay_rate_achieved = q_pay / tgt * 100 if tgt else 0
-        inc_yoy = (q_inc - last_inc) / last_inc * 100 if last_inc else 0
-        pay_yoy = (q_pay - last_pay) / last_pay * 100 if last_pay else 0
-
-        def bar(label, pct, val, sub, color):
-            cls = rate_cls(pct / 100) if pct <= 100 else "level-4"
-            return f"""<div class="mini-rate">
-  <span style="width:90px;font-weight:600">{label}</span>
-  <div class="bar"><div class="bar-fill {cls}" style="width:{min(pct,100):.1f}%"><span class="bar-pct">{pct:.1f}%</span></div></div>
-  <span class="val">{fmt_wan(val)}</span>
-  <span style="color:var(--text-muted);font-size:11px">{sub}</span>
+    def _dept_card(self, df_inc: pd.DataFrame, df_pay: pd.DataFrame,
+                   dept_tgt: dict[str, float],
+                   inc_totals: dict[str, float], pay_totals: dict[str, float],
+                   q_label: str) -> str:
+        """2 张部门卡（收入+回款）并排，初始 hidden 由 Hero 展开"""
+        return f"""<div class="hidden" id="quarterly-dept-wrap">
+  <div class="cols-2">
+    {self._one_metric(inc_totals, dept_tgt, "收入", q_label)}
+    {self._one_metric(pay_totals, dept_tgt, "回款", q_label)}
+  </div>
 </div>"""
 
-        return self.section(f"卡片1 · {CURRENT_Q_LABEL} 完成情况", "sec-blue") + f"""<div class="card">
-  <div class="card-title">{CURRENT_Q_LABEL} 收入 vs 年度目标 · 同比去年同季</div>
-  {bar("收入目标达成", rate, q_inc, f"年度目标{fmt_wan(tgt)}", "#2563eb")}
-  {bar("回款目标达成", pay_rate_achieved, q_pay, f"年度目标{fmt_wan(tgt)}", "#16a34a")}
-  {"" if last_inc == 0 else bar("收入同比去年", inc_yoy, q_inc, f"去年{CURRENT_Q_LABEL} {fmt_wan(last_inc)}", "#8b5cf6")}
-  {"" if last_pay == 0 else bar("回款同比去年", pay_yoy, q_pay, f"去年{CURRENT_Q_LABEL} {fmt_wan(last_pay)}", "#f59e0b")}
-</div>"""
-
-    # ════════════════════════════════════════════════════════════
-    # 卡片2: 部门完成度 + 同比差异
-    # ════════════════════════════════════════════════════════════
-    def _card2(self, q_inc_dept, q_pay_dept, last_inc_dept, last_pay_dept,
-               dept_targets) -> str:
-        """事业部本季 vs 去年同季 — 双层表头（收入组/回款组并列）"""
-
-        def yoy_arrow(cur, prev):
-            if prev == 0 and cur == 0:
-                return '<span class="yoy-arrow flat">−</span>'
-            if cur > prev:
-                return '<span class="yoy-arrow up">▲</span>'
-            if cur < prev:
-                return '<span class="yoy-arrow down">▼</span>'
-            return '<span class="yoy-arrow flat">−</span>'
-
-        def yoy_pct_cell(cur, prev):
-            """同比格子：箭头 + 百分比"""
-            if prev == 0 and cur == 0:
-                return '<td class="yoy-cell flat"><span class="yoy-pct">—</span></td>'
-            pct = (cur - prev) / prev * 100 if prev else 0
-            cls = "up" if pct > 0 else "down" if pct < 0 else "flat"
-            arrow = yoy_arrow(cur, prev)
-            big = abs(pct) >= 50
-            return (
-                f'<td class="yoy-cell {cls}"{" data-big=true" if big else ""}>'
-                f'<span class="yoy-pct">{arrow}{pct:+.0f}%</span></td>'
-            )
+    def _one_metric(self, tot: dict[str, float], dept_tgt: dict[str, float],
+                    metric: str, q_label: str) -> str:
+        """单指标部门卡（mini-rate × 4部门 + 合计）"""
+        total_act = sum(tot.get(d, 0) for d in DEPARTMENTS)
+        total_tgt = sum(dept_tgt.get(d, 0) for d in DEPARTMENTS)
+        total_rate = total_act / total_tgt if total_tgt else 0
+        total_cls = rate_cls(total_rate)
 
         rows = ""
-        t_inc = t_last_i = t_pay = t_last_p = 0.0
         for d in DEPARTMENTS:
-            inc = safe_float(q_inc_dept.get(d, 0))
-            pay = safe_float(q_pay_dept.get(d, 0))
-            li = safe_float(last_inc_dept.get(d, 0))
-            lp = safe_float(last_pay_dept.get(d, 0))
-            t_inc += inc; t_last_i += li; t_pay += pay; t_last_p += lp
+            act = tot.get(d, 0)
+            tgt = dept_tgt.get(d, 0)
+            r = act / tgt if tgt else 0
+            cls = rate_cls(r)
+            rows += f"""<div class="mini-rate">
+  <span style="width:48px;font-weight:600">{d}</span>
+  <div class="bar"><div class="bar-fill {cls}" style="width:{min(r*100,100):.1f}%"><span class="bar-pct {cls}">{r*100:.1f}%</span></div></div>
+  <span class="val">{fmt_wan(act)}</span>
+  <span style="color:var(--text-muted);font-size:11px">/{fmt_wan(tgt)}</span>
+</div>"""
 
-            rows += (
-                f'<tr>'
-                f'<td class="dept-name"><strong>{d}</strong></td>'
-                f'<td class="num-cell">{fmt_wan(inc)}</td>'
-                f'<td class="num-cell muted">{fmt_wan(li)}</td>'
-                + yoy_pct_cell(inc, li) +
-                f'<td class="num-cell">{fmt_wan(pay)}</td>'
-                f'<td class="num-cell muted">{fmt_wan(lp)}</td>'
-                + yoy_pct_cell(pay, lp) +
-                '</tr>'
-            )
-        # 合计行
-        rows += (
-            f'<tr class="row-total">'
-            f'<td class="dept-name" style="background:linear-gradient(90deg,#1e293b,#334155);color:#fff;border-left-color:#fbbf24"><strong>合计（4部门）</strong></td>'
-            f'<td class="num-cell" style="background:#dbeafe;font-weight:800">{fmt_wan(t_inc)}</td>'
-            f'<td class="num-cell muted" style="background:#dbeafe">{fmt_wan(t_last_i)}</td>'
-            + yoy_pct_cell(t_inc, t_last_i) +
-            f'<td class="num-cell" style="background:#dcfce7;font-weight:800">{fmt_wan(t_pay)}</td>'
-            f'<td class="num-cell muted" style="background:#dcfce7">{fmt_wan(t_last_p)}</td>'
-            + yoy_pct_cell(t_pay, t_last_p) +
-            '</tr>'
-        )
-
-        h = (
-            "<tr>"
-            "<th rowspan='2'>事业部</th>"
-            "<th colspan='3' class='group-header inc-group'>📈 收入</th>"
-            "<th colspan='3' class='group-header pay-group'>💰 回款</th>"
-            "</tr>"
-            "<tr>"
-            f"<th>{CURRENT_Q_LABEL} 2026</th><th>{CURRENT_Q_LABEL} 2024</th><th>同比</th>"
-            f"<th>{CURRENT_Q_LABEL} 2026</th><th>{CURRENT_Q_LABEL} 2024</th><th>同比</th>"
-            "</tr>"
-        )
-        return (
-            self.section("卡片2 · 事业部本季收入回款 vs 去年同季", "sec-purple")
-            + f'''<div class="table-wrap no-collapse">
-<table class="yoy-dept-table">
-<thead>{h}</thead>
-<tbody>{rows}</tbody>
-</table>
-</div>'''
-        )
+        rows += f"""<div class="mini-rate" style="border-top:2px solid var(--border);padding-top:8px;margin-top:4px">
+  <span style="width:48px;font-weight:700">合计</span>
+  <div class="bar"><div class="bar-fill {total_cls}" style="width:{min(total_rate*100,100):.1f}%"><span class="bar-pct {total_cls}">{total_rate*100:.1f}%</span></div></div>
+  <span class="val">{fmt_wan(total_act)}</span>
+  <span style="color:var(--text-muted);font-size:11px">/{fmt_wan(total_tgt)}</span>
+</div>"""
+        return f"""<div class="card">
+  <div class="card-title">{metric}完成度 · {q_label}</div>
+  {rows}
+</div>"""
 
     # ════════════════════════════════════════════════════════════
-    # 卡片3: 重点客户本季收入回款详情（yoy-matrix-table UI风格）
+    # [C] 季度内月度趋势 — Chart.js 柱状图
     # ════════════════════════════════════════════════════════════
-    def _card3(self, all_cust, c_inc, c_pay, c_last_inc, c_last_pay,
-               df_inc, df_pay) -> str:
-        if not all_cust:
+    def _trend_chart(self, df_inc: pd.DataFrame, df_pay: pd.DataFrame, q_label: str) -> str:
+        """本季度各月收入/回款柱状图"""
+        mi = df_inc.groupby("月份")["金额_万"].sum()
+        mp = df_pay.groupby("月份")["金额_万"].sum()
+        all_m = sorted(set(list(mi.index) + list(mp.index)))
+        iv = [round(float(mi.get(m, 0)), 2) for m in all_m]
+        pv = [round(float(mp.get(m, 0)), 2) for m in all_m]
+
+        if not all_m:
             return ""
 
-        # 客户的事业部明细
-        inc_dept = df_inc.groupby(["客户", "事业部"])["万"].sum().reset_index()
-        pay_dept = df_pay.groupby(["客户", "事业部"])["万"].sum().reset_index()
+        cid = "quarterlyTrend"
+        config = {
+            "type": "bar", "data": {
+                "labels": all_m,
+                "datasets": [
+                    {"label": "收入", "data": iv,
+                     "backgroundColor": "#2563eb", "borderRadius": 4, "barPercentage": 0.6},
+                    {"label": "回款", "data": pv,
+                     "backgroundColor": "#f59e0b", "borderRadius": 4, "barPercentage": 0.6},
+                ],
+            },
+            "options": {
+                "responsive": True, "maintainAspectRatio": False,
+                "interaction": {"mode": "index", "intersect": False},
+                "plugins": {
+                    "legend": {"position": "top", "labels": {"usePointStyle": True, "padding": 12}},
+                    "tooltip": {
+                        "callbacks": {
+                            "label": "ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString('zh-CN',{minimumFractionDigits:2}) + ' 万元'"
+                        }
+                    },
+                },
+                "scales": {
+                    "x": {"grid": {"display": False}},
+                    "y": {
+                        "beginAtZero": True, "grid": {"color": "rgba(148,163,184,0.15)"},
+                        "ticks": {"callback": "v => v + '万'"},
+                    },
+                },
+            },
+        }
+        return f"""<div class="chart-box"><div class="chart-title">{q_label} 月度收入/回款趋势（万元）</div>
+<div style="height:200px;position:relative"><canvas id="{cid}"></canvas></div></div>
+<script>
+(function(){{ const e=document.getElementById('{cid}'); if(e) new Chart(e.getContext('2d'), {json.dumps(config, ensure_ascii=False)}); }})();
+</script>"""
 
-        def dept_chips(cust):
-            """生成事业部+金额小标签（带颜色编码）"""
-            chips = ""
-            for _, r in inc_dept[inc_dept["客户"] == cust].iterrows():
-                d = str(r["事业部"])
-                v = float(r["万"])
-                color = DEPT_COLORS.get(d, "#94a3b8")
-                chips += (
-                    f'<span style="font-size:10px;color:{color};background:{color}18;'
-                    f'padding:1px 5px;border-radius:3px;margin:0 2px 2px 0;display:inline-block;'
-                    f'font-weight:600">{d} {fmt_wan(v)}</span>'
-                )
-            return chips if chips else '<span style="color:#cbd5e1">—</span>'
+    # ════════════════════════════════════════════════════════════
+    # [D] 客户矩阵表 — cell-bg 收入/回款 Tab
+    # ════════════════════════════════════════════════════════════
+    def _customer_matrix(self, df_inc: pd.DataFrame, df_pay: pd.DataFrame,
+                         tgt_df: pd.DataFrame, dept_tgt: dict[str, float],
+                         q_label: str) -> str:
+        """收入/回款 Tab 切换 · 目标/实际/达成率 cell-bg 风格
 
-        # —— 表头（yoy-matrix-style 深色渐变） ——
-        thead = (
-            '<tr>'
-            '<th style="width:36px;text-align:center">#</th>'
-            '<th class="th-name" style="text-align:left">客户</th>'
-            '<th style="text-align:right">本季收入</th>'
-            '<th style="text-align:right">本季回款</th>'
-            '<th style="text-align:right">差额</th>'
-            '<th style="text-align:center">收入 vs 2024' + CURRENT_Q_LABEL + '</th>'
-            '<th style="text-align:left">细分（事业部/收入）</th>'
-            '</tr>'
-        )
+        客户季度目标 = 年度总指标中该客户分部门目标 / 4
+        """
+        inc_table = self._build_matrix(df_inc, tgt_df, "收入")
+        pay_table = self._build_matrix(df_pay, tgt_df, "回款")
 
-        rows = ""
-        t_inc = t_pay = 0.0
-        for i, c in enumerate(all_cust, 1):
-            inc = safe_float(c_inc.get(c, 0))
-            pay = safe_float(c_pay.get(c, 0))
-            last_i = safe_float(c_last_inc.get(c, 0))
-            gap = pay - inc
-            t_inc += inc; t_pay += pay
+        return f"""<div class="section-title sec-sky">{q_label} 客户达成 · 收入/回款（万元）</div>
+<div class="cust-tabs">
+  <span class="cust-tab active inc" onclick="document.getElementById('q-cust-inc').classList.remove('hidden');document.getElementById('q-cust-pay').classList.add('hidden');this.parentElement.querySelectorAll('.cust-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">收入</span>
+  <span class="cust-tab pay" onclick="document.getElementById('q-cust-inc').classList.add('hidden');document.getElementById('q-cust-pay').classList.remove('hidden');this.parentElement.querySelectorAll('.cust-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">回款</span>
+</div>
+<div id="q-cust-inc">{inc_table}</div>
+<div id="q-cust-pay" class="hidden">{pay_table}</div>"""
 
-            # 差额着色
-            gap_color = "#16a34a" if gap >= 0 else "#dc2626"
-            gap_str = ("+" if gap >= 0 else "") + fmt_wan(gap)
+    def _build_matrix(self, df: pd.DataFrame, tgt_df: pd.DataFrame, label: str) -> str:
+        """单指标矩阵（cell-bg 实色填充 · 年度达成风格）
 
-            # 收入增长
-            if last_i > 0:
-                r = (inc - last_i) / last_i * 100
-                grow_cls = "up" if r >= 0 else "down"
-                arrow = "▲" if r >= 0 else "▼"
-                big = ' data-big="true"' if abs(r) >= 50 else ""
-                grow_html = (
-                    f'<td class="mx-cell {grow_cls}"{big}>'
-                    f'<span class="mx-badge">{arrow}{r:+.0f}%</span>'
-                    f'<span class="mx-val">{fmt_wan(last_i)}</span>'
-                    f'</td>'
-                )
-            elif inc > 0 and last_i == 0:
-                grow_html = (
-                    '<td class="mx-cell up">'
-                    '<span class="mx-badge">★新增</span>'
-                    '<span class="mx-val">—</span>'
-                    '</td>'
-                )
-            else:
-                grow_html = '<td class="mx-cell flat"><span class="mx-badge" style="background:#f1f5f9;color:#64748b">—</span></td>'
+        从总指标中提取客户级的季度目标（年 / 4）。
+        """
+        # 客户季度目标 = 总指标中按客户汇总的部门目标 / 4
+        tgt_p = tgt_df.groupby("客户")[[d for d in DEPARTMENTS if d in tgt_df.columns]].sum() / 4.0
+        tgt_p["合计"] = tgt_p.sum(axis=1)
 
-            rows += (
-                f'<tr class="row-data">'
-                f'<td style="text-align:center"><span class="rank rank-{i if i<=3 else "n"}">{i}</span></td>'
-                f'<td class="td-name" style="font-weight:700">{c}</td>'
-                f'<td style="text-align:right;font-weight:700">{fmt_wan(inc)}</td>'
-                f'<td style="text-align:right">{fmt_wan(pay)}</td>'
-                f'<td style="text-align:right;color:{gap_color};font-weight:700">{gap_str}</td>'
-                + grow_html +
-                f'<td>{dept_chips(c)}</td>'
-                f'</tr>'
-            )
+        # 实际数据透视
+        piv = df.pivot_table(index="客户", columns="事业部", values="金额_万", aggfunc="sum", fill_value=0)
+        piv["合计"] = piv.sum(axis=1)
+
+        customers = [c for c in tgt_p.index if tgt_p.loc[c, "合计"] > 0]
+        customers.sort(key=lambda c: tgt_p.loc[c, "合计"], reverse=True)
+        if not customers:
+            return '<div class="card"><p style="color:var(--text-muted);padding:20px;text-align:center">无季度目标数据</p></div>'
+
+        def _cell(act, tgt_v, is_total_col=False):
+            """cell-bg 实色填充：左=百分比 / 右=完成+指标"""
+            if act == 0 and tgt_v == 0:
+                return '<td class="td-empty">—</td>'
+            r = act / tgt_v if tgt_v else 0
+            pct_num = min(r * 100, 100)
+            pct_label = f"{r*100:.0f}%"
+            pct_cls = " achieved" if r >= 1 else " low" if 0 < r < 0.5 else ""
+            if is_total_col:
+                return (f'<td class="cell-bg is-total"><div class="cell-text">'
+                        f'<span class="cell-pct">{pct_label}</span>'
+                        f'<div class="cell-main"><span class="cell-act">完成{fmt_wan(act)}</span>'
+                        f'<span class="cell-tgt">指标{fmt_wan(tgt_v)}</span></div></div></td>')
+            fill_var = "#22c55e" if r >= 1 else "#fb923c" if r >= 0.5 else "#fdba74" if r > 0 else "#f1f5f9"
+            empty_cls = " is-empty" if r == 0 else ""
+            return (f'<td class="cell-bg{empty_cls}" style="--pct:{pct_num:.1f}%;--fill:{fill_var}">'
+                    f'<div class="fill-bg"></div><div class="cell-text">'
+                    f'<span class="cell-pct{pct_cls}">{pct_label}</span>'
+                    f'<div class="cell-main"><span class="cell-act">完成{fmt_wan(act)}</span>'
+                    f'<span class="cell-tgt">指标{fmt_wan(tgt_v)}</span></div></div></td>')
 
         # 合计行
-        t_gap = t_pay - t_inc
-        t_gap_color = "#16a34a" if t_gap >= 0 else "#dc2626"
-        t_gap_str = ("+" if t_gap >= 0 else "") + fmt_wan(t_gap)
-        rows += (
-            f'<tr class="row-total">'
-            f'<td></td><td style="text-align:left;font-weight:800">合计（{len(all_cust)}家）</td>'
-            f'<td style="text-align:right;font-weight:800">{fmt_wan(t_inc)}</td>'
-            f'<td style="text-align:right;font-weight:800">{fmt_wan(t_pay)}</td>'
-            f'<td style="text-align:right;color:{t_gap_color};font-weight:800">{t_gap_str}</td>'
-            f'<td></td><td></td>'
-            f'</tr>'
-        )
+        cells = [f'<td class="td-name td-total">合计（{len(customers)}家）</td>']
+        for d in DEPARTMENTS:
+            a = sum(float(piv.loc[c, d]) for c in customers if c in piv.index and d in piv.columns) if customers else 0
+            tg = sum(float(tgt_p.loc[c, d]) for c in customers if c in tgt_p.index)
+            cells.append(_cell(a, tg))
+        imp_total = sum(float(piv.loc[c, "合计"]) for c in customers if c in piv.index)
+        imp_tgt = sum(float(tgt_p.loc[c, "合计"]) for c in customers)
+        cells.append(_cell(imp_total, imp_tgt, is_total_col=True))
+        tr = f'<tr class="row-total">{"".join(cells)}</tr>'
 
-        return (
-            self.section("卡片3 · 重点客户本季收入回款 vs 去年同季", "sec-green")
-            + f"""<div class="card" style="padding:10px 14px">
-  <div class="table-wrap no-collapse"><table class="yoy-matrix-table">
-    <thead>{thead}</thead>
-    <tbody>{rows}</tbody>
-  </table></div>
-  <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-muted)">
-    <span>■ <span style="color:#dc2626;font-weight:700">红↑ = 增长</span> · <span style="color:#16a34a;font-weight:700">绿↓ = 下降</span></span>
-    <span>■ 差额 = 回款 - 收入</span>
-    <span>■ 增长 vs 2024年{CURRENT_Q_LABEL}</span>
-  </div>
-</div>"""
-        )
+        # 数据行
+        rows = ""
+        for i, c in enumerate(customers):
+            cs = [f'<td class="td-name"><span class="row-num">{i+1}</span>{c}</td>']
+            for d in DEPARTMENTS:
+                a = float(piv.loc[c, d]) if c in piv.index and d in piv.columns else 0
+                tg = float(tgt_p.loc[c, d]) if c in tgt_p.index else 0
+                cs.append(_cell(a, tg))
+            a_t = float(piv.loc[c, "合计"]) if c in piv.index else 0
+            tg_t = float(tgt_p.loc[c, "合计"]) if c in tgt_p.index else 0
+            cs.append(_cell(a_t, tg_t, is_total_col=True))
+            rows += f'<tr class="row-data">{"".join(cs)}</tr>'
+
+        h = (f'<tr><th class="th-name">客户</th>'
+             + "".join(f"<th>{d}</th>" for d in DEPARTMENTS)
+             + '<th class="th-name th-total">合计</th></tr>')
+        return (f'<div class="table-wrap ann-matrix-wrap no-collapse">'
+                f'<table class="ann-matrix">{h}<tbody>{tr}{rows}</tbody></table>'
+                f'</div>'
+                f'<div style="font-size:11px;color:var(--text-muted);margin-top:6px">每格：百分比 / 实际金额 / 目标金额</div>')
