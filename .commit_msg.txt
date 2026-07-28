@@ -1,24 +1,10 @@
-feat: meta 按页动态显示数据起止 + 生成时间含年月日
+fix: 年度数据修正为 1-6 月范围
 
-每页 render() 计算自己的 date_range 并注入 page 元素的
-data-range 属性。
+问题：动态模式只取当月（6 月），meta 显示 4-6 月
+解决：临时 static 模式 (1-6 月) 重跑清洗→拆分→渲染
 
-utils.py 新增 extract_date_range(df, col) 工具函数。
+收入 973→1047 行 (月份 1-6)
+回款 1321→1392 行 (月份 1-6)
+meta 显示: 2026-01-01 ~ 2026-06-30
 
-base.py 的 wrap_page 接收可选 date_range 参数。
-
-每页用不同数据源反映真实页面数据:
-- overview: data.income
-- annual: data.income (年度累计)
-- yoy: data.income + yearly baseline
-- quarterly: data.quarterly_income
-- monthly: data.income (月累计可换 monthly_income_detail)
-- sales: data.sales_income
-
-run.py:
-- 生成时间格式: %H:%M -> %Y-%m-%d %H:%M (含年月日)
-- meta 加 id="pageMeta" data-default="..." 属性供 JS 回退
-
-GLOBAL_JS:
-- showPage(id) 切换时根据 pageEl.data-range 更新 meta
-- 首屏初始化也按第一页 data-range 设置 meta
+清洗后还原为 dynamic 模式，下次运行自动取当前月
