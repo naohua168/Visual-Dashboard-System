@@ -721,9 +721,10 @@ td.cell-bg .fill-bg{
 }
 td.cell-bg .cell-text{
   position:relative; z-index:1;
-  display:flex; align-items:center; justify-content:space-between;
-  gap:4px;
+  display:flex; align-items:center; justify-content:center;
+  gap:8px;
   height:100%;
+  text-align:center;
 }
 /* 百分比在左 — 大字突出 */
 td.cell-bg .cell-text .cell-pct{
@@ -737,9 +738,9 @@ td.cell-bg .cell-text .cell-pct{
 }
 /* 金额在右 — 完成+指标两行 */
 td.cell-bg .cell-text .cell-main{
-  display:flex; flex-direction:column; align-items:flex-end;
+  display:flex; flex-direction:column; align-items:center;
   font-size:11.5px;line-height:1.25;font-weight:600;color:#334155;
-  text-align:right; flex:1; min-width:0;
+  text-align:center; flex:1; min-width:0;
 }
 td.cell-bg .cell-text .cell-main .cell-act{color:#0f172a;font-weight:700;}
 td.cell-bg .cell-text .cell-main .cell-tgt{color:#64748b;font-size:10.5px;margin-top:1px;}

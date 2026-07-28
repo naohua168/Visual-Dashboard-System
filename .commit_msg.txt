@@ -1,15 +1,10 @@
-fix: 所有表格第一格表头改为深色
+perf: cell-bg 内容居中显示
 
-base.py 有遗留规则：
-  th:first-child{background:#f1f4f9;z-index:6;}
-specificity (0,0,2) > th (0,0,1)
-导致第一个 <th>（客户公司列）显示浅灰色
+原 .cell-text { justify-content: space-between }
+把内容推到两端 - 当只有 1 个子元素时向左对齐
 
-改为深色 #0f172a + 白色文字 + 居中 + font-weight 900
-td:first-child 仍为浅色（数据格左对齐需要）
+改为 justify-content: center
+.cell-main 也改为 align-items: center (flex-end → center)
+text-align: center
 
-CSS 优先级总结：
-- th { background:#0f172a }                (0,0,1) 默认
-- table.ann-matrix thead th { background }  (0,0,3) 表格内
-- th:first-child { background }             (0,0,2) 第一列
-- 现在 th:first-child 也用 #0f172a，深色统一
+现在所有 cell-bg 内的数据（百分比/金额/完成值）都完美居中
