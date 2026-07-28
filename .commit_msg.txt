@@ -1,13 +1,11 @@
-perf: 表头文字居中 + 增强可读性
+fix: 删除 _card2_dept 内联 style 覆盖块
 
-CSS 改动（base.py）:
-- .th-name { text-align:center }  从 left 改为 center
-- .th-name { font-weight:800 }    客户列加粗
-- .ann-matrix thead th { font-weight:900 }
-- .ann-matrix thead th { text-shadow:0 2px 4px rgba(0,0,0,.4) }  阴影加深
-- .ann-matrix thead th { border-bottom:3px solid #fbbf24 }       更亮的金色
-- .ann-matrix thead th { padding:18px 16px }                    更大空间
+page_sales.py 中 _card2_dept 有一个 inline <style> 块：
+- font-size: 11px
+- padding: 3px 4px
+- ID selector #sales-c2-* th 比 table.ann-matrix thead th specificity 高
 
-HTML 改动（page_sales.py）:
-- _card3_sales_customers Python 渲染：th-name inline text-align:center
-- _card3_sales_customers JS 渲染：同样修复 + 客户合计算居中
+导致覆盖了 base.py 中的深色大字号表头样式，
+表格的 销售/事业部/总目标 列显示为浅色小字号
+
+删除 inline style 块后，全局样式生效，所有表头统一

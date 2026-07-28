@@ -321,14 +321,6 @@ class SalesPage(BaseRenderer):
             f'</div>'
             f'{inc_html}'
             f'<div id="sales-c2-回款" class="hidden">{pay_html}</div>'
-            f'<style>'
-            f'#sales-c2-收入 table,#sales-c2-回款 table{{font-size:11px}}'
-            f'#sales-c2-收入 .cell-pct,#sales-c2-回款 .cell-pct{{font-size:13px;line-height:1.1}}'
-            f'#sales-c2-收入 .cell-compact,#sales-c2-回款 .cell-compact{{font-size:10px;color:var(--text-muted);margin-top:0;line-height:1.2}}'
-            f'#sales-c2-收入 td,#sales-c2-回款 td,#sales-c2-收入 th,#sales-c2-回款 th{{padding:3px 4px;line-height:1.2}}'
-            f'#sales-c2-收入 .td-name,#sales-c2-回款 .td-name{{font-size:11px;font-weight:700;padding:3px 6px}}'
-            f'#sales-c2-收入 .cell-text,#sales-c2-回款 .cell-text{{padding:1px 2px}}'
-            f'</style>'
             f'</div>'
         )
 
