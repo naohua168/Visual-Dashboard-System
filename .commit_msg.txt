@@ -1,5 +1,12 @@
-fix: th 居中加 !important + 确认所有 inline 都是 center
+feat: 顶部 meta 显示数据起止时间段 + 页面生成时间
 
-- th { text-align:center !important }
-- table.ann-matrix thead th { text-align:center !important }
-- 全部 <th> inline 都是 center 无残留
+原显示: 数据截至 2026-07-28 | 生成于 09:55
+新显示: 数据 2026-04-01 ~ 2026-06-30 | 生成于 10:00
+
+实现（processors/run.py）:
+- build_html 中从 data.income["日期"] 提取 min/max
+- 日期段格式 YYYY-MM-DD ~ YYYY-MM-DD
+- 异常安全: try/except 包住，失败时静默回退
+
+数据来源：data.income（当年累计收入）
+跨页面统一显示同一时间段（所有页面共用数据）
