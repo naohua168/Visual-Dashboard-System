@@ -1,13 +1,13 @@
-fix: 所有表头字号真正提升到 18px
+perf: 表头文字居中 + 增强可读性
 
-之前 ann-matrix 通用规则
-  table.ann-matrix th, table.ann-matrix td { font-size:12px }
-覆盖了更具体的 thead th {font-size:18px} 规则
-删除该 12px 声明后，所有 th 正确继承 18px
+CSS 改动（base.py）:
+- .th-name { text-align:center }  从 left 改为 center
+- .th-name { font-weight:800 }    客户列加粗
+- .ann-matrix thead th { font-weight:900 }
+- .ann-matrix thead th { text-shadow:0 2px 4px rgba(0,0,0,.4) }  阴影加深
+- .ann-matrix thead th { border-bottom:3px solid #fbbf24 }       更亮的金色
+- .ann-matrix thead th { padding:18px 16px }                    更大空间
 
-验证结果：
-- th {font-size:18px} ✅
-- table.ann-matrix thead th {font-size:18px} ✅
-- table.yoy-dept-table th {font-size:18px} ✅
-- table.yoy-matrix-table th {font-size:18px} ✅
-- ann-matrix th,td 不再设置 font-size ✅
+HTML 改动（page_sales.py）:
+- _card3_sales_customers Python 渲染：th-name inline text-align:center
+- _card3_sales_customers JS 渲染：同样修复 + 客户合计算居中

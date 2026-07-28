@@ -476,9 +476,9 @@ class SalesPage(BaseRenderer):
             )
             th = (
                 f'<tr>'
-                f'<th class="th-name" style="text-align:left;min-width:160px">公司（客户）</th>'
+                f'<th class="th-name" style="text-align:center;min-width:160px">公司（客户）</th>'
                 f'{th_depts}'
-                f'<th style="text-align:right;width:100px">客户合计</th>'
+                f'<th style="text-align:center;width:100px">客户合计</th>'
                 f'<th style="text-align:center;width:90px">完成度</th>'
                 f'</tr>'
             )
@@ -604,9 +604,9 @@ class SalesPage(BaseRenderer):
             " var mData = (m==='inc')?d.income:d.payment;\n"
             " var rows=mData.rows; if(!rows||!rows.length) return '<div class=\"td-empty\" style=\"padding:40px;text-align:center\">该销售暂无数据</div>';\n"
             " var tAct=mData.t_act, tTgt=mData.t_tgt;\n"
-            " var colHead=['<th class=\"th-name\" style=\"text-align:left;min-width:160px\">公司（客户）</th>'];\n"
+            " var colHead=['<th class=\"th-name\" style=\"text-align:center;min-width:160px\">公司（客户）</th>'];\n"
             " ['检测','信息','能源','海外'].forEach(function(dp){colHead.push('<th style=\"text-align:center;width:90px\">'+dp+'</th>');});\n"
-            " colHead.push('<th style=\"text-align:right;width:100px\">客户合计</th>', '<th style=\"text-align:center;width:90px\">完成度</th>');\n"
+            " colHead.push('<th style=\"text-align:center;width:100px\">客户合计</th>', '<th style=\"text-align:center;width:90px\">完成度</th>');\n"
             " var h='<tr>'+colHead.join('')+'</tr>';\n"
             " var body='';\n"
             " rows.forEach(function(r){\n"

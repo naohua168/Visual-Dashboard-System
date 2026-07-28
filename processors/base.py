@@ -651,12 +651,12 @@ table.ann-matrix th, table.ann-matrix td,
 }
 table.ann-matrix thead th,
 .ann-matrix thead th{
-  background:#0f172a;color:#ffffff;font-weight:800;font-size:18px;
+  background:#0f172a;color:#ffffff;font-weight:900;font-size:18px;
   letter-spacing:0.06em;text-transform:none;
   position:sticky;top:0;z-index:5;text-align:center;
-  border-color:#1e293b;padding:16px 18px;
-  line-height:1.3;text-shadow:0 1px 2px rgba(0,0,0,.3);
-  border-bottom:3px solid #f59e0b;
+  border-color:#1e293b;padding:18px 16px;
+  line-height:1.3;text-shadow:0 2px 4px rgba(0,0,0,.4);
+  border-bottom:3px solid #fbbf24;
 }
 /* 2行分组头部 — 收入组/回款组（1.5x正文≈18px，分组更大） */
 table.ann-matrix thead tr.group-row th,
@@ -679,7 +679,7 @@ table.ann-matrix thead tr.detail-row th,
   padding:10px 8px;
   background:#1e293b;
 }
-table.ann-matrix .th-name, .ann-matrix .th-name{text-align:left;min-width:160px;}
+table.ann-matrix .th-name, .ann-matrix .th-name{text-align:center;min-width:160px;font-weight:800;}
 /* 客户名列 */
 table.ann-matrix .td-name, .ann-matrix .td-name{
   text-align:left;font-weight:600;color:#0f172a;font-size:12px;white-space:nowrap;
