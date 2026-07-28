@@ -1,7 +1,9 @@
-fix: 金额展示统一为万元整数（无小数）
+perf: 表头样式全面升级 — 大字号+深色+2行分组支持
 
-原 fmt_wan 保留 2 位小数（如 650.60）
-改为千分位整数（如 651）
-
-清洗阶段早已统一为元（广东湖南 x10000 转元）
-所有页面 10000 后展示，fmt_wan 调用 93 次全部同步
+CSS 升级（processors/base.py）:
+- .ann-matrix 表头：11px→13px，字重 700，背景 #0f172a，底部 #f59e0b 强调条
+- .ann-matrix thead tr.group-row 字号 15px，span 子表头详情 12px
+- .ann-matrix th.inc-group {background:#c2410c} 收入组橙红
+- .ann-matrix th.pay-group {background:#047857} 回款组绿色
+- 兼容现有 yoy-dept-table / yoy-matrix-table 风格升级
+- 默认 th 全部升级：白字 #1e293b 背景，13px 字号

@@ -272,9 +272,11 @@ th,td{
   white-space:nowrap;font-variant-numeric:tabular-nums;
 }
 th{
-  background:#f8f9fc;color:#475569;font-weight:600;font-size:11px;
-  text-transform:uppercase;letter-spacing:0.04em;
-  position:sticky;top:0;z-index:5;border-bottom:2px solid #e2e5ed;
+  background:#1e293b;color:#ffffff;font-weight:700;font-size:13px;
+  text-transform:none;letter-spacing:0.04em;
+  position:sticky;top:0;z-index:5;border-bottom:2px solid #f59e0b;
+  padding:12px 14px;text-shadow:0 1px 2px rgba(0,0,0,.2);
+}
 }
 th:first-child,td:first-child{text-align:left;position:sticky;left:0;z-index:4;}
 th:first-child{background:#f1f4f9;z-index:6;}
@@ -640,11 +642,26 @@ table.ann-matrix th, table.ann-matrix td,
 }
 table.ann-matrix thead th,
 .ann-matrix thead th{
-  background:#1e293b;color:#ffffff;font-weight:700;font-size:11px;
-  letter-spacing:0.04em;text-transform:uppercase;
+  background:#0f172a;color:#ffffff;font-weight:700;font-size:13px;
+  letter-spacing:0.06em;text-transform:none;
   position:sticky;top:0;z-index:5;text-align:center;
-  border-color:#334155;padding:8px 10px;
+  border-color:#1e293b;padding:12px 14px;text-shadow:0 1px 2px rgba(0,0,0,.3);
+  border-bottom:2px solid #f59e0b;
 }
+/* 2行分组头部 — 收入组/回款组 */
+table.ann-matrix thead tr.group-row th,
+.ann-matrix thead tr.group-row th{
+  font-size:15px;font-weight:800;
+  padding:14px 10px;
+  letter-spacing:0.12em;
+  border-bottom-width:2px;
+}
+table.ann-matrix thead tr.group-row th.dept-name,
+.ann-matrix thead tr.group-row th.dept-name{background:#1e3a5f;}
+table.ann-matrix thead tr.group-row th.inc-group,
+.ann-matrix thead tr.group-row th.inc-group{background:#c2410c;}
+table.ann-matrix thead tr.group-row th.pay-group,
+.ann-matrix thead tr.group-row th.pay-group{background:#047857;}
 table.ann-matrix .th-name, .ann-matrix .th-name{text-align:left;min-width:160px;}
 /* 客户名列 */
 table.ann-matrix .td-name, .ann-matrix .td-name{
@@ -745,15 +762,15 @@ table.ann-matrix .td-empty, .ann-matrix .td-empty{
 /* ══════════ 事业部同比专用表（双维度清晰对比）══════════ */
 table.yoy-dept-table{width:100%;border-collapse:collapse;font-size:13px;}
 table.yoy-dept-table th{
-  background:linear-gradient(180deg,#1e3a5f 0%,#1a365d 100%);
-  color:#e2e8f0;padding:10px 12px;text-align:center;
-  font-weight:700;font-size:12px;letter-spacing:0.5px;border:1px solid #2d4a6f;
+  background:#0f172a;color:#fff;padding:12px 14px;text-align:center;
+  font-weight:700;font-size:13px;letter-spacing:0.06em;border:1px solid #1e293b;
+  border-bottom:2px solid #f59e0b;text-shadow:0 1px 2px rgba(0,0,0,.3);
 }
 table.yoy-dept-table th.group-header{
-  font-size:14px;padding:10px 4px;letter-spacing:2px;
+  font-size:15px;padding:14px 4px;letter-spacing:0.12em;
 }
-table.yoy-dept-table th.inc-group{background:linear-gradient(180deg,#7c2d12 0%,#9a3412 100%);}
-table.yoy-dept-table th.pay-group{background:linear-gradient(180deg,#065f46 0%,#064e3b 100%);}
+table.yoy-dept-table th.inc-group{background:#c2410c;}
+table.yoy-dept-table th.pay-group{background:#047857;}
 table.yoy-dept-table td{padding:9px 10px;border:1px solid #e2e8f0;text-align:center;}
 table.yoy-dept-table tbody tr:nth-child(even){background:#f8fafc;}
 table.yoy-dept-table tbody tr:hover{background:#f1f5f9;}
@@ -816,9 +833,9 @@ table.yoy-dept-table td.yoy-cell.flat .yoy-pct{
 /* ══════════ 客户同比矩阵表（徽章+金额）══════════ */
 table.yoy-matrix-table{width:100%;border-collapse:collapse;font-size:12.5px;}
 table.yoy-matrix-table th{
-  background:linear-gradient(180deg,#1e3a5f 0%,#1a365d 100%);
-  color:#e2e8f0;padding:8px 10px;text-align:center;
-  font-weight:700;font-size:12px;letter-spacing:0.5px;border:1px solid #2d4a6f;
+  background:#0f172a;color:#fff;padding:12px 14px;text-align:center;
+  font-weight:700;font-size:13px;letter-spacing:0.06em;border:1px solid #1e293b;
+  border-bottom:2px solid #f59e0b;text-shadow:0 1px 2px rgba(0,0,0,.3);
 }
 table.yoy-matrix-table td{padding:7px 6px;border:1px solid #e2e8f0;text-align:center;vertical-align:middle;}
 table.yoy-matrix-table tbody tr:nth-child(even){background:#fafbfc;}
