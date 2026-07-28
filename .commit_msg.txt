@@ -1,9 +1,10 @@
-perf: 表头样式全面升级 — 大字号+深色+2行分组支持
+perf: 表头字号提升到 18px（正文 1.5x）
 
-CSS 升级（processors/base.py）:
-- .ann-matrix 表头：11px→13px，字重 700，背景 #0f172a，底部 #f59e0b 强调条
-- .ann-matrix thead tr.group-row 字号 15px，span 子表头详情 12px
-- .ann-matrix th.inc-group {background:#c2410c} 收入组橙红
-- .ann-matrix th.pay-group {background:#047857} 回款组绿色
-- 兼容现有 yoy-dept-table / yoy-matrix-table 风格升级
-- 默认 th 全部升级：白字 #1e293b 背景，13px 字号
+正文 12px → 表头 18px（1.5 倍）
+分组头 20px（2 倍）更醒目
+- .ann-matrix thead th: 13px→18px
+- .ann-matrix tr.group-row th: 15px→20px
+- table.yoy-dept-table th: 13px→18px
+- table.yoy-matrix-table th: 13px→18px
+- 默认 th: 13px→18px
+padding: 12→16px, border-bottom: 2→3px
