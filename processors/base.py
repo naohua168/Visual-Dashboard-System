@@ -288,7 +288,7 @@ table.yoy-matrix-table th{
   border-bottom:3px solid #f59e0b;text-shadow:0 1px 2px rgba(0,0,0,.3);
 }
 th:first-child,td:first-child{text-align:left;position:sticky;left:0;z-index:4;}
-th:first-child{background:#f1f4f9;z-index:6;}
+th:first-child{background:#0f172a;color:#fff;z-index:6;font-weight:900;text-align:center;}
 td:first-child{background:#fff;font-weight:600;color:var(--text);}
 tbody tr:nth-child(even){background-color:#fafbfc;}
 tbody tr:nth-child(even) td:first-child{background-color:#fafbfc;}
