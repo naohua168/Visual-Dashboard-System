@@ -1,5 +1,5 @@
-fix: th 居中加 !important 确保不被覆盖
+fix: th 居中加 !important + 确认所有 inline 都是 center
 
-base.py 多处 th 规则的 text-align:center 可能被其他
-inline 样式或更高 specificity 选择器覆盖
-加 !important 强制居中
+- th { text-align:center !important }
+- table.ann-matrix thead th { text-align:center !important }
+- 全部 <th> inline 都是 center 无残留
