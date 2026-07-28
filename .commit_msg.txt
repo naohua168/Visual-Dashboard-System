@@ -1,10 +1,5 @@
-perf: cell-bg 内容居中显示
+fix: th 居中加 !important 确保不被覆盖
 
-原 .cell-text { justify-content: space-between }
-把内容推到两端 - 当只有 1 个子元素时向左对齐
-
-改为 justify-content: center
-.cell-main 也改为 align-items: center (flex-end → center)
-text-align: center
-
-现在所有 cell-bg 内的数据（百分比/金额/完成值）都完美居中
+base.py 多处 th 规则的 text-align:center 可能被其他
+inline 样式或更高 specificity 选择器覆盖
+加 !important 强制居中

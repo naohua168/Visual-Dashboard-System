@@ -273,7 +273,7 @@ th,td{
 }
 th{
   background:#1e293b;color:#ffffff;font-weight:800;font-size:18px;
-  text-transform:none;letter-spacing:0.04em;
+  text-transform:none;letter-spacing:0.04em;text-align:center !important;
   position:sticky;top:0;z-index:5;border-bottom:3px solid #f59e0b;
   padding:14px 16px;line-height:1.3;text-shadow:0 1px 2px rgba(0,0,0,.2);
 }
@@ -653,7 +653,7 @@ table.ann-matrix thead th,
 .ann-matrix thead th{
   background:#0f172a;color:#ffffff;font-weight:900;font-size:18px;
   letter-spacing:0.06em;text-transform:none;
-  position:sticky;top:0;z-index:5;text-align:center;
+  position:sticky;top:0;z-index:5;text-align:center !important;
   border-color:#1e293b;padding:18px 16px;
   line-height:1.3;text-shadow:0 2px 4px rgba(0,0,0,.4);
   border-bottom:3px solid #fbbf24;
@@ -721,10 +721,9 @@ td.cell-bg .fill-bg{
 }
 td.cell-bg .cell-text{
   position:relative; z-index:1;
-  display:flex; align-items:center; justify-content:center;
-  gap:8px;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:4px;
   height:100%;
-  text-align:center;
 }
 /* 百分比在左 — 大字突出 */
 td.cell-bg .cell-text .cell-pct{
@@ -738,9 +737,9 @@ td.cell-bg .cell-text .cell-pct{
 }
 /* 金额在右 — 完成+指标两行 */
 td.cell-bg .cell-text .cell-main{
-  display:flex; flex-direction:column; align-items:center;
+  display:flex; flex-direction:column; align-items:flex-end;
   font-size:11.5px;line-height:1.25;font-weight:600;color:#334155;
-  text-align:center; flex:1; min-width:0;
+  text-align:right; flex:1; min-width:0;
 }
 td.cell-bg .cell-text .cell-main .cell-act{color:#0f172a;font-weight:700;}
 td.cell-bg .cell-text .cell-main .cell-tgt{color:#64748b;font-size:10.5px;margin-top:1px;}
