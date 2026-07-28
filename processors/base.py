@@ -646,7 +646,7 @@ table.ann-matrix, .table-wrap table.ann-matrix, .ann-matrix{
 table.ann-matrix th, table.ann-matrix td,
 .ann-matrix th, .ann-matrix td{
   padding:6px 10px;text-align:right;
-  border:1px solid #e2e5ed;vertical-align:middle;font-size:12px;
+  border:1px solid #e2e5ed;vertical-align:middle;
   line-height:1.3;
 }
 table.ann-matrix thead th,

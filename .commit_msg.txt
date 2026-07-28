@@ -1,10 +1,13 @@
-perf: 表头字号提升到 18px（正文 1.5x）
+fix: 所有表头字号真正提升到 18px
 
-正文 12px → 表头 18px（1.5 倍）
-分组头 20px（2 倍）更醒目
-- .ann-matrix thead th: 13px→18px
-- .ann-matrix tr.group-row th: 15px→20px
-- table.yoy-dept-table th: 13px→18px
-- table.yoy-matrix-table th: 13px→18px
-- 默认 th: 13px→18px
-padding: 12→16px, border-bottom: 2→3px
+之前 ann-matrix 通用规则
+  table.ann-matrix th, table.ann-matrix td { font-size:12px }
+覆盖了更具体的 thead th {font-size:18px} 规则
+删除该 12px 声明后，所有 th 正确继承 18px
+
+验证结果：
+- th {font-size:18px} ✅
+- table.ann-matrix thead th {font-size:18px} ✅
+- table.yoy-dept-table th {font-size:18px} ✅
+- table.yoy-matrix-table th {font-size:18px} ✅
+- ann-matrix th,td 不再设置 font-size ✅
