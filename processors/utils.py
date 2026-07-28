@@ -65,3 +65,24 @@ def safe_float(v) -> float:
         return f
     except (TypeError, ValueError):
         return 0.0
+
+
+def extract_date_range(df, col: str = "日期") -> str:
+    """从 DataFrame 日期列提取起止日期
+
+    返回: "YYYY-MM-DD ~ YYYY-MM-DD" 或空字符串
+    """
+    import pandas as pd
+    if df is None or df.empty or col not in df.columns:
+        return ""
+    try:
+        dts = pd.to_datetime(df[col], errors="coerce").dropna()
+        if len(dts) == 0:
+            return ""
+        d_min = dts.min().strftime("%Y-%m-%d")
+        d_max = dts.max().strftime("%Y-%m-%d")
+        if d_min == d_max:
+            return d_min
+        return f"{d_min} ~ {d_max}"
+    except Exception:
+        return ""

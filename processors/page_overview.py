@@ -13,7 +13,7 @@ import json
 import pandas as pd
 
 from .base import BaseRenderer, completion_html, rate_cls
-from .utils import fmt_wan, safe_float
+from .utils import fmt_wan, safe_float, extract_date_range
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 DEPT_COLORS = {"检测": "#2563eb", "信息": "#8b5cf6", "能源": "#f59e0b", "海外": "#0d9488"}
@@ -44,7 +44,7 @@ class OverviewPage(BaseRenderer):
             + self._dept_matrix(df_inc, df_pay, df_tgt)
             + self._sales_achievement_landscape(df_si, df_sp, data)
             + self._extra_css()
-        )
+        , extract_date_range(data.income))
 
     # ════════════════════════════════════════════════════════════
     # [A] 顶部 4 KPI — 环形进度 + 大数字

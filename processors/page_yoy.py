@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 
 from .base import BaseRenderer, yoy_html
-from .utils import fmt_wan, fmt_yoy, safe_float
+from .utils import fmt_wan, fmt_yoy, safe_float, extract_date_range
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 
@@ -34,7 +34,7 @@ class YoyPage(BaseRenderer):
             return self.wrap_page(
                 self.section("同比分析", "sec-purple")
                 + '<div class="empty">⚠️ 年基线数据（2024）未就绪</div>'
-            )
+            , extract_date_range(data.income))
 
         cur_dates = pd.to_datetime(df_inc["日期"], errors="coerce").dropna()
         cur_months = set(d.month for d in cur_dates)
@@ -82,7 +82,7 @@ class YoyPage(BaseRenderer):
             f'<div id="yoy-pay" class="tab-panel">{ct_pay}</div>'
             f'</div>'
         )
-        return self.wrap_page(kpi + period_chip + dt + ct_tabs)
+        return self.wrap_page(kpi + period_chip + dt + ct_tabs, extract_date_range(data.income))
 
     def _kpi_block(self, ci, pvi, cp, pvp, cy) -> str:
         """2 张同比对比卡：增长=红色，下降=绿色"""

@@ -13,7 +13,7 @@ import json
 import pandas as pd
 
 from .base import BaseRenderer, rate_cls
-from .utils import fmt_wan, safe_float
+from .utils import fmt_wan, safe_float, extract_date_range
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 CURRENT_YEAR = 2026
@@ -98,7 +98,8 @@ class QuarterlyPage(BaseRenderer):
         parts.append(self._dept_card(q_inc_filtered, q_pay_filtered, dept_tgt, inc_totals, pay_totals, q_label))
         parts.append(self._trend_chart(q_inc_filtered, q_pay_filtered, q_label))
         parts.append(self._customer_matrix(q_inc_filtered, q_pay_filtered, tgt_df, dept_tgt, q_label))
-        return self.wrap_page("".join(parts))
+        date_range = extract_date_range(data.quarterly_income)
+        return self.wrap_page("".join(parts), date_range)
 
     # ════════════════════════════════════════════════════════════
     # [A] Hero 大数字块 — 季度总目标 + 收入/回款进度条

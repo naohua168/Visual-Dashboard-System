@@ -988,6 +988,16 @@ function showPage(id){
   var t=document.querySelector('.nav a[data-target="'+id+'"]');
   if(t)t.classList.add('active');
   setTimeout(window.__resizeAllCharts, 100);
+  // 更新顶部 meta：按当前页的 data-range 属性
+  var meta = document.getElementById('pageMeta');
+  if (meta) {
+    var range = pageEl.getAttribute('data-range') || meta.getAttribute('data-default') || '';
+    var now = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var ts = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
+           + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+    meta.innerHTML = '数据 ' + (range || '—') + ' &nbsp;|&nbsp; 生成于 ' + ts;
+  }
 }
 
 /* ══════════════════════════════════════════════════════
@@ -1094,6 +1104,16 @@ setTimeout(initTableCollapse,200);
 setTimeout(function(){
   var firstPage=document.querySelector('.page.active');
   if(firstPage) delayAnim(firstPage, '.kpi, .hero-kpi, .ring-kpi, .mini-rate, .kpi-row>*', 80);
+  // 首屏页面 meta 也按 data-range 更新
+  var meta = document.getElementById('pageMeta');
+  if (meta && firstPage) {
+    var range = firstPage.getAttribute('data-range') || meta.getAttribute('data-default') || '';
+    var now = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var ts = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
+           + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+    meta.innerHTML = '数据 ' + (range || '—') + ' &nbsp;|&nbsp; 生成于 ' + ts;
+  }
 }, 300);
 
 // ══════════════════════════════════════════════════════
@@ -1194,8 +1214,9 @@ class BaseRenderer(ABC):
     def render(self, data) -> str:
         ...
 
-    def wrap_page(self, content: str) -> str:
-        return f'<div id="{self.page_id}" class="page">\n{content}\n</div>'
+    def wrap_page(self, content: str, date_range: str = "") -> str:
+        attr = f' data-range="{date_range}"' if date_range else ""
+        return f'<div id="{self.page_id}" class="page"{attr}>\n{content}\n</div>'
 
     def section(self, title: str, color: str = "sec-blue") -> str:
         return f'<div class="section-title {color}">{title}</div>'

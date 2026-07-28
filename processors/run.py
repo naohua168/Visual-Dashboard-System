@@ -53,15 +53,16 @@ def build_html(data, title: str) -> str:
         for i, p in enumerate(pages)
     )
     today = datetime.date.today().strftime("%Y-%m-%d")
-    # 数据起止时间段（从 data.income 日期列提取）
-    date_range = ""
+    gen_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    # 页面级数据范围（默认使用 data.income 范围，实际由每页 data-range 属性覆盖）
+    default_range = ""
     try:
         if "日期" in data.income.columns:
             dts = pd.to_datetime(data.income["日期"], errors="coerce").dropna()
             if len(dts) > 0:
                 d_min = dts.min().strftime("%Y-%m-%d")
                 d_max = dts.max().strftime("%Y-%m-%d")
-                date_range = f"{d_min} ~ {d_max}"
+                default_range = f"{d_min} ~ {d_max}"
     except Exception:
         pass
     return f"""<!DOCTYPE html>
@@ -81,7 +82,7 @@ def build_html(data, title: str) -> str:
     <h1>{title}</h1>
   </div>
   <div class="header-right">
-    <div class="meta">数据 {date_range} &nbsp;|&nbsp; 生成于 {datetime.datetime.now().strftime('%H:%M')}</div>
+    <div class="meta" id="pageMeta" data-default="{default_range}">数据 {default_range} &nbsp;|&nbsp; 生成于 {gen_time}</div>
     <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏切换 (ESC退出)">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
         <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>

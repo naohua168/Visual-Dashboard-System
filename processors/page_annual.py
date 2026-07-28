@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .base import BaseRenderer, completion_html, rate_cls
-from .utils import fmt_wan, safe_float
+from .utils import fmt_wan, safe_float, extract_date_range
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 # Excel 条件格式色阶
@@ -32,7 +32,8 @@ class AnnualPage(BaseRenderer):
         dept_cards = self._dept_card_combined(df_inc, df_pay, df_tgt)
         # ── 重要客户矩阵 ──
         matrix = self._lower(df_inc, df_pay, df_tgt)
-        return self.wrap_page(hero + dept_cards + matrix)
+        date_range = extract_date_range(data.income)
+        return self.wrap_page(hero + dept_cards + matrix, date_range)
 
     def _hero_block(self, t_tgt, t_inc, t_pay, inc_rate, pay_rate) -> str:
         """年度总目标 Hero — 收入/回款条可点击同时展开 2 张部门卡（并排）"""

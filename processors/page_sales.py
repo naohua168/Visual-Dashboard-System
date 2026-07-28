@@ -11,7 +11,7 @@ from __future__ import annotations
 import pandas as pd
 
 from .base import BaseRenderer, rate_cls
-from .utils import fmt_wan, safe_float
+from .utils import fmt_wan, safe_float, extract_date_range
 from .sales_pending import build_pending_modal
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
@@ -123,7 +123,7 @@ class SalesPage(BaseRenderer):
             self._card3_sales_customers(all_sales, sc_inc, sc_pay, sales_cust_tgt,
                                         sales_targets, dept_cols) +
             self._pending_modal(pending, pending_count, pending_total_inc, pending_total_pay)
-        )
+        , extract_date_range(data.sales_income))
 
     # ════════════════════════════════════════════════════════════
     # KPI

@@ -13,7 +13,7 @@ import json
 import pandas as pd
 
 from .base import BaseRenderer, rate_cls
-from .utils import fmt_wan, safe_float
+from .utils import fmt_wan, safe_float, extract_date_range
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 
@@ -48,7 +48,8 @@ class MonthlyPage(BaseRenderer):
         parts.append(self._dept_monthly_card(df_inc, df_pay, df_inc_tgt, df_pay_tgt, latest))
         parts.append(self._trend_chart(df_inc, df_pay))
         parts.append(self._customer_matrix(df_inc, df_pay, df_inc_tgt, df_pay_tgt))
-        return self.wrap_page("".join(parts))
+        date_range = extract_date_range(data.income)
+        return self.wrap_page("".join(parts), date_range)
 
     # ── [A] Hero 大数字块 ──────────────────────────
     def _hero_block(self, month, inc_tgt, pay_tgt, latest_inc, latest_pay, inc_r, pay_r) -> str:
