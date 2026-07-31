@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .base import BaseRenderer, rate_cls
-from .utils import fmt_wan, safe_float, extract_date_range
+from .base import BaseRenderer, rate_cls, hero_rings_html
+from .utils import fmt_wan, safe_float, extract_date_range, get_config_range, range_banner_html
 from .sales_pending import build_pending_modal
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
@@ -23,9 +23,13 @@ class SalesPage(BaseRenderer):
     nav_name = "销售达成"
 
     def render(self, data) -> str:
+        # 销售数据范围（与年度一致：1月~月度截止月，从配置读取）
+        sales_range = get_config_range(self.base_dir, "年度累计")
+        banner = range_banner_html(sales_range)
         df_si = data.sales_income.copy()
         df_sp = data.sales_payment.copy()
-        df_tgt = data.total_targets.copy()
+        df_inc_tgt = data.annual_income_targets.copy()
+        df_pay_tgt = data.annual_payment_targets.copy()
 
         df_si["金额_万"] = df_si["金额"].apply(safe_float) / 10000.0
         df_sp["金额_万"] = df_sp["金额"].apply(safe_float) / 10000.0
@@ -37,7 +41,7 @@ class SalesPage(BaseRenderer):
         # ── 目标计算（总指标单位：万元）──
         sales_targets: dict[str, float] = {}
         sales_dept_tgt: dict[str, dict[str, float]] = {}
-        for _, row in df_tgt.iterrows():
+        for _, row in df_inc_tgt.iterrows():
             sales = str(row.get("销售", "")).strip()
             if not sales or sales in ("待确认", "", "nan"):
                 continue
@@ -48,9 +52,11 @@ class SalesPage(BaseRenderer):
             for d in dept_cols:
                 sales_dept_tgt[sales][d] += safe_float(row.get(d, 0))
 
-        dept_tgt_total: dict[str, float] = {}
+        dept_inc_tgt_total: dict[str, float] = {}
+        dept_pay_tgt_total: dict[str, float] = {}
         for d in dept_cols:
-            dept_tgt_total[d] = safe_float(df_tgt[d].fillna(0).sum())
+            dept_inc_tgt_total[d] = safe_float(df_inc_tgt[d].fillna(0).sum())
+            dept_pay_tgt_total[d] = safe_float(df_pay_tgt[d].fillna(0).sum())
 
         # ── 实际收入/回款 ──
         sales_inc = si_ok.groupby("销售")["金额_万"].sum().to_dict()
@@ -84,9 +90,9 @@ class SalesPage(BaseRenderer):
         sc_inc = si_ok.groupby(["销售", "客户", "事业部"])["金额_万"].sum().reset_index()
         sc_pay = sp_ok.groupby(["销售", "客户", "事业部"])["金额_万"].sum().reset_index()
 
-        # 按 (销售, 客户) 汇总各事业部目标
+        # 按 (销售, 客户) 汇总各事业部目标（基于年度收入指标）
         sales_cust_tgt: dict[str, dict[str, dict[str, float]]] = {}  # {销售: {客户: {部门: 目标}}}
-        for _, row in df_tgt.iterrows():
+        for _, row in df_inc_tgt.iterrows():
             sales = str(row.get("销售", "")).strip()
             cust = str(row.get("客户", "")).strip()
             if not sales or not cust: continue
@@ -115,11 +121,13 @@ class SalesPage(BaseRenderer):
         pending_total_pay = float(pending["金额_万_回款"].sum())
 
         return self.wrap_page(
+            banner +
             self._kpi_row(total_target, total_inc, total_pay) +
             self._card1_sales(all_sales, sales_targets, sales_inc, sales_pay,
                               pending_count, pending_total_inc, pending_total_pay) +
             self._card2_dept(all_sales, sales_dept_tgt, inc_pd, pay_pd,
-                             dept_tgt_total, dept_inc_total, dept_pay_total) +
+                             dept_inc_tgt_total, dept_pay_tgt_total,
+                             dept_inc_total, dept_pay_total) +
             self._card3_sales_customers(all_sales, sc_inc, sc_pay, sales_cust_tgt,
                                         sales_targets, dept_cols) +
             self._pending_modal(pending, pending_count, pending_total_inc, pending_total_pay)
@@ -129,25 +137,12 @@ class SalesPage(BaseRenderer):
     # KPI
     # ════════════════════════════════════════════════════════════
     def _kpi_row(self, total_target: float, total_inc: float, total_pay: float) -> str:
-        rate = total_inc / total_target * 100 if total_target else 0
-        pay_r = total_pay / total_target * 100 if total_target else 0
-        return f"""<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
-  <div class="kpi kpi-tgt">
-    <div class="kpi-label">年度总目标</div>
-    <div class="kpi-value">{fmt_wan(total_target)}<span class="kpi-unit">万元</span></div>
-    <div class="kpi-sub">4 事业部合计</div>
-  </div>
-  <div class="kpi kpi-inc">
-    <div class="kpi-label">累计收入</div>
-    <div class="kpi-value">{fmt_wan(total_inc)}<span class="kpi-unit">万元</span></div>
-    <div class="kpi-sub">达成率 {rate:.1f}%</div>
-  </div>
-  <div class="kpi kpi-pay">
-    <div class="kpi-label">累计回款</div>
-    <div class="kpi-value">{fmt_wan(total_pay)}<span class="kpi-unit">万元</span></div>
-    <div class="kpi-sub">达成率 {pay_r:.1f}%</div>
-  </div>
-</div>"""
+        """销售页 KPI：同年度达成 Hero，总指标 / 收入达成度 / 回款达成度"""
+        return hero_rings_html(
+            total_inc, total_target, total_pay, total_target, '', '收入', '回款',
+            total_tgt=total_target, total_label='年度总指标',
+            show_cust_sales=False,
+        )
 
     # ════════════════════════════════════════════════════════════
     # 卡片1: 销售年度达成 — mini-rate 进度条（收入/回款 tab）
@@ -203,7 +198,7 @@ class SalesPage(BaseRenderer):
                 f'<div onclick="openPendingModal()" style="cursor:pointer;margin-top:6px;padding:6px 8px;'
                 f'background:linear-gradient(90deg,#fef3c7,#fde68a);border-radius:4px;'
                 f'display:flex;align-items:center;gap:8px;font-size:12px;border:1px dashed #f59e0b">'
-                f'<span style="color:#92400e;font-weight:700">⚠ 待确认客户</span>'
+                f'<span style="color:#92400e;font-weight:700">待确认客户</span>'
                 f'<span style="color:#92400e">共 {pending_count} 家客户未归属销售</span>'
                 f'<span style="margin-left:auto;color:#92400e;font-weight:600">本指标 {fmt_wan(pending_metric)} 万</span>'
                 f'<span style="background:#f59e0b;color:#fff;padding:1px 8px;border-radius:3px;font-size:11px">点击查看明细 →</span>'
@@ -215,13 +210,11 @@ class SalesPage(BaseRenderer):
         pay_html = build("回款", payments)
         return (
             self.section("卡片1 · 销售年度达成", "sec-blue") +
-            f'<div class="card" style="padding:10px 14px">'
-            f'<div class="cust-tabs">'
-            f'<span class="cust-tab active inc" onclick="document.getElementById(\'sales-c1-收入\').classList.remove(\'hidden\');document.getElementById(\'sales-c1-回款\').classList.add(\'hidden\');this.parentElement.querySelectorAll(\'.cust-tab\').forEach(t=>t.classList.remove(\'active\'));this.classList.add(\'active\')">收入达成</span>'
-            f'<span class="cust-tab pay" onclick="document.getElementById(\'sales-c1-收入\').classList.add(\'hidden\');document.getElementById(\'sales-c1-回款\').classList.remove(\'hidden\');this.parentElement.querySelectorAll(\'.cust-tab\').forEach(t=>t.classList.remove(\'active\'));this.classList.add(\'active\')">回款达成</span>'
+            f'<div class="card" style="padding:14px">'
+            f'<div class="sales-c1-grid">'
+            f'{inc_html}'
+            f'{pay_html}'
             f'</div>'
-            f'<div id="sales-c1-收入">{inc_html}</div>'
-            f'<div id="sales-c1-回款" class="hidden">{pay_html}</div>'
             f'</div>'
         )
 
@@ -233,7 +226,8 @@ class SalesPage(BaseRenderer):
         sales_dept_tgt: dict[str, dict[str, float]],
         inc_pd: dict[str, dict[str, float]],
         pay_pd: dict[str, dict[str, float]],
-        dept_tgt_total: dict[str, float],
+        dept_inc_tgt_total: dict[str, float],
+        dept_pay_tgt_total: dict[str, float],
         dept_inc_total: dict[str, float],
         dept_pay_total: dict[str, float],
     ) -> str:
@@ -272,13 +266,15 @@ class SalesPage(BaseRenderer):
             )
 
         def build(metric, data_pd):
-            h = '<tr><th class="th-name">销售</th>' + "".join(f"<th>{d}</th>" for d in DEPARTMENTS) + '<th class="th-name th-total">总目标</th></tr>'
+            h = '<tr><th class="th-name">销售</th>' + "".join(f"<th>{d}</th>" for d in DEPARTMENTS) + '<th class="th-name th-total">合计</th></tr>'
             # 合计行
             tc = [f'<td class="td-name td-total">合计（{len(all_sales)}人）</td>']
             t_all_act = t_all_tgt = 0.0
+            dept_act = dept_inc_total if metric == "收入" else dept_pay_total
+            dept_tgt = dept_inc_tgt_total if metric == "收入" else dept_pay_tgt_total
             for d in DEPARTMENTS:
-                a = safe_float((dept_data := dept_inc_total if metric == "收入" else dept_pay_total).get(d, 0))
-                tg = safe_float(dept_tgt_total.get(d, 0))
+                a = safe_float(dept_act.get(d, 0))
+                tg = safe_float(dept_tgt.get(d, 0))
                 t_all_act += a; t_all_tgt += tg
                 tc.append(cell(a, tg, is_total_col=False))
             tc.append(cell(t_all_act, t_all_tgt, is_total_col=True))
@@ -305,7 +301,7 @@ class SalesPage(BaseRenderer):
             return (
                 f'<div id="sales-c2-{metric}">'
                 f'<div class="table-wrap ann-matrix-wrap no-collapse">'
-                f'<table class="ann-matrix">{h}<tbody>{tr_total}{rows}</tbody></table>'
+                f'<table class="ann-matrix"><thead>{h}</thead><tbody>{tr_total}{rows}</tbody></table>'
                 f'</div>'
                 f'</div>'
             )

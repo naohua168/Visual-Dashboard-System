@@ -27,7 +27,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..core.config import load_config, load_mapping, get_output_path, get_time_range, load_clean_params
+from ..core.config import (
+    load_config,
+    load_mapping,
+    get_output_path,
+    load_clean_params,
+    get_quarterly_time_range,
+)
 from ..core.utils import log_step
 from .financial import clean_financial
 from .operations import clean_operations
@@ -57,37 +63,13 @@ def _parse_ops_date(s) -> str | None:
         return None
 
 
-def _filter_ops_by_quarter(df: pd.DataFrame) -> pd.DataFrame:
-    """从运营端数据中筛选出当前季度累计部分
-
-    运营端数据为当年1月至上月的累计数据（如"1-4月"合计+"5月"单月）。
-    季度累计 = 截止当季末的数据。
-
-    实现方式：
-      1. 从系统日期推断当前数据月份（dynamic模式=上月）
-      2. 确定当前季度范围（Q1/Q2/Q3/Q4）
-      3. 逐行取日期列的月份，保留月份在当季范围内的行
-    """
-    if len(df) == 0:
+def _filter_by_date_range(df: pd.DataFrame, start: str, end: str) -> pd.DataFrame:
+    """按日期范围筛选数据"""
+    if len(df) == 0 or "日期" not in df.columns:
         return df.copy()
-
-    # dynamic 模式取上月作为财务端数据月份
-    cur_data_month = datetime.now().month - 1
-    if cur_data_month <= 0:
-        cur_data_month = 12
-
-    # 当前季度范围（Q1:1-3, Q2:4-6, Q3:7-9, Q4:10-12）
-    q_start = ((cur_data_month - 1) // 3) * 3 + 1
-    q_end = q_start + 2
-
-    if "日期" not in df.columns:
-        return df.copy()
-
-    # 日期列内容为 Timestamp（operations._parse_ops_date 已返回 END month）
-    months = pd.to_datetime(df["日期"], errors="coerce").dt.month
-    mask = months.notna() & (months >= q_start) & (months <= q_end)
-    filtered = df[mask].copy()
-    return filtered
+    dates = pd.to_datetime(df["日期"], errors="coerce")
+    mask = dates.notna() & (dates >= pd.Timestamp(start)) & (dates <= pd.Timestamp(end))
+    return df[mask].copy()
 
 
 def _write_output(df: pd.DataFrame, output_key: str, config: dict, label: str):
@@ -109,18 +91,16 @@ def run_clean(file_type, config=None):
     mapper = params["mapper"]
     matcher = params["matcher"]
     fin_range = params["fin_range"]
-    ops_fixed_date = params["ops_fixed_date"]
 
     log_step("系统", f"客户白名单: {matcher.count}个客户")
-    log_step("系统", f"财务端时间范围: {fin_range}")
-    log_step("系统", f"运营端固定日期: {ops_fixed_date}")
+    log_step("系统", f"财务端时间范围: {fin_range} (mode={fin_range.get('_mode', 'static')})")
 
     # ── Phase 1: 财务端（当月数据） ──
     df_financial = clean_financial(config, mapper, matcher, file_type, fin_range)
     log_step(f"财务端{file_type}", f"财务端数据 = {len(df_financial)}行, 金额{df_financial['金额'].sum():,.2f}（当月）")
 
     # ── Phase 2: 运营端（当年累计，含1-4月合计+5月） ──
-    df_operations = clean_operations(config, mapper, matcher, file_type, ops_fixed_date)
+    df_operations = clean_operations(config, mapper, matcher, file_type)
     log_step(f"运营端{file_type}", f"运营端数据 = {len(df_operations)}行, 金额{df_operations['金额'].sum():,.2f}（1-5月累计）")
 
     # ── Phase 3: 三路合并输出 ──
@@ -138,10 +118,12 @@ def run_clean(file_type, config=None):
     log_step(file_type, f"当年累计{file_type}: 财务{len(df_financial)} + 运营{len(df_operations)} = {len(df_yearly_cumulative)}行")
     _write_output(df_yearly_cumulative, f"当年累计{file_type}", config, f"当年累计{file_type}")
 
-    # ---- 3c. 季度累计：财务端 + 运营端截止当季末 ----
-    df_ops_quarter = _filter_ops_by_quarter(df_operations)
+    # ---- 3c. 季度累计：按配置时间范围筛选 ----
+    q_range = get_quarterly_time_range(config)
+    df_ops_quarter = _filter_by_date_range(df_operations, q_range["start_date"], q_range["end_date"])
     df_quarterly = pd.concat([df_financial, df_ops_quarter], ignore_index=True)
-    log_step(file_type, f"季度累计{file_type}: {len(df_quarterly)}行")
+    q_mode = q_range.get("_mode", "static")
+    log_step(file_type, f"季度累计范围[{q_mode}]: {q_range['start_date']} ~ {q_range['end_date']}, {len(df_quarterly)}行")
     _write_output(df_quarterly, f"季度累计{file_type}", config, f"季度累计{file_type}")
 
     # 汇总

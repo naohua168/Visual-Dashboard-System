@@ -1,6 +1,7 @@
 # ===== 敏感业务数据（含真实客户/财务信息，禁止上传）=====
 data/raw/
 data/sheets/
+data/mappings/
 
 # 系统输出目录（运行时生成）
 output/

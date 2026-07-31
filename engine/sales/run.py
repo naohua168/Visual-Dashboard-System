@@ -11,7 +11,7 @@ import sys
 
 import pandas as pd
 
-from ..core.config import load_config, load_mapping, get_output_path, BASE_DIR
+from ..core.config import load_config, get_output_path, BASE_DIR
 from ..core.utils import log_step
 from .splitter import SalesSplitter
 
@@ -40,10 +40,13 @@ def run_split(file_type, config=None):
     df = pd.read_excel(source_path)
     log_step(f"销售{file_type}", f"原始数据: {len(df)}行, 金额{df['金额'].sum():,.2f}")
 
-    # 加载销售规则
-    rules_data = load_mapping("客户销售对应规则", config)
+    # 加载销售规则（从 config/销售规则/ 直接读取，不依赖 cleaning_config.json）
+    rules_path = BASE_DIR / "config" / "销售规则" / "客户销售对应规则.json"
+    with open(rules_path, "r", encoding="utf-8") as f:
+        rules_data = json.load(f)
+
     # 加载统称名单，构建子公司→母公司映射（用于规则继承）
-    unify_path = BASE_DIR / config["映射文件"]["客户统称名单"]
+    unify_path = BASE_DIR / "config" / "销售规则" / "客户统称名单.json"
     subsidiary_to_parent = {}
     if unify_path.exists():
         unify_data = json.loads(unify_path.read_text(encoding="utf-8"))
@@ -57,7 +60,7 @@ def run_split(file_type, config=None):
     splitter = SalesSplitter(rules_data, subsidiary_to_parent)
     log_step(f"销售{file_type}",
              f"规则: 广东{len(splitter.gd_rules)} + 深圳{len(splitter.sz_rules)} + "
-             f"其他{len(splitter.other_rules)} + 默认{len(splitter.default_rules)}条")
+             f"销售{len(splitter.sales_rules)}条")
 
     # 拆分
     print(f"\n{'='*50}")

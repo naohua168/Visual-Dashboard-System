@@ -12,8 +12,8 @@ import json
 
 import pandas as pd
 
-from .base import BaseRenderer, rate_cls
-from .utils import fmt_wan, safe_float, extract_date_range
+from .base import BaseRenderer, rate_cls, hero_rings_html
+from .utils import fmt_wan, safe_float, extract_date_range, get_config_range, range_banner_html
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 
@@ -43,41 +43,90 @@ class MonthlyPage(BaseRenderer):
         inc_r = latest_inc / inc_tgt if inc_tgt else 0
         pay_r = latest_pay / pay_tgt if pay_tgt else 0
 
+        # 同比 (vs 年基线数据中最新的同月)
+        yoy_inc = None
+        yoy_pay = None
+        yoy_label_inc = ""
+        yoy_label_pay = ""
+        cur_year = int(latest.split('-')[0]) if latest and "-" in latest else 2026
+        cur_month = int(latest.split('-')[1]) if latest and "-" in latest else 1
+        if data.yearly_income is not None and len(data.yearly_income):
+            yi = data.yearly_income.copy()
+            yi["月份"] = pd.to_datetime(yi["日期"], errors="coerce").dt.to_period("M").astype(str)
+            # 取年基线中最新的年份的同月
+            latest_year_in_yi = yi["月份"].str[:4].astype(int).max()
+            if latest and "-" in latest:
+                target_key = f"{latest_year_in_yi}-{latest.split('-')[1]}"
+                prev_inc = float(yi[yi["月份"] == target_key]["金额"].sum()) / 10000.0
+                if prev_inc > 0:
+                    yoy_inc = (latest_inc - prev_inc) / prev_inc
+                    yoy_label_inc = f"{cur_year}年{cur_month:02d}月 vs {latest_year_in_yi}年{cur_month:02d}月"
+        if data.yearly_payment is not None and len(data.yearly_payment):
+            yp = data.yearly_payment.copy()
+            yp["月份"] = pd.to_datetime(yp["日期"], errors="coerce").dt.to_period("M").astype(str)
+            latest_year_in_yp = yp["月份"].str[:4].astype(int).max()
+            if latest and "-" in latest:
+                target_key = f"{latest_year_in_yp}-{latest.split('-')[1]}"
+                prev_pay = float(yp[yp["月份"] == target_key]["金额"].sum()) / 10000.0
+                if prev_pay > 0:
+                    yoy_pay = (latest_pay - prev_pay) / prev_pay
+                    yoy_label_pay = f"{cur_year}年{cur_month:02d}月 vs {latest_year_in_yp}年{cur_month:02d}月"
+        # 使用相同的基准标签
+        yoy_period = yoy_label_inc or yoy_label_pay
+
+        # 客户数/销售数（从销售拆分数据）
+        inc_cust = pay_cust = inc_sales = pay_sales = 0
+        if data.sales_income is not None and len(data.sales_income):
+            si = data.sales_income.copy()
+            si["月份"] = pd.to_datetime(si["日期"], errors="coerce").dt.to_period("M").astype(str)
+            si_l = si[si["月份"] == latest]
+            inc_cust = int(si_l["客户"].nunique()) if "客户" in si_l.columns else 0
+            inc_sales = int(si_l["销售"].nunique()) if "销售" in si_l.columns else 0
+        if data.sales_payment is not None and len(data.sales_payment):
+            sp = data.sales_payment.copy()
+            sp["月份"] = pd.to_datetime(sp["日期"], errors="coerce").dt.to_period("M").astype(str)
+            sp_l = sp[sp["月份"] == latest]
+            pay_cust = int(sp_l["客户"].nunique()) if "客户" in sp_l.columns else 0
+            pay_sales = int(sp_l["销售"].nunique()) if "销售" in sp_l.columns else 0
+
         parts = []
-        parts.append(self._hero_block(latest, inc_tgt, pay_tgt, latest_inc, latest_pay, inc_r, pay_r))
+        parts.append(self._hero_block(
+            latest, inc_tgt, pay_tgt, latest_inc, latest_pay, inc_r, pay_r,
+            yoy_inc=yoy_inc, yoy_pay=yoy_pay,
+            inc_cust=inc_cust, pay_cust=pay_cust,
+            inc_sales=inc_sales, pay_sales=pay_sales,
+            yoy_period=yoy_period,
+            show_cust_sales=False,
+        ))
         parts.append(self._dept_monthly_card(df_inc, df_pay, df_inc_tgt, df_pay_tgt, latest))
-        parts.append(self._trend_chart(df_inc, df_pay))
         parts.append(self._customer_matrix(df_inc, df_pay, df_inc_tgt, df_pay_tgt))
         date_range = extract_date_range(data.income)
-        return self.wrap_page("".join(parts), date_range)
+        # 月度数据范围（从配置文件读取）
+        month_range = get_config_range(self.base_dir, "月度数据")
+        banner = range_banner_html(month_range or date_range)
+        return self.wrap_page(banner + "".join(parts), date_range)
 
     # ── [A] Hero 大数字块 ──────────────────────────
-    def _hero_block(self, month, inc_tgt, pay_tgt, latest_inc, latest_pay, inc_r, pay_r) -> str:
-        """月度总目标 Hero — 收入/回款条可点击展开部门卡片"""
-        total_tgt = inc_tgt + pay_tgt
+    def _hero_block(self, month, inc_tgt, pay_tgt, latest_inc, latest_pay, inc_r, pay_r,
+                    yoy_inc=None, yoy_pay=None,
+                    inc_cust=0, pay_cust=0, inc_sales=0, pay_sales=0,
+                    yoy_period="", show_cust_sales=True) -> str:
+        """月度 Hero — 信息丰富版：同比 + 差额（不含客户/销售）"""
         toggle_js = (
             "document.getElementById('monthly-dept-wrap').classList.toggle('hidden');"
-            "this.parentElement.querySelectorAll('.annual-hero-bar').forEach(b=>b.classList.remove('expanded'));"
             "this.classList.add('expanded')"
         )
-        return f"""<div class="annual-hero">
-  <div class="annual-hero-label">📊 月度总目标 · {month}</div>
-  <div class="annual-hero-value">{fmt_wan(total_tgt)}<span class="annual-hero-unit">万元</span></div>
-  <div class="annual-hero-bars">
-    <div class="annual-hero-bar" onclick="{toggle_js}" style="cursor:pointer">
-      <span class="annual-hero-name">收入</span>
-      <div class="annual-hero-track"><div class="annual-hero-fill inc" style="width:{min(inc_r*100,100):.1f}%">{inc_r*100:.1f}%</div></div>
-      <span class="annual-hero-val">{fmt_wan(latest_inc)} <span style="font-size:10px;font-weight:400;color:#94a3b8">/ {fmt_wan(inc_tgt)}</span></span>
-      <span class="annual-hero-arrow">▸</span>
-    </div>
-    <div class="annual-hero-bar" onclick="{toggle_js}" style="cursor:pointer">
-      <span class="annual-hero-name">回款</span>
-      <div class="annual-hero-track"><div class="annual-hero-fill pay" style="width:{min(pay_r*100,100):.1f}%">{pay_r*100:.1f}%</div></div>
-      <span class="annual-hero-val">{fmt_wan(latest_pay)} <span style="font-size:10px;font-weight:400;color:#94a3b8">/ {fmt_wan(pay_tgt)}</span></span>
-      <span class="annual-hero-arrow">▸</span>
-    </div>
-  </div>
-</div>"""
+        # 月度总指标 = 月度收入指标 + 月度回款指标
+        month_total_tgt = inc_tgt + pay_tgt
+        return hero_rings_html(
+            latest_inc, inc_tgt, latest_pay, pay_tgt, toggle_js, "收入", "回款",
+            inc_yoy=yoy_inc, pay_yoy=yoy_pay,
+            inc_cust=inc_cust, pay_cust=pay_cust,
+            inc_sales=inc_sales, pay_sales=pay_sales,
+            yoy_period=yoy_period,
+            total_tgt=month_total_tgt, total_label="月度总指标",
+            show_cust_sales=show_cust_sales,
+        )
 
     # ── [B] 事业部完成度 ────────────────────────────
     def _dept_monthly_card(self, df_inc, df_pay, df_inc_tgt, df_pay_tgt, month) -> str:
@@ -121,52 +170,6 @@ class MonthlyPage(BaseRenderer):
   {rows}
 </div>"""
 
-    # ── [D] 月度趋势图 ──────────────────────────────
-    def _trend_chart(self, df_inc, df_pay) -> str:
-        """月度收入/回款柱状图（Chart.js）"""
-        mi = df_inc.groupby("月份")["金额_万"].sum()
-        mp = df_pay.groupby("月份")["金额_万"].sum()
-        all_m = sorted(set(list(mi.index) + list(mp.index)))
-        iv = [round(float(mi.get(m, 0)), 2) for m in all_m]
-        pv = [round(float(mp.get(m, 0)), 2) for m in all_m]
-
-        cid = "monthlyTrend"
-        config = {
-            "type": "bar", "data": {
-                "labels": all_m,
-                "datasets": [
-                    {"label": "收入", "data": iv,
-                     "backgroundColor": "#2563eb", "borderRadius": 4, "barPercentage": 0.6},
-                    {"label": "回款", "data": pv,
-                     "backgroundColor": "#f59e0b", "borderRadius": 4, "barPercentage": 0.6},
-                ],
-            },
-            "options": {
-                "responsive": True, "maintainAspectRatio": False,
-                "interaction": {"mode": "index", "intersect": False},
-                "plugins": {
-                    "legend": {"position": "top", "labels": {"usePointStyle": True, "padding": 12}},
-                    "tooltip": {
-                        "callbacks": {
-                            "label": "ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString('zh-CN',{minimumFractionDigits:2}) + ' 万元'"
-                        }
-                    },
-                },
-                "scales": {
-                    "x": {"grid": {"display": False}},
-                    "y": {
-                        "beginAtZero": True, "grid": {"color": "rgba(148,163,184,0.15)"},
-                        "ticks": {"callback": "v => v + '万'"},
-                    },
-                },
-            },
-        }
-        return f"""<div class="chart-box"><div class="chart-title">月度收入/回款趋势（万元）</div>
-<div style="height:200px;position:relative"><canvas id="{cid}"></canvas></div></div>
-<script>
-(function(){{ const e=document.getElementById('{cid}'); if(e) new Chart(e.getContext('2d'), {json.dumps(config, ensure_ascii=False)}); }})();
-</script>"""
-
     # ── [C] 客户矩阵表（cell-bg 风格，收入/回款 Tab） ──
     def _customer_matrix(self, df_inc, df_pay, df_inc_tgt, df_pay_tgt) -> str:
         """收入/回款 Tab 切换 · 目标/实际/达成率 cell-bg 风格"""
@@ -193,25 +196,30 @@ class MonthlyPage(BaseRenderer):
             return '<div class="card"><p style="color:var(--text-muted);padding:20px;text-align:center">无月度目标数据</p></div>'
 
         def _cell(act, tgt, is_total_col=False):
-            """cell-bg 实色填充：左=百分比 / 右=完成+指标"""
+            """cell-bg 半透明数据条填充：左=百分比 / 右=完成+指标（合计列也按达成度显示条）"""
             if act == 0 and tgt == 0:
                 return '<td class="td-empty">—</td>'
             r = act / tgt if tgt else 0
             pct_num = min(r * 100, 100)
             pct_label = f"{r*100:.0f}%"
-            pct_cls = " achieved" if r >= 1 else " low" if 0 < r < 0.5 else ""
-            if is_total_col:
-                return (f'<td class="cell-bg is-total"><div class="cell-text">'
-                        f'<span class="cell-pct">{pct_label}</span>'
-                        f'<div class="cell-main"><span class="cell-act">完成{fmt_wan(act)}</span>'
-                        f'<span class="cell-tgt">指标{fmt_wan(tgt)}</span></div></div></td>')
-            fill_var = "#22c55e" if r >= 1 else "#fb923c" if r >= 0.5 else "#fdba74" if r > 0 else "#f1f5f9"
+            if r >= 1:
+                pct_cls, fill_var = " achieved", "#22c55e"
+            elif r >= 0.5:
+                pct_cls, fill_var = "", "#fb923c"
+            elif r > 0:
+                pct_cls, fill_var = " low", "#fdba74"
+            else:
+                pct_cls, fill_var = "", "#f1f5f9"
             empty_cls = " is-empty" if r == 0 else ""
-            return (f'<td class="cell-bg{empty_cls}" style="--pct:{pct_num:.1f}%;--fill:{fill_var}">'
+            total_cls = " is-total" if is_total_col else ""
+            return (f'<td class="cell-bg{empty_cls}{total_cls}" style="--pct:{pct_num:.1f}%;--fill:{fill_var}">'
                     f'<div class="fill-bg"></div><div class="cell-text">'
                     f'<span class="cell-pct{pct_cls}">{pct_label}</span>'
-                    f'<div class="cell-main"><span class="cell-act">完成{fmt_wan(act)}</span>'
-                    f'<span class="cell-tgt">指标{fmt_wan(tgt)}</span></div></div></td>')
+                    f'<div class="cell-main"><span class="cell-compact">'
+                    f'<span class="cell-act-val">{fmt_wan(act)}</span>'
+                    f'<span class="sep">/</span>'
+                    f'<span class="cell-tgt-val">{fmt_wan(tgt)}</span>'
+                    f'</span></div></div></td>')
 
         # 合计行
         cells = [f'<td class="td-name td-total">合计（{len(customers)}家）</td>']
@@ -239,6 +247,6 @@ class MonthlyPage(BaseRenderer):
 
         h = f'<tr><th class="th-name">客户</th>' + "".join(f"<th>{d}</th>" for d in DEPARTMENTS) + '<th class="th-name th-total">合计</th></tr>'
         return (f'<div class="table-wrap ann-matrix-wrap no-collapse">'
-                f'<table class="ann-matrix">{h}<tbody>{tr}{rows}</tbody></table>'
+                f'<table class="ann-matrix"><thead>{h}</thead><tbody>{tr}{rows}</tbody></table>'
                 f'</div>'
                 f'<div style="font-size:11px;color:var(--text-muted);margin-top:6px">每格：实际金额 / 目标金额 / 达成率</div>')

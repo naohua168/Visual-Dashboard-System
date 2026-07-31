@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from .utils import fmt_wan
+
 
 GLOBAL_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
@@ -71,7 +73,6 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
 }
 .header h1{font-size:20px;font-weight:700;letter-spacing:0.02em;color:#f1f5f9;}
 .header-right{display:flex;align-items:center;gap:12px;}
-.header .meta{font-size:12px;opacity:0.7;color:#94a3b8;}
 .fullscreen-btn{
   display:flex;align-items:center;gap:4px;padding:4px 10px;
   background:rgba(255,255,255,0.1);color:#e2e8f0;border:1px solid rgba(255,255,255,0.2);
@@ -227,6 +228,176 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
 .rate-badge.rate-high{background:#f0fdf4;color:#16a34a;}       /* ≥80% 绿 */
 
 /* 销售榜单 */
+/* 销售年度达成 mini-rate (左右双列) - 卡片1 */
+
+/* KPI 高级版 (销售页) - 3 卡信息密集 */
+
+/* KPI 统一大卡 (销售页) - 单卡 3 区 */
+.kpi-pro-unified{
+  background:linear-gradient(135deg,#0a1628 0%,#1e3a5f 50%,#0a1628 100%);
+  color:#fff;padding:22px 28px;border-radius:12px;margin-bottom:12px;
+  box-shadow:0 6px 18px rgba(10,22,40,0.35);
+  display:grid;grid-template-columns:1.1fr 1px 1fr 1px 1fr;gap:18px;align-items:stretch;
+}
+.kpi-pro-unified > div{justify-self:stretch;}
+.kpi-pro-unified-tgt{display:flex;flex-direction:column;justify-content:center;gap:10px;}
+.kpi-pro-unified-divider{background:rgba(255,255,255,0.15);width:1px;}
+.kpi-pro-unified-label{
+  font-size:13px;letter-spacing:0.04em;font-weight:600;
+  color:#fbbf24;text-transform:uppercase;
+}
+.kpi-pro-unified-value{
+  font-size:32px;font-weight:900;color:#fff;
+  font-variant-numeric:tabular-nums;letter-spacing:0.01em;line-height:1.05;
+  text-shadow:0 2px 12px rgba(251,191,36,0.25);
+  display:flex;align-items:baseline;gap:4px;
+}
+.kpi-pro-unified-value .kpi-unit{font-size:14px;font-weight:600;color:#94a3b8;}
+.kpi-pro-unified-spark{
+  display:flex;align-items:center;gap:10px;
+}
+.kpi-pro-unified-spark svg{flex-shrink:0;}
+.kpi-pro-unified-rate{font-size:13px;font-weight:700;color:#fbbf24;}
+.kpi-pro-unified-extra{font-size:11px;color:#cbd5e1;margin-top:2px;line-height:1.4;}
+
+.kpi-pro-unified-metric{
+  display:flex;flex-direction:column;justify-content:center;gap:4px;
+  padding:0 4px;
+}
+.kpi-pro-unified-metric-head{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin-bottom:2px;
+}
+.kpi-pro-unified-metric-label{
+  font-size:13px;letter-spacing:0.04em;font-weight:600;
+  color:#93c5fd;
+}
+.kpi-pro-unified-metric.kpi-pro-unified-pay .kpi-pro-unified-metric-label{color:#86efac;}
+.kpi-pro-unified-metric-value{
+  font-size:24px;font-weight:900;color:#fff;
+  font-variant-numeric:tabular-nums;line-height:1.1;letter-spacing:0.01em;
+  display:flex;align-items:baseline;gap:3px;
+}
+.kpi-pro-unified-metric-value .kpi-unit{font-size:11px;font-weight:600;color:#94a3b8;}
+.kpi-pro-unified-metric svg{display:block;}
+.kpi-pro-unified-metric-rate{font-size:12px;color:#cbd5e1;font-weight:500;}
+.kpi-pro-unified-metric-top{
+  display:grid;grid-template-columns:60px 1fr 56px;align-items:center;gap:6px;
+  font-size:11px;
+}
+.kpi-pro-top-label{color:#94a3b8;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;}
+.kpi-pro-top-name{color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.kpi-pro-top-val{color:#fff;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;}
+.kpi-pro-top-extra{color:#cbd5e1;font-weight:500;}
+
+@media(max-width:1100px){
+  .kpi-pro-unified{grid-template-columns:1fr;gap:12px;}
+  .kpi-pro-unified-divider{display:none;}
+}
+
+.kpi-pro-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:12px;
+}
+.kpi-pro{
+  background:#fff;padding:14px 16px;border-radius:10px;
+  border:1px solid var(--border);box-shadow:var(--shadow-sm);
+  position:relative;overflow:hidden;
+  transition:box-shadow .2s,transform .2s;
+}
+.kpi-pro:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);}
+.kpi-pro::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--c1,#f59e0b),var(--c2,#fbbf24));
+}
+.kpi-pro-tgt{--c1:#f59e0b;--c2:#fb923c;}
+.kpi-pro-inc{--c1:#3b82f6;--c2:#60a5fa;}
+.kpi-pro-pay{--c1:#22c55e;--c2:#4ade80;}
+.kpi-pro-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:6px;
+}
+.kpi-pro-title{
+  font-size:12px;font-weight:700;color:#64748b;letter-spacing:0.04em;
+}
+.kpi-pro-rate{display:flex;align-items:center;}
+.kpi-pro-value-row{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:6px;
+}
+.kpi-pro-value{
+  font-size:30px;font-weight:900;color:#0f172a;
+  font-variant-numeric:tabular-nums;letter-spacing:0.01em;line-height:1;
+}
+.kpi-pro-value .kpi-unit{font-size:13px;font-weight:600;color:#94a3b8;margin-left:4px;}
+.kpi-pro-spark{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:8px;gap:8px;
+}
+.kpi-pro-spark svg{flex-shrink:0;}
+.kpi-pro-sub{font-size:12px;font-weight:600;}
+.kpi-pro-dept{
+  display:flex;flex-direction:column;gap:3px;margin-bottom:8px;
+  padding:6px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);
+}
+.kpi-dept-row{
+  display:grid;grid-template-columns:34px 1fr 50px;align-items:center;gap:8px;
+  font-size:11px;
+}
+.kpi-dept-name{color:#475569;font-weight:600;}
+.kpi-dept-track{
+  height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;
+}
+.kpi-dept-fill{height:100%;border-radius:4px;transition:width .5s ease;}
+.kpi-dept-val{
+  color:#0f172a;font-weight:700;font-variant-numeric:tabular-nums;
+  text-align:right;font-size:11px;
+}
+.kpi-pro-top{
+  display:flex;flex-direction:column;gap:4px;
+}
+.kpi-pro-top-row{
+  display:grid;grid-template-columns:50px 1fr 80px;align-items:center;gap:8px;
+  font-size:11px;
+}
+.kpi-pro-top-label{
+  color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;
+  font-size:10px;
+}
+.kpi-pro-top-name{
+  color:#0f172a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.kpi-pro-top-val{
+  color:#0f172a;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;
+}
+.kpi-pro-top-extra{
+  color:#475569;font-weight:500;
+}
+@media(max-width:1100px){
+  .kpi-pro-grid{grid-template-columns:1fr;gap:10px;}
+  .kpi-pro-value{font-size:24px;}
+}
+
+.sales-c1-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;
+}
+.sales-panel{
+  background:#fff;padding:12px 14px;border-radius:8px;
+  border:1px solid var(--border);box-shadow:var(--shadow-sm);
+}
+.sales-panel .card-title{
+  font-size:14px;font-weight:700;color:#0f172a;margin-bottom:10px;
+  padding-bottom:8px;border-bottom:2px solid var(--border);
+}
+.sales-panel .mini-rate{
+  padding:6px 0;font-size:12px;
+}
+.sales-panel .mini-rate .bar{height:14px;}
+.sales-panel.inc-panel{border-top:3px solid #f59e0b;}
+.sales-panel.pay-panel{border-top:3px solid #16a34a;}
+@media(max-width:860px){
+  .sales-c1-grid{grid-template-columns:1fr;gap:10px;}
+}
+
 .sales-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;margin-top:4px;}
 .sales-roster-head{
   display:flex;align-items:center;gap:6px;
@@ -265,6 +436,25 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
 
 /* ═══════════════════─ 数据表格 ─══════════════════ */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:6px;background:#fff;}
+/* ann-matrix / yoy-matrix-table 表格内部滚动（表头吸顶 + 合计行吸底） */
+.table-wrap:has(table.ann-matrix),
+.table-wrap:has(table.yoy-matrix-table){overflow-y:auto;max-height:calc(100vh - 220px);}
+
+/* yoy-matrix-table 表头吸顶 + 合计行吸底（两行表头不同 top 避免重叠） */
+table.yoy-matrix-table thead tr:first-child th,
+.yoy-matrix-table thead tr:first-child th{
+  position:sticky;top:0;z-index:10;
+  background:#0f172a !important;
+}
+table.yoy-matrix-table thead tr:last-child th,
+.yoy-matrix-table thead tr:last-child th{
+  position:sticky;top:50px;z-index:10;
+  background:#0f172a !important;
+}
+table.yoy-matrix-table tbody .row-total td,
+.yoy-matrix-table tbody .row-total td{
+  position:sticky;bottom:0;z-index:5;
+}
 table{width:100%;border-collapse:collapse;font-size:13px;}
 th,td{
   padding:6px 10px;text-align:right;
@@ -272,21 +462,44 @@ th,td{
   white-space:nowrap;font-variant-numeric:tabular-nums;
 }
 th{
-  background:#1e293b;color:#ffffff;font-weight:800;font-size:18px;
+  background:#1e293b;color:#ffffff;font-weight:800;font-size:19px !important;
   text-transform:none;letter-spacing:0.04em;text-align:center !important;
   position:sticky;top:0;z-index:5;border-bottom:3px solid #f59e0b;
-  padding:14px 16px;line-height:1.3;text-shadow:0 1px 2px rgba(0,0,0,.2);
+  padding:14px 10px !important;line-height:1.3;text-shadow:0 1px 2px rgba(0,0,0,.2);
 }
 table.yoy-dept-table th{
-  background:#0f172a;color:#fff;padding:16px 14px;text-align:center;
-  font-weight:800;font-size:18px;letter-spacing:0.06em;border:1px solid #1e293b;
+  background:#0f172a;color:#fff;padding:14px 10px;text-align:center;
+  font-weight:800;font-size:19px;letter-spacing:0.06em;border:1px solid #1e293b;
   border-bottom:3px solid #f59e0b;text-shadow:0 1px 2px rgba(0,0,0,.3);
 }
 table.yoy-matrix-table th{
-  background:#0f172a;color:#fff;padding:16px 14px;text-align:center;
-  font-weight:800;font-size:18px;letter-spacing:0.06em;border:1px solid #1e293b;
+  background:#0f172a;color:#fff;padding:14px 10px;text-align:center;
+  font-weight:800;font-size:19px;letter-spacing:0.06em;border:1px solid #1e293b;
   border-bottom:3px solid #f59e0b;text-shadow:0 1px 2px rgba(0,0,0,.3);
 }
+/* 双层表头 — 事业部/合计大组 */
+/* 双层表头 — 事业部/合计大组 (Q2 风格) */
+table.yoy-matrix-table th.th-dept-group{
+  font-size:19px;padding:14px 8px;font-weight:900;background:#0f172a;
+  border-bottom:1px solid #1e293b;letter-spacing:0.06em;
+}
+  font-size:18px;padding:14px 8px;font-weight:900;background:#0f172a;
+  border-bottom:1px solid #1e293b;
+}
+table.yoy-matrix-table th.th-dept-group.th-dept-total{
+  background:linear-gradient(135deg,#1e3a5f 0%,#0f172a 100%);
+  color:#fbbf24;
+}
+/* 双层表头 — 副表头 (金额/同比) */
+table.yoy-matrix-table th.th-sub{
+  font-size:13px;font-weight:700;color:#cbd5e1;padding:8px 6px;
+  background:#1e293b;border-top:1px solid #334155;
+  text-transform:uppercase;letter-spacing:0.06em;
+  border-bottom:1px solid #1e293b;
+}
+)}
+table.yoy-matrix-table th.th-sub-amount{color:#bfdbfe;}
+table.yoy-matrix-table th.th-sub-yoy{color:#fbbf24;}
 th:first-child,td:first-child{text-align:left;position:sticky;left:0;z-index:4;}
 th:first-child{background:#0f172a;color:#fff;z-index:6;font-weight:900;text-align:center;}
 td:first-child{background:#fff;font-weight:600;color:var(--text);}
@@ -481,47 +694,82 @@ tr.row-pending td:first-child{background:#fef08a !important;}
 }
 .period-text{font-size:12px;color:var(--text-secondary);font-weight:500;}
 
-/* ═══════════════════─ 同比大对比卡（2 卡布局） ───────────── */
+/* ═══════════════════─ 同比大对比卡（2 卡，深色稳重风） ───────────── */
 .yoy-big-card{
-  padding:14px 18px;border-radius:8px;
-  display:grid;grid-template-columns:1fr 1.6fr;gap:14px;align-items:center;
-  border:2px solid;border-left-width:6px;
+  position:relative;
+  padding:20px 24px;
+  border-radius:10px;
+  background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+  color:#fff;
+  display:grid;grid-template-columns:1fr 1.4fr;gap:24px;align-items:center;
+  box-shadow:0 4px 16px rgba(15,23,42,0.25);
+  overflow:hidden;
 }
-.yoy-big-card.up{background:linear-gradient(135deg,#fef2f2,#fee2e2);border-color:#fca5a5;border-left-color:#dc2626;}
-.yoy-big-card.down{background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-color:#86efac;border-left-color:#16a34a;}
-.yoy-big-card.flat{background:linear-gradient(135deg,#f8fafc,#f1f5f9);border-color:#cbd5e1;border-left-color:#94a3b8;}
+.yoy-big-card::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent-color,#dc2626);
+}
+.yoy-big-card.up{--accent-color:#dc2626;}
+.yoy-big-card.down{--accent-color:#16a34a;}
+.yoy-big-card.flat{--accent-color:#64748b;}
+
+/* 左侧：同比率 */
+.yoy-big-info{display:flex;flex-direction:column;gap:8px;}
 .yoy-big-label{
-  font-size:12px;color:var(--text-secondary);
-  font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;
+  font-size:13px;color:#94a3b8;font-weight:600;
+  text-transform:uppercase;letter-spacing:0.08em;
 }
 .yoy-big-pct{
-  font-size:46px;font-weight:800;line-height:1.1;letter-spacing:-0.02em;
+  font-size:52px;font-weight:900;line-height:1;
+  font-variant-numeric:tabular-nums;letter-spacing:-0.02em;
+  display:flex;align-items:baseline;gap:6px;
+}
+.yoy-big-pct .yoy-arrow{
+  width:34px;height:34px;font-size:18px;
+  background:rgba(255,255,255,0.08);border-radius:8px;
+}
+.yoy-big-pct .yoy-arrow.up{color:#dc2626;background:rgba(220,38,38,0.15);}
+.yoy-big-pct .yoy-arrow.down{color:#16a34a;background:rgba(22,163,74,0.15);}
+.yoy-big-pct .yoy-arrow.flat{color:#94a3b8;background:rgba(148,163,184,0.15);}
+.yoy-big-pct-num{line-height:1;}
+
+/* 右侧：对比柱状图 */
+.yoy-big-compare{
+  display:flex;flex-direction:column;gap:14px;
+  padding-left:20px;border-left:1px solid rgba(255,255,255,0.12);
+}
+.yoy-cmp-item{display:flex;flex-direction:column;gap:6px;}
+.yoy-cmp-header{display:flex;justify-content:space-between;align-items:baseline;}
+.yoy-cmp-label{
+  font-size:12px;font-weight:600;color:#94a3b8;
+  letter-spacing:0.04em;
+}
+.yoy-cmp-val{
+  font-size:18px;font-weight:700;color:#fff;
   font-variant-numeric:tabular-nums;
 }
-.yoy-big-arrow{
-  font-size:14px;font-weight:700;color:var(--text-muted);margin-top:4px;
-  display:flex;align-items:center;gap:6px;
-}
-.yoy-big-arrow .yoy-arrow{width:24px;height:24px;font-size:13px;}
-.yoy-big-compare{
-  display:flex;flex-direction:column;gap:6px;
-  background:rgba(255,255,255,0.6);padding:8px 12px;border-radius:6px;
-}
-.yoy-cmp-item{display:grid;grid-template-columns:50px 1fr;gap:8px;align-items:center;}
-.yoy-cmp-label{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;}
-.yoy-cmp-val{font-size:14px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;grid-column:2;}
-.yoy-cmp-unit{font-size:10px;font-weight:500;color:var(--text-muted);margin-left:2px;}
-.yoy-cmp-item.prev .yoy-cmp-label{color:var(--text-muted);}
-.yoy-cmp-item.prev .yoy-cmp-val{color:var(--text-secondary);font-size:12px;font-weight:600;}
+.yoy-cmp-val .yoy-cmp-unit{font-size:11px;font-weight:500;color:#64748b;margin-left:2px;}
+/* 柱状条 */
 .yoy-cmp-bar{
-  height:6px;background:rgba(0,0,0,0.06);border-radius:3px;overflow:hidden;
-  grid-column:2;margin-top:2px;
+  height:8px;border-radius:4px;background:rgba(255,255,255,0.08);
+  position:relative;overflow:hidden;
 }
-.yoy-cmp-fill{height:100%;border-radius:3px;}
-.yoy-cmp-fill.cur.up{background:linear-gradient(90deg,#b91c1c,#dc2626);}
-.yoy-cmp-fill.cur.down{background:linear-gradient(90deg,#15803d,#16a34a);}
-.yoy-cmp-fill.prev.up{background:linear-gradient(90deg,#94a3b8,#cbd5e1);}
-.yoy-cmp-fill.prev.down{background:linear-gradient(90deg,#94a3b8,#cbd5e1);}
+.yoy-cmp-fill{
+  height:100%;border-radius:4px;
+  transition:width 1s cubic-bezier(0.22,1,0.36,1);
+}
+.yoy-cmp-fill.cur.up{background:linear-gradient(90deg,#dc2626,#ef4444);box-shadow:0 0 12px rgba(220,38,38,0.4);}
+.yoy-cmp-fill.cur.down{background:linear-gradient(90deg,#16a34a,#22c55e);box-shadow:0 0 12px rgba(22,163,74,0.4);}
+.yoy-cmp-fill.cur.flat{background:linear-gradient(90deg,#94a3b8,#cbd5e1);}
+.yoy-cmp-fill.prev{
+  background:linear-gradient(90deg,#cbd5e1,#e2e8f0);
+  opacity:0.85;
+}
+
+/* 响应式 */
+@media(max-width:860px){
+  .yoy-big-card{grid-template-columns:1fr;gap:16px;}
+  .yoy-big-compare{padding-left:0;border-left:none;border-top:1px solid rgba(255,255,255,0.12);padding-top:16px;}
+}
 
 /* ═══════════════════─ 图表容器 ─══════════════════ */
 .chart-box{
@@ -583,6 +831,199 @@ tr.row-pending td:first-child{background:#fef08a !important;}
 }
 .target-hero .unit{font-size:14px;font-weight:500;opacity:0.8;}
 
+
+/* ═══════════════════─ 页面数据范围 banner ─══════════════════ */
+.range-banner{
+  background:linear-gradient(135deg,#1e40af 0%,#2563eb 100%);
+  color:#fff;padding:8px 16px;border-radius:6px;margin-bottom:8px;
+  font-size:13px;font-weight:600;letter-spacing:0.02em;
+  box-shadow:0 2px 6px rgba(30,64,175,0.25);
+}
+
+/* ═══════════════════─ 季度客户达成表 (6列, 无目标) ─══════════════════ */
+table.q2-cust-table{
+  width:100%;border-collapse:collapse;font-size:14px;
+  table-layout:fixed;background:#fff;
+}
+table.q2-cust-table th{
+  background:#0f172a;color:#fff;padding:14px 10px;
+  text-align:center;font-weight:800;font-size:22px;letter-spacing:0.04em;
+  border:1px solid #1e293b;letter-spacing:0.04em;
+}
+table.q2-cust-table th:first-child{width:30%;}
+table.q2-cust-table th:nth-child(2),
+table.q2-cust-table th:nth-child(3),
+table.q2-cust-table th:nth-child(4),
+table.q2-cust-table th:nth-child(5){width:14%;}
+table.q2-cust-table th:last-child{width:14%;background:#1e293b;}
+table.q2-cust-table td{
+  padding:10px 12px;border:1px solid #e2e8f0;
+  text-align:center;font-variant-numeric:tabular-nums;
+}
+table.q2-cust-table td.td-name{
+  text-align:left;font-weight:600;color:#0f172a;font-size:18px;
+  padding-left:12px;background:#f8fafc;
+}
+table.q2-cust-table td.td-name .row-num{
+  display:inline-flex;width:24px;height:24px;align-items:center;
+  justify-content:center;font-size:13px;font-weight:800;color:#fff;
+  background:#94a3b8;border-radius:4px;margin-right:8px;flex-shrink:0;
+}
+table.q2-cust-table td.num-cell{
+  font-weight:700;font-size:24px;color:#0f172a;
+  font-variant-numeric:tabular-nums;
+}
+table.q2-cust-table td.num-cell.total{
+  font-weight:800;color:#0f172a;background:#fef3c7;
+}
+table.q2-cust-table tbody tr:nth-child(even){background:#f8fafc;}
+table.q2-cust-table tbody tr:hover{background:#bfdbfe !important;box-shadow:inset 4px 0 0 0 #1e40af;}
+table.q2-cust-table tr.row-total td{
+  background:#e0e7ff;font-weight:800;font-size:14px;
+  border-top:2px solid #1e40af!important;
+  border-bottom:2px solid #1e40af!important;
+}
+table.q2-cust-table tr.row-total td.num-cell{
+  font-weight:800;color:#1e40af;font-size:14px;
+}
+/* 合计行第一格（客户名列）加大字号 */
+table.q2-cust-table tr.row-total td.td-name{
+  font-size:15px;font-weight:800;letter-spacing:0.02em;
+}
+
+/* ═══════════════════─ 圆环 Hero ─══════════════════ */
+.hero-rings{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:22px 30px;margin-bottom:8px;border-radius:12px;
+  background:linear-gradient(135deg,#0a1628 0%,#1e3a5f 50%,#0a1628 100%);
+  color:#fff;box-shadow:0 6px 18px rgba(10,22,40,0.35);
+  min-height:200px;flex-wrap:nowrap;
+}
+.hero-rings .hr-side{flex:1;min-width:200px;display:flex;flex-direction:column;gap:10px;}
+.hero-rings .hr-side.inc-side{align-items:flex-start;text-align:left;}
+.hero-rings .hr-side.pay-side{align-items:flex-end;text-align:right;}
+.hero-rings .hr-side-title{
+  font-size:14px;letter-spacing:0.04em;font-weight:600;
+  opacity:0.9;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+}
+.hero-rings .hr-side.pay-side .hr-side-title{flex-direction:row-reverse;}
+.hero-rings .hr-side-amount{
+  font-size:54px;font-weight:900;color:#fbbf24;
+  font-variant-numeric:tabular-nums;letter-spacing:0.01em;line-height:1;
+  display:flex;align-items:baseline;gap:6px;
+  text-shadow:0 2px 12px rgba(251,191,36,0.2);
+}
+.hero-rings .hr-side.pay-side .hr-side-amount{flex-direction:row;}
+/* 总指标 — 琥珀色 */
+.hero-rings .hr-side-amount.hr-side-target{color:#fbbf24;text-shadow:0 2px 14px rgba(251,191,36,0.3);}
+.hero-rings .hr-side-unit{font-size:18px;font-weight:600;color:#94a3b8;letter-spacing:0;}
+.hero-rings .hr-side-metrics{
+  display:flex;flex-direction:column;gap:5px;
+  padding-top:10px;border-top:1px dashed rgba(255,255,255,0.15);
+  width:100%;
+}
+.hero-rings .hr-side.pay-side .hr-side-metrics{align-items:flex-end;}
+.hero-rings .hr-metric{
+  display:flex;align-items:center;gap:10px;font-size:14px;
+  font-variant-numeric:tabular-nums;color:#cbd5e1;
+}
+.hero-rings .hr-side.pay-side .hr-metric{flex-direction:row-reverse;}
+.hero-rings .hr-metric-label{opacity:0.75;min-width:60px;font-weight:500;}
+.hero-rings .hr-metric-val{font-weight:700;color:#e0e7ff;font-size:15px;}
+.hero-rings .hr-metric-gap .hr-metric-val{color:#fb923c;}
+.hero-rings .hr-yoy{
+  display:inline-block;font-size:12px;font-weight:700;
+  padding:2px 9px;border-radius:9px;letter-spacing:0;
+  margin-left:6px;
+}
+.hero-rings .hr-side.pay-side .hr-yoy{margin-left:0;margin-right:6px;}
+.hero-rings .hr-yoy-up{background:rgba(34,197,94,0.18);color:#4ade80;border:1px solid rgba(34,197,94,0.35);}
+.hero-rings .hr-yoy-dn{background:rgba(248,113,113,0.18);color:#fca5a5;border:1px solid rgba(248,113,113,0.35);}
+.hero-rings .hr-yoy-period{font-size:11px;opacity:0.6;font-weight:500;margin-left:6px;letter-spacing:0;}
+.hero-rings .hr-side.pay-side .hr-yoy-period{margin-left:0;margin-right:6px;}
+.hero-rings .hr-ring{
+  position:relative;width:96px;height:96px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.hero-rings .hr-ring svg{transform:rotate(-90deg);width:96px;height:96px;}
+.hero-rings .hr-ring circle{fill:none;stroke-width:10;stroke-linecap:round;}
+.hero-rings .hr-ring .hr-track{stroke:rgba(255,255,255,0.10);}
+.hero-rings .hr-ring.inc-ring .hr-progress{stroke:#3b82f6;
+  filter:drop-shadow(0 0 4px rgba(59,130,246,0.55));
+  transition:stroke-dashoffset 1.1s cubic-bezier(0.22,1,0.36,1);}
+.hero-rings .hr-ring.pay-ring .hr-progress{stroke:#22c55e;
+  filter:drop-shadow(0 0 4px rgba(34,197,94,0.55));
+  transition:stroke-dashoffset 1.1s cubic-bezier(0.22,1,0.36,1);}
+.hero-rings .hr-ring .hr-center{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;color:#fff;
+  transform:rotate(0deg);pointer-events:none;
+}
+.hero-rings .hr-ring .hr-pct{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;}
+.hero-rings .hr-ring.inc-ring .hr-pct{color:#93c5fd;}
+.hero-rings .hr-ring.pay-ring .hr-pct{color:#86efac;}
+.hero-rings .hr-ring .hr-label{font-size:10px;font-weight:600;opacity:0.7;letter-spacing:0.06em;margin-top:2px;text-transform:uppercase;}
+.hero-rings .hr-center-box{
+  flex:0 0 auto;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:0 16px;
+  border-left:1px dashed rgba(255,255,255,0.2);
+  border-right:1px dashed rgba(255,255,255,0.2);
+  min-width:260px;
+}
+.hero-rings .hr-center-split{display:flex;align-items:center;gap:16px;}
+.hero-rings .hr-cs-col{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;}
+.hero-rings .hr-cs-label{font-size:13px;font-weight:600;opacity:0.85;color:#fbbf24;letter-spacing:0.04em;}
+.hero-rings .hr-cs-val{font-size:36px;font-weight:900;color:#fbbf24;font-variant-numeric:tabular-nums;letter-spacing:0.005em;line-height:1.1;text-shadow:0 2px 18px rgba(251,191,36,0.3);white-space:nowrap;}
+.hero-rings .hr-cs-div{width:1px;height:50px;background:rgba(255,255,255,0.2);}
+.hero-rings .hr-side-ring{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  padding:0 4px;cursor:default;
+}
+.hero-rings .hr-side-ring .hr-ring{width:130px;height:130px;}
+.hero-rings .hr-side-ring .hr-ring svg{width:130px;height:130px;stroke-width:12;}
+.hero-rings .hr-side-ring .hr-ring .hr-pct{font-size:26px;font-weight:900;letter-spacing:-0.02em;}
+.hero-rings .hr-side-ring .hr-ring .hr-label{font-size:13px;font-weight:600;letter-spacing:0.04em;margin-top:4px;}
+.hero-rings .hr-side-ring .hr-ring .hr-track{stroke-width:12;}
+.hero-rings .hr-side-ring.inc-side-ring{padding-right:8px;}
+.hero-rings .hr-side-ring.pay-side-ring{padding-left:8px;}
+.hero-rings .hr-rings{display:flex;align-items:center;gap:14px;flex:0 0 auto;}
+/* 中间 ring 组合（target/ring/actual 三件套） */
+.hero-rings .hr-ring-group{display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 8px;}
+.hero-rings .hr-ring-target{font-size:24px;font-weight:900;color:#22d3ee;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;text-shadow:0 2px 12px rgba(34,211,238,0.3);text-align:center;}
+.hero-rings .hr-ring-target span{font-size:12px;font-weight:500;opacity:0.7;margin-left:2px;}
+.hero-rings .hr-ring-amount{font-size:18px;font-weight:800;color:#fbbf24;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;text-align:center;text-shadow:0 2px 10px rgba(251,191,36,0.3);}
+.hero-rings .hr-ring-amount span{font-size:12px;font-weight:500;opacity:0.7;margin-left:2px;}
+@media(max-width:1360px){
+  .hero-rings{flex-wrap:wrap;gap:12px;}
+  .hero-rings .hr-side{min-width:220px;}
+  .hero-rings .hr-side-amount{font-size:42px;}
+  .hero-rings .hr-side-unit{font-size:15px;}
+  .hero-rings .hr-center-box{min-width:180px;}
+  .hero-rings .hr-center-value{font-size:54px;}
+  .hero-rings .hr-center-unit{font-size:16px;}
+  .hero-rings .hr-side-ring .hr-ring{width:100px;height:100px;}
+  .hero-rings .hr-side-ring .hr-ring svg{width:100px;height:100px;}
+}
+@media(max-width:860px){
+  .hero-rings .hr-side{flex:0 0 100%;text-align:left !important;align-items:flex-start !important;}
+  .hero-rings .hr-side.pay-side{text-align:left !important;align-items:flex-start !important;}
+  .hero-rings .hr-side.pay-side .hr-side-title{flex-direction:row;}
+  .hero-rings .hr-side.pay-side .hr-side-amount{flex-direction:row;}
+  .hero-rings .hr-side.pay-side .hr-side-metrics{align-items:flex-start;}
+  .hero-rings .hr-side.pay-side .hr-metric{flex-direction:row;}
+  .hero-rings .hr-side.pay-side .hr-yoy{margin-left:6px;margin-right:0;}
+  .hero-rings .hr-side.pay-side .hr-yoy-period{margin-left:6px;margin-right:0;}
+  .hero-rings .hr-side-amount{font-size:36px;}
+  .hero-rings .hr-center-box{flex:0 0 100%;order:2;border-top:1px dashed rgba(255,255,255,0.2);border-bottom:1px dashed rgba(255,255,255,0.2);border-left:none;border-right:none;padding:14px 0 10px;min-width:0;gap:8px;}
+  .hero-rings .hr-center-value{font-size:46px;}
+  .hero-rings .hr-center-unit{font-size:14px;}
+  .hero-rings .hr-side-ring{flex:1 1 100%;justify-content:center;padding:6px 0;}
+  .hero-rings .hr-side-ring.inc-side-ring{order:1;}
+  .hero-rings .hr-side-ring.pay-side-ring{order:3;}
+  .hero-rings .hr-side-ring .hr-ring{width:80px;height:80px;}
+  .hero-rings .hr-side-ring .hr-ring svg{width:80px;height:80px;}
+}
+
 /* ═══════════════════─ 年度达成 Hero（深底大数字 + 双进度） ─══════════════════ */
 .annual-hero{
   background:linear-gradient(135deg,#0a1628 0%,#1e3a5f 50%,#0a1628 100%);
@@ -640,31 +1081,37 @@ tr.row-pending td:first-child{background:#fef08a !important;}
 
 /* ═══════════════════─ 矩阵表（ann-matrix 紧凑布局） ───────── */
 table.ann-matrix, .table-wrap table.ann-matrix, .ann-matrix{
-  width:100%;border-collapse:collapse;font-size:12px;background:#fff;
+  width:100%;border-collapse:separate;border-spacing:0;font-size:24px;background:#fff;
   border:1px solid #e2e5ed;
 }
 table.ann-matrix th, table.ann-matrix td,
 .ann-matrix th, .ann-matrix td{
-  padding:6px 10px;text-align:right;
+  padding:12px 20px;text-align:right;
   border:1px solid #e2e5ed;vertical-align:middle;
   line-height:1.3;
 }
 table.ann-matrix thead th,
 .ann-matrix thead th{
-  background:#0f172a;color:#ffffff;font-weight:900;font-size:18px;
+  background:#0f172a;color:#ffffff;font-weight:900;font-size:26px !important;
   letter-spacing:0.06em;text-transform:none;
-  position:sticky;top:0;z-index:5;text-align:center !important;
-  border-color:#1e293b;padding:18px 16px;
+  position:sticky;top:0;z-index:10;
+  text-align:center !important;
+  border-color:#1e293b;padding:14px 10px !important;
   line-height:1.3;text-shadow:0 2px 4px rgba(0,0,0,.4);
-  border-bottom:3px solid #fbbf24;
+  border-bottom:2px solid #fbbf24;
 }
-/* 2行分组头部 — 收入组/回款组（1.5x正文≈18px，分组更大） */
+/* 合计行吸底（仅定位，样式沿用已有 .row-total 规则） */
+table.ann-matrix tbody .row-total td,
+.ann-matrix tbody .row-total td{
+  position:sticky;bottom:0;z-index:5;
+}
+/* 2行分组头部 — 收入组/回款组（统一 19px 配合主表头） */
 table.ann-matrix thead tr.group-row th,
 .ann-matrix thead tr.group-row th{
-  font-size:20px;font-weight:800;
-  padding:18px 12px;
+  font-size:19px;font-weight:800;
+  padding:14px 8px;
   letter-spacing:0.12em;
-  border-bottom-width:3px;
+  border-bottom-width:2px;
 }
 table.ann-matrix thead tr.group-row th.dept-name,
 .ann-matrix thead tr.group-row th.dept-name{background:#1e3a5f;}
@@ -675,32 +1122,58 @@ table.ann-matrix thead tr.group-row th.pay-group,
 /* detail-row（子表头） */
 table.ann-matrix thead tr.detail-row th,
 .ann-matrix thead tr.detail-row th{
-  font-size:14px;font-weight:700;
+  font-size:13px;font-weight:700;
   padding:10px 8px;
   background:#1e293b;
 }
 table.ann-matrix .th-name, .ann-matrix .th-name{text-align:center;min-width:160px;font-weight:800;}
 /* 客户名列 */
 table.ann-matrix .td-name, .ann-matrix .td-name{
-  text-align:left;font-weight:600;color:#0f172a;font-size:12px;white-space:nowrap;
+  text-align:left;font-weight:600;color:#0f172a;font-size:18px;white-space:nowrap;
 }
 table.ann-matrix .td-name .row-num, .ann-matrix .td-name .row-num{
-  display:inline-flex;width:18px;height:18px;align-items:center;justify-content:center;
-  font-size:9px;font-weight:800;color:#fff;background:#94a3b8;
-  border-radius:3px;margin-right:6px;flex-shrink:0;
+  display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;
+  font-size:16px;font-weight:800;color:#fff;background:#94a3b8;
+  border-radius:4px;margin-right:8px;flex-shrink:0;
 }
-/* 行高亮 */
+/* 行高亮 —— 深色背景 + 左侧高亮条（Excel 选中效果）*/
 table.ann-matrix tbody tr:hover td, .ann-matrix tbody tr:hover td{
-  background:#eff6ff !important;
+  background:#bfdbfe !important;
+  box-shadow:inset 4px 0 0 0 #1e40af;
 }
+/* nth-child 偶数行的 hover 也要覆盖 */
+table.ann-matrix tbody tr.row-data:nth-child(even):hover td{
+  background:#bfdbfe !important;
+}
+/* 悬停加深（仅普通格）—— fill-bg 也跟着加深 */
+table.ann-matrix tbody tr.row-data:hover td.cell-bg:not(.is-total) .fill-bg{ filter:brightness(0.85) saturate(1.15); }
 table.ann-matrix tbody tr:nth-child(even) td, .ann-matrix tbody tr:nth-child(even) td{
   background:#fafbfc;
 }
-/* 合计行 — 不影响 cell-bg 单元格 */
-table.ann-matrix .row-total td:not(.cell-bg),
-.ann-matrix .row-total td:not(.cell-bg){
-  background:#dbeafe;font-weight:700;color:#1e3a8a;
-  border-top:3px solid #2563eb;border-bottom:2px solid #2563eb;
+/* 合计行 — 边框统一 2px */
+table.ann-matrix tr.row-total td,
+.ann-matrix tr.row-total td{
+  border-top:2px solid #1e40af!important;
+  border-bottom:2px solid #1e40af!important;
+}
+table.ann-matrix tr.row-total td.cell-bg.is-total,
+.ann-matrix tr.row-total td.cell-bg.is-total{
+  border-top:2px solid #1e40af!important;
+  border-bottom:2px solid #1e40af!important;
+  border-left:1px solid #cbd5e1!important;
+  border-right:1px solid #cbd5e1!important;
+}
+table.ann-matrix tr.row-total td:not(.cell-bg),
+.ann-matrix tr.row-total td:not(.cell-bg){
+  background:#dbeafe;font-weight:700;color:#1e3a8a;font-size:14px;
+  border:1px solid #cbd5e1!important;
+  border-top:2px solid #1e40af!important;
+  border-bottom:2px solid #1e40af!important;
+}
+/* 合计行第一格（客户名列）加大字号 */
+table.ann-matrix .row-total td.td-name,
+.ann-matrix .row-total td.td-name{
+  font-size:15px;font-weight:800;letter-spacing:0.02em;
 }
 table.ann-matrix .td-total, .ann-matrix .td-total{font-weight:700;}
 /* 单元格主次层次（紧凑） */
@@ -709,10 +1182,14 @@ table.ann-matrix .td-total, .ann-matrix .td-total{font-weight:700;}
 /* ══════════ 格子背景填充（按完成度宽度+左右布局）══════════ */
 td.cell-bg{
   position:relative; padding:7px 8px; overflow:hidden;
-  border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;
+  border:1px solid #cbd5e1;
   background:#f8fafc;
   vertical-align:middle;
 }
+/* 表格整体网格 */
+table.ann-matrix{border-collapse:collapse;border:1px solid #cbd5e1;}
+table.ann-matrix thead th{border:1px solid #1e293b;}
+table.ann-matrix td{border:1px solid #cbd5e1;}
 td.cell-bg .fill-bg{
   position:absolute; top:0; left:0; bottom:0;
   width:var(--pct, 0%);
@@ -727,7 +1204,7 @@ td.cell-bg .cell-text{
 }
 /* 百分比在左 — 大字突出 */
 td.cell-bg .cell-text .cell-pct{
-  font-size:18px;line-height:1; font-weight:800;letter-spacing:-0.5px;
+  font-size:20px;line-height:1; font-weight:800;letter-spacing:-0.5px;
   color:#0f172a;
   text-shadow:
     0 0 5px rgba(255,255,255,0.95),
@@ -738,11 +1215,11 @@ td.cell-bg .cell-text .cell-pct{
 /* 金额在右 — 完成+指标两行 */
 td.cell-bg .cell-text .cell-main{
   display:flex; flex-direction:column; align-items:flex-end;
-  font-size:11.5px;line-height:1.25;font-weight:600;color:#334155;
+  font-size:18px;line-height:1.2;font-weight:700;color:#0f172a;
   text-align:right; flex:1; min-width:0;
 }
-td.cell-bg .cell-text .cell-main .cell-act{color:#0f172a;font-weight:700;}
-td.cell-bg .cell-text .cell-main .cell-tgt{color:#64748b;font-size:10.5px;margin-top:1px;}
+td.cell-bg .cell-text .cell-main .cell-act{color:#0f172a;font-weight:800;}
+td.cell-bg .cell-text .cell-main .cell-tgt{color:#64748b;font-size:16px;margin-top:1px;font-weight:500;}
 td.cell-bg .cell-text .cell-pct.up{color:#dc2626;}
 td.cell-bg .cell-text .cell-pct.down{color:#16a34a;}
 td.cell-bg .cell-text .cell-pct.achieved{color:#16a34a;}
@@ -751,26 +1228,32 @@ td.cell-bg .cell-text .cell-pct.low{color:#b45309;}
 td.cell-bg.is-empty .fill-bg{display:none;}
 /* 合计列：实色背景+白字（强制优先级超过所有 hover） */
 td.cell-bg.is-total{
-  background:var(--accent)!important;
-  border-color:rgba(255,255,255,0.25);
-  border-top:3px solid #1d4ed8!important;
-  border-bottom:2px solid #1d4ed8!important;
+  background:transparent!important;
+  border-left:1px solid #cbd5e1!important;
+  border-right:1px solid #cbd5e1!important;
+  border-top:1px solid #cbd5e1!important;
+  border-bottom:1px solid #cbd5e1!important;
 }
-td.cell-bg.is-total .cell-text{color:#fff!important;text-shadow:none!important;}
-td.cell-bg.is-total .cell-text .cell-main{color:#fff!important;font-size:13.5px!important;}
-td.cell-bg.is-total .cell-text .cell-pct{color:#fff!important;font-size:19px!important;text-shadow:none!important;}
-/* hover 时合计列也保持白字 */
+/* 只有当 is-total 不在 row-total 内时才用 2px 顶/底 */
+table.ann-matrix tbody tr:not(.row-total) td.cell-bg.is-total,
+.ann-matrix tbody tr:not(.row-total) td.cell-bg.is-total{
+  border-top:2px solid #1e40af!important;
+  border-bottom:2px solid #1e40af!important;
+}
+td.cell-bg.is-total .cell-text{color:#0f172a!important;text-shadow:none!important;}
+td.cell-bg.is-total .cell-text .cell-main{color:#0f172a!important;font-size:13.5px!important;}
+td.cell-bg.is-total .cell-text .cell-pct{color:#0f172a!important;font-size:19px!important;text-shadow:none!important;}
+/* hover 时合计列保持深色文字 */
 table.ann-matrix tbody tr:hover td.cell-bg.is-total,
 table.ann-matrix tbody tr:hover td.cell-bg.is-total .cell-text,
 table.ann-matrix tbody tr:hover td.cell-bg.is-total .cell-text *,
 table.ann-matrix tbody tr:hover td.cell-bg.is-total .cell-text .cell-main,
 table.ann-matrix tbody tr:hover td.cell-bg.is-total .cell-text .cell-pct{
-  color:#fff!important;
-  background:var(--accent)!important;
+  color:#0f172a!important;
+  background:transparent!important;
   text-shadow:none!important;
 }
 /* 悬停加深（仅普通格） */
-table.ann-matrix tbody tr.row-data:hover td.cell-bg:not(.is-total) .fill-bg{ filter:brightness(0.92); }
 /* 空单元格 */
 table.ann-matrix .td-empty, .ann-matrix .td-empty{
   text-align:center;color:#94a3b8;font-size:14px;padding:8px 0;
@@ -780,13 +1263,13 @@ table.ann-matrix .td-empty, .ann-matrix .td-empty{
 table.yoy-dept-table{width:100%;border-collapse:collapse;font-size:13px;}
 
 table.yoy-dept-table th.group-header{
-  font-size:20px;padding:18px 4px;letter-spacing:0.12em;
+  font-size:19px;padding:14px 4px;letter-spacing:0.12em;
 }
 table.yoy-dept-table th.inc-group{background:#c2410c;}
 table.yoy-dept-table th.pay-group{background:#047857;}
 table.yoy-dept-table td{padding:9px 10px;border:1px solid #e2e8f0;text-align:center;}
 table.yoy-dept-table tbody tr:nth-child(even){background:#f8fafc;}
-table.yoy-dept-table tbody tr:hover{background:#f1f5f9;}
+table.yoy-dept-table tbody tr:hover{background:#bfdbfe !important;box-shadow:inset 4px 0 0 0 #1e40af;}
 /* 事业部名称列 */
 table.yoy-dept-table td.dept-name{
   text-align:left;font-weight:800;font-size:14px;color:#1e293b;
@@ -844,10 +1327,17 @@ table.yoy-dept-table td.yoy-cell.flat .yoy-pct{
 }
 
 /* ══════════ 客户同比矩阵表（徽章+金额）══════════ */
-table.yoy-matrix-table{width:100%;border-collapse:collapse;font-size:12.5px;}
-table.yoy-matrix-table td{padding:7px 6px;border:1px solid #e2e8f0;text-align:center;vertical-align:middle;}
-table.yoy-matrix-table tbody tr:nth-child(even){background:#fafbfc;}
-table.yoy-matrix-table tbody tr:hover{background:#f1f5f9;}
+table.yoy-matrix-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;}
+/* yoy-matrix 表格 — 行底分隔 + hover 高亮覆盖所有单元格 */
+table.yoy-matrix-table td{padding:7px 6px;border:1px solid #e2e8f0;text-align:center;vertical-align:middle;border-bottom:2px solid #e2e8f0;}
+table.yoy-matrix-table tbody tr{border-bottom:2px solid #cbd5e1;}
+table.yoy-matrix-table tbody tr:nth-child(even){background:#f8fafc;}
+/* 行 hover — 覆盖所有单元格（包括 mx-yoy-cell），4px 深蓝左侧高亮 */
+table.yoy-matrix-table tbody tr:hover td,
+table.yoy-matrix-table tbody tr:hover{background:#bfdbfe !important;box-shadow:inset 4px 0 0 0 #1e40af;}
+/* hover 时不要让 mx-yoy-cell 的胶囊按钮背景被改 */
+table.yoy-matrix-table tbody tr:hover td.mx-yoy-cell{background:transparent!important;}
+table.yoy-matrix-table tbody tr:hover td.mx-yoy-cell .mx-badge{box-shadow:0 2px 8px rgba(0,0,0,0.25);}
 /* 客户名称 */
 table.yoy-matrix-table td.td-name{text-align:left;font-size:13px;color:#334155;padding-left:12px;}
 table.yoy-matrix-table .row-num{display:inline-block;width:22px;height:22px;line-height:22px;
@@ -890,9 +1380,71 @@ table.yoy-matrix-table td.mx-cell.down:hover .mx-badge{
 table.yoy-matrix-table td.mx-cell.flat .mx-badge{
   background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0;
 }
-/* 合计行 */
+/* 合计行 — 灰色外框框起 */
 table.yoy-matrix-table tr.row-total{background:linear-gradient(90deg,#eff6ff,#f0fdf4)!important;}
-table.yoy-matrix-table tr.row-total td{font-weight:700;border-top:2px solid var(--accent);}
+table.yoy-matrix-table tr.row-total td{font-weight:700;font-size:14px;}
+table.yoy-matrix-table tr.row-total td:not(.yoy-cell):not(.mx-amount-pair){
+  border:1px solid #cbd5e1;
+  border-top:2px solid #1e40af!important;
+  border-bottom:2px solid #1e40af!important;
+}
+
+/* ═══════════════════─ 重设计的金额/同比单元格（直观卡片化） ───────── */
+table.yoy-matrix-table td.mx-amount-cell{
+  padding:8px 10px;min-width:100px;text-align:left;
+  border:1px solid #cbd5e1;vertical-align:middle;
+}
+table.yoy-matrix-table td.mx-amount-cell .mx-amount-pair{
+  display:flex;flex-direction:column;gap:4px;
+}
+table.yoy-matrix-table td.mx-amount-cell .mx-amt-row{
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  font-size:24px;font-variant-numeric:tabular-nums;
+}
+table.yoy-matrix-table td.mx-amount-cell .mx-cur-row{
+  font-weight:900;color:#0f172a;font-size:26px;
+}
+table.yoy-matrix-table td.mx-amount-cell .mx-prev-row{
+  font-weight:600;color:#64748b;font-size:22px;
+}
+table.yoy-matrix-table td.mx-amount-cell .mx-amt-label{
+  font-size:12px;color:#64748b;font-weight:500;
+}
+table.yoy-matrix-table td.mx-amount-cell .mx-cur-row .mx-amt-label{color:#2563eb;}
+
+/* 同比单元格 — 胶囊按钮样式（红涨绿跌）
+   注意：不设 background，让父级行 hover 高亮能透过来 */
+table.yoy-matrix-table td.mx-yoy-cell{
+  padding:8px 6px;border:1px solid #cbd5e1;vertical-align:middle;
+  background:transparent;
+}
+table.yoy-matrix-table td.mx-yoy-cell .mx-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:8px;
+  font-size:18px;font-weight:800;letter-spacing:-0.3px;
+  color:#fff;line-height:1.2;
+  box-shadow:0 2px 6px rgba(0,0,0,0.15);
+  transition:transform 0.15s,box-shadow 0.15s;
+}
+table.yoy-matrix-table td.mx-yoy-cell.up .mx-badge{
+  background:linear-gradient(135deg,#dc2626 0%,#b91c1c 100%);
+  color:#fff;border:1px solid #991b1b;
+}
+table.yoy-matrix-table td.mx-yoy-cell.down .mx-badge{
+  background:linear-gradient(135deg,#22c55e 0%,#15803d 100%);
+  color:#fff;border:1px solid #14532d;
+}
+table.yoy-matrix-table td.mx-yoy-cell.flat .mx-badge{
+  background:linear-gradient(135deg,#94a3b8 0%,#64748b 100%);
+  color:#fff;border:1px solid #475569;
+}
+table.yoy-matrix-table td.mx-yoy-cell.sev-l .mx-pct,
+table.yoy-matrix-table td.mx-yoy-cell.sev-x .mx-pct{
+  font-size:14px;font-weight:900;
+}
+
+/* 合计行第一格（客户名列）加大字号 */
+table.yoy-matrix-table tr.row-total td.td-name{font-size:15px;font-weight:800;letter-spacing:0.02em;}
 /* 空格 */
 table.yoy-matrix-table .td-empty{color:#cbd5e1;font-style:italic;}
 
@@ -988,16 +1540,6 @@ function showPage(id){
   var t=document.querySelector('.nav a[data-target="'+id+'"]');
   if(t)t.classList.add('active');
   setTimeout(window.__resizeAllCharts, 100);
-  // 更新顶部 meta：按当前页的 data-range 属性
-  var meta = document.getElementById('pageMeta');
-  if (meta) {
-    var range = pageEl.getAttribute('data-range') || meta.getAttribute('data-default') || '';
-    var now = new Date();
-    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-    var ts = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
-           + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
-    meta.innerHTML = '数据 ' + (range || '—') + ' &nbsp;|&nbsp; 生成于 ' + ts;
-  }
 }
 
 /* ══════════════════════════════════════════════════════
@@ -1104,16 +1646,6 @@ setTimeout(initTableCollapse,200);
 setTimeout(function(){
   var firstPage=document.querySelector('.page.active');
   if(firstPage) delayAnim(firstPage, '.kpi, .hero-kpi, .ring-kpi, .mini-rate, .kpi-row>*', 80);
-  // 首屏页面 meta 也按 data-range 更新
-  var meta = document.getElementById('pageMeta');
-  if (meta && firstPage) {
-    var range = firstPage.getAttribute('data-range') || meta.getAttribute('data-default') || '';
-    var now = new Date();
-    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-    var ts = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
-           + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
-    meta.innerHTML = '数据 ' + (range || '—') + ' &nbsp;|&nbsp; 生成于 ' + ts;
-  }
 }, 300);
 
 // ══════════════════════════════════════════════════════
@@ -1192,6 +1724,130 @@ def completion_html(rate: float, show_bar: bool = True) -> str:
 
 
 
+
+
+
+def ring_svg_html(rate: float, ring_kind: str = "inc", size: int = 96, label: str = "") -> str:
+    """SVG 圆环图（完成进度），ring_kind: inc/pay"""
+    pct = max(0.0, rate * 100)
+    r = (size - 14) / 2
+    cx = cy = size / 2
+    circ = 2 * 3.141592653589793 * r
+    dash = (min(pct, 100) / 100.0) * circ
+    return (
+        f'<div class="hr-ring {ring_kind}-ring">'
+        f'<svg viewBox="0 0 {size} {size}">'
+        f'<circle class="hr-track" cx="{cx}" cy="{cy}" r="{r:.2f}"/>'
+        f'<circle class="hr-progress" cx="{cx}" cy="{cy}" r="{r:.2f}" '
+        f'stroke-dasharray="{dash:.2f} {circ:.2f}" stroke-dashoffset="0"/>'
+        f'</svg>'
+        f'<div class="hr-center">'
+        f'<div class="hr-pct">{pct:.1f}%</div>'
+        f'<div class="hr-label">{label}</div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def hero_rings_html(inc_act: float, inc_tgt: float, pay_act: float, pay_tgt: float,
+                    toggle_js: str = "", header_left: str = "收入", header_right: str = "回款",
+                    inc_yoy: float | None = None, pay_yoy: float | None = None,
+                    inc_cust: int = 0, pay_cust: int = 0,
+                    inc_sales: int = 0, pay_sales: int = 0,
+                    yoy_period: str = "", total_tgt: float | None = None,
+                    total_label: str = "总指标", show_cust_sales: bool = True) -> str:
+    """5列 Hero 布局（信息丰富版）"""
+    inc_r = inc_act / inc_tgt if inc_tgt else 0
+    pay_r = pay_act / pay_tgt if pay_tgt else 0
+    inc_gap = inc_tgt - inc_act
+    pay_gap = pay_tgt - pay_act
+    onclick = f' onclick="{toggle_js}"' if toggle_js else ""
+    cursor = ' style="cursor:pointer"' if toggle_js else ""
+
+    def _yoy_badge(yoy: float | None) -> str:
+        if yoy is None:
+            return ""
+        if yoy >= 0:
+            return f'<span class="hr-yoy hr-yoy-up">&#9650; {yoy*100:.1f}%</span>'
+        return f'<span class="hr-yoy hr-yoy-dn">&#9660; {abs(yoy)*100:.1f}%</span>'
+
+    def _metric_row(label: str, value: str, cls: str = "") -> str:
+        return f'<div class="hr-metric {cls}"><span class="hr-metric-label">{label}</span><span class="hr-metric-val">{value}</span></div>'
+
+    yoy_note = f'<span class="hr-yoy-period">{yoy_period}</span>' if yoy_period else ""
+
+    chart_icon = (
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" '
+        'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" '
+        'style="vertical-align:-3px;margin-right:4px">'
+        '<line x1="12" y1="20" x2="12" y2="10"/>'
+        '<line x1="18" y1="20" x2="18" y2="4"/>'
+        '<line x1="6" y1="20" x2="6" y2="16"/>'
+        '</svg>'
+    )
+
+    # 客户/销售行（可选）
+    cust_inc = f'{_metric_row("客户/销售", f"{inc_cust} 家 / {inc_sales} 人")}' if show_cust_sales else ""
+    cust_pay = f'{_metric_row("客户/销售", f"{pay_cust} 家 / {pay_sales} 人")}' if show_cust_sales else ""
+
+    # 中间区
+    if total_tgt is not None:
+        center = (
+            f'<div class="hr-center-box">'
+            f'<div class="hr-center-label">{chart_icon}{total_label}</div>'
+            f'<div class="hr-center-value">{fmt_wan(total_tgt)}<span class="hr-center-unit">万元</span></div>'
+            f'</div>'
+        )
+        side_rings = (
+            f'<div class="hr-side-ring inc-side-ring">{ring_svg_html(inc_r, "inc", 130, header_left)}</div>'
+            f'{center}'
+            f'<div class="hr-side-ring pay-side-ring">{ring_svg_html(pay_r, "pay", 130, header_right)}</div>'
+        )
+    else:
+        side_rings = (
+            f'<div class="hr-rings">'
+            f'{ring_svg_html(inc_r, "inc", 130, header_left)}'
+            f'{ring_svg_html(pay_r, "pay", 130, header_right)}'
+            f'</div>'
+        )
+
+    # 中间双环 + 收入/回款总指标
+    center = (
+        f'<div class="hr-center-box">'
+        f'<div class="hr-center-split">'
+        f'<div class="hr-cs-col"><div class="hr-cs-label">收入实际</div><div class="hr-cs-val">{fmt_wan(inc_act)} 万</div></div>'
+        f'<div class="hr-cs-div"></div>'
+        f'<div class="hr-cs-col"><div class="hr-cs-label">回款实际</div><div class="hr-cs-val">{fmt_wan(pay_act)} 万</div></div>'
+        f'</div>'
+        f'</div>'
+    )
+    side_rings = (
+        f'<div class="hr-side-ring inc-side-ring">{ring_svg_html(inc_r, "inc", 130, header_left)}</div>'
+        f'{center}'
+        f'<div class="hr-side-ring pay-side-ring">{ring_svg_html(pay_r, "pay", 130, header_right)}</div>'
+    )
+
+    return (
+        f'<div class="hero-rings"{onclick}{cursor}>'
+        f'<div class="hr-side inc-side">'
+        f'<div class="hr-side-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> {header_left}指标 {_yoy_badge(inc_yoy)} {yoy_note}</div>'
+        f'<div class="hr-side-amount hr-side-target">{fmt_wan(inc_tgt)}<span class="hr-side-unit">万元</span></div>'
+        f'<div class="hr-side-metrics">'
+        f'{_metric_row("还差", fmt_wan(inc_gap) + " 万", "hr-metric-gap")}'
+        f'{cust_inc}'
+        f'</div>'
+        f'</div>'
+        f'{side_rings}'
+        f'<div class="hr-side pay-side">'
+        f'<div class="hr-side-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> {header_right}指标 {_yoy_badge(pay_yoy)} {yoy_note}</div>'
+        f'<div class="hr-side-amount hr-side-target">{fmt_wan(pay_tgt)}<span class="hr-side-unit">万元</span></div>'
+        f'<div class="hr-side-metrics">'
+        f'{_metric_row("还差", fmt_wan(pay_gap) + " 万", "hr-metric-gap")}'
+        f'{cust_pay}'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
 
 
 def yoy_html(current: float, previous: float) -> str:

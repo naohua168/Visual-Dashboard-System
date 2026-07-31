@@ -33,8 +33,9 @@ class DepartmentMapper:
             if not k.startswith("_"):
                 self.payment_map[k] = v
 
-        # 内部交易排除名单
-        self.excluded_companies = mapping_data.get("excluded_internal_companies", {}).get("companies", [])
+        # 内部交易排除名单（直接数组格式）
+        excluded = mapping_data.get("excluded_internal_companies", [])
+        self.excluded_companies = excluded if isinstance(excluded, list) else excluded.get("companies", [])
 
     def map_income_dept(self, dept_name):
         """收入版部门映射"""

@@ -40,7 +40,7 @@ STEPS = [
         "key": "yearly",
         "name": "Phase 0: 年基线清洗",
         "module": "engine.yearly_baseline.run",
-        "description": "读取 2025年收入回款.xlsx，清洗为年收入/年回款标准表",
+        "description": "读取往年收入数据/往年回款数据，清洗为往年收入/往年回款标准表",
     },
     {
         "key": "clean",
@@ -58,7 +58,7 @@ STEPS = [
         "key": "render",
         "name": "Phase 4: 渲染 HTML 看板",
         "module": "processors.run",
-        "description": "加载已清洗数据，生成 4 页面 HTML 可视化看板到 output/",
+        "description": "加载已清洗数据，生成 6 页面 HTML 可视化看板到 output/",
     },
 ]
 
@@ -95,18 +95,27 @@ def preflight_check() -> list[str]:
     """检查运行依赖的文件是否存在，返回问题列表（空=全部通过）"""
     issues = []
 
-    config_path = BASE_DIR / "config" / "cleaning_config.json"
+    config_path = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
     if not config_path.exists():
         issues.append(f"缺失配置文件: {config_path.relative_to(BASE_DIR)}")
 
     mappings_dir = BASE_DIR / "data" / "mappings"
-    expected = ["部门事业部映射", "客户名单", "客户统称名单", "客户销售对应规则"]
+    expected = ["部门事业部映射", "客户名单"]
     if not mappings_dir.exists():
         issues.append(f"缺失目录: data/mappings/")
     else:
         for sub in expected:
             if not (mappings_dir / sub).exists():
                 issues.append(f"缺失映射目录: data/mappings/{sub}/")
+
+    sales_dir = BASE_DIR / "config" / "销售规则"
+    expected_sales = ["客户统称名单.json", "客户销售对应规则.json"]
+    if not sales_dir.exists():
+        issues.append(f"缺失目录: config/销售规则/")
+    else:
+        for fname in expected_sales:
+            if not (sales_dir / fname).exists():
+                issues.append(f"缺失销售规则: config/销售规则/{fname}")
 
     raw_dir = BASE_DIR / "data" / "raw"
     if not raw_dir.exists():

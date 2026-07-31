@@ -5,10 +5,10 @@ import math
 
 
 def fmt_wan(amount: float | int | None) -> str:
-    """金额格式化为万元展示（千分位，无小数）
+    """金额格式化为万元展示（千分位、无小数）
 
     输入金额单位：元（清洗阶段已统一为元）
-    本函数按万元展示（÷10000 后的值取整）。
+    本函数按万元展示，取整显示（无小数点）。
     """
     if amount is None or (isinstance(amount, float) and math.isnan(amount)):
         return "—"
@@ -86,3 +86,34 @@ def extract_date_range(df, col: str = "日期") -> str:
         return f"{d_min} ~ {d_max}"
     except Exception:
         return ""
+
+
+def get_config_range(base_dir, key: str) -> str:
+    """从 cleaning_config.json 读取配置的时间范围
+
+    key: "月度数据" | "季度累计筛选"
+    返回: "YYYY-MM-DD ~ YYYY-MM-DD" 或空字符串
+    """
+    import json
+    from pathlib import Path
+    config_path = base_dir / "config" / "清洗配置" / "cleaning_config.json"
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        tr = cfg.get("时间范围", {}).get(key, {})
+        start = tr.get("start_date", "")
+        end = tr.get("end_date", "")
+        # 去掉 end_date 中的时间部分（如 " 23:59:59"）
+        end = end.split(" ")[0] if end else ""
+        if start and end:
+            return f"{start} ~ {end}"
+        return ""
+    except Exception:
+        return ""
+
+
+def range_banner_html(range_text: str) -> str:
+    """生成数据范围 banner HTML（页面内容区顶部）"""
+    if not range_text:
+        return ""
+    return f'<div class="range-banner">数据范围 · {range_text}</div>'

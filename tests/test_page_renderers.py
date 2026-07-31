@@ -14,10 +14,11 @@ BASE_DIR = Path(__file__).parent.parent
 def has_sheets():
     sheets = BASE_DIR / "data" / "sheets"
     required = ["当年累计收入/当年累计收入.xlsx", "当年累计回款/当年累计回款.xlsx",
-                "销售收入/销售收入.xlsx", "销售回款/销售回款.xlsx",
-                "总指标/总指标.xlsx",
-                "月度收入指标/月度收入指标.xlsx", "月度回款指标/月度回款指标.xlsx"]
-    return all((sheets / r).exists() for r in required)
+                "销售收入/销售收入.xlsx", "销售回款/销售回款.xlsx"]
+    man = sheets / "手动维护"
+    required_man = ["年度收入总指标", "月度收入指标", "月度回款指标"]
+    return (all((sheets / r).exists() for r in required)
+            and all(list((man / d).glob("*.xlsx")) for d in required_man))
 
 pytestmark = pytest.mark.skipif(not has_sheets(), reason="data/sheets/ data incomplete")
 
@@ -27,7 +28,7 @@ PAGE_CLASSES = [
     (MonthlyPage, "monthly", "月度达成"),
     (SalesPage, "sales", "销售达成"),
     (YoyPage, "yoy", "年度同比"),
-    (QuarterlyPage, "quarterly", "季度分析"),
+    (QuarterlyPage, "quarterly", "季度达成"),
 ]
 
 

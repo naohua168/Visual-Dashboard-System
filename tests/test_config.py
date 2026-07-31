@@ -1,11 +1,13 @@
-"""测试配置加载 — cleaning_config.json 和 4 份 mappings 文件可读"""
+"""测试配置加载 — cleaning_config.json 和映射/规则文件可读"""
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 BASE_DIR = Path(__file__).parent.parent
-CONFIG_PATH = BASE_DIR / "config" / "cleaning_config.json"
+CONFIG_PATH = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
+SALES_DIR = BASE_DIR / "config" / "销售规则"
 
 
 def test_config_exists():
@@ -31,8 +33,8 @@ def test_config_data_sources():
         data = json.load(f)
     src = data["数据源"]
     assert "财务端" in src and "运营端" in src
-    # 财务端必需的子源
-    for sub in ["客户名单", "收入", "回款", "广东公司", "湖南公司"]:
+    # 财务端必需的子源（客户名单从映射文件加载，不在此处）
+    for sub in ["收入", "回款", "广东公司", "湖南公司"]:
         assert sub in src["财务端"], f"财务端缺少子源: {sub}"
     # 运营端必需的子源
     for sub in ["收入", "回款"]:
@@ -49,19 +51,24 @@ def test_config_output_paths():
 
 
 def test_mappings_exist():
-    """4 份 mappings JSON 文件均存在且有效"""
-    mappings_dir = BASE_DIR / "data" / "mappings"
-    expected = {
-        "部门事业部映射": "部门事业部映射.json",
-        "客户名单": "客户名单.json",
-        "客户统称名单": "客户统称名单.json",
-        "客户销售对应规则": "客户销售对应规则.json",
-    }
-    for folder, filename in expected.items():
-        path = mappings_dir / folder / filename
+    """映射和规则 JSON 文件均存在且有效（2份在 data/mappings/ + 2份在 config/销售规则/）"""
+    # data/mappings/ 下的清洗映射
+    for folder, filename in [
+        ("部门事业部映射", "部门事业部映射.json"),
+        ("客户名单", "客户名单.json"),
+    ]:
+        path = BASE_DIR / "data" / "mappings" / folder / filename
         assert path.exists(), f"映射文件不存在: {path}"
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)  # 必须 JSON 有效
+            data = json.load(f)
+        assert isinstance(data, dict)
+
+    # config/销售规则/ 下的销售规则
+    for filename in ["客户统称名单.json", "客户销售对应规则.json"]:
+        path = SALES_DIR / filename
+        assert path.exists(), f"销售规则文件不存在: {path}"
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
         assert isinstance(data, dict)
 
 
@@ -91,10 +98,130 @@ def test_customer_list_count():
 
 
 def test_sales_rules_structure():
-    """销售规则包含 4 个层级"""
-    path = BASE_DIR / "data" / "mappings" / "客户销售对应规则" / "客户销售对应规则.json"
+    """销售规则包含 3 个层级（广东/深圳/销售规则 合并）"""
+    path = SALES_DIR / "客户销售对应规则.json"
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    for layer in ["广东公司规则", "深圳公司规则", "其他规则", "默认规则"]:
+    for layer in ["广东公司规则", "深圳公司规则", "销售规则"]:
         assert layer in data, f"销售规则缺少层级: {layer}"
         assert isinstance(data[layer], dict)
+
+
+# ──────────────────────────────────────────────────────────────
+# 动态时间范围解析测试（dynamic / static 模式）
+# ──────────────────────────────────────────────────────────────
+from engine.core.config import (
+    _compute_last_full_month,
+    _compute_last_full_quarter,
+    resolve_time_range,
+    get_quarterly_time_range,
+)
+
+
+def test_last_full_month_mid_year():
+    """7月中旬 → 上一个完整月应为6月"""
+    now = datetime(2026, 7, 29)
+    r = _compute_last_full_month(now)
+    assert r["start_date"] == "2026-06-01"
+    assert r["end_date"] == "2026-06-30 23:59:59"
+
+
+def test_last_full_month_year_boundary():
+    """1月 → 上一个完整月应为去年12月，年份正确切换"""
+    now = datetime(2026, 1, 15)
+    r = _compute_last_full_month(now)
+    assert r["start_date"] == "2025-12-01"
+    assert r["end_date"] == "2025-12-31 23:59:59"
+
+
+def test_last_full_month_february_leap():
+    """2月（29天）→ 上一个完整月应为1月"""
+    now = datetime(2024, 2, 10)
+    r = _compute_last_full_month(now)
+    assert r["start_date"] == "2024-01-01"
+    assert r["end_date"] == "2024-01-31 23:59:59"
+
+
+def test_last_full_quarter_q3_unfinished():
+    """7月 → 上一个完整季度应为Q2（4-6月）"""
+    now = datetime(2026, 7, 29)
+    r = _compute_last_full_quarter(now)
+    assert r["start_date"] == "2026-04-01"
+    assert r["end_date"] == "2026-06-30 23:59:59"
+
+
+def test_last_full_quarter_q1_year_boundary():
+    """2月（Q1未结束）→ 上一个完整季度应为去年Q4"""
+    now = datetime(2026, 2, 15)
+    r = _compute_last_full_quarter(now)
+    assert r["start_date"] == "2025-10-01"
+    assert r["end_date"] == "2025-12-31 23:59:59"
+
+
+def test_last_full_quarter_q4_november():
+    """11月 → 上一个完整季度应为Q3（7-9月）"""
+    now = datetime(2026, 11, 30)
+    r = _compute_last_full_quarter(now)
+    assert r["start_date"] == "2026-07-01"
+    assert r["end_date"] == "2026-09-30 23:59:59"
+
+
+def test_resolve_dynamic_last_full_month():
+    """dynamic + last_full_month 模式解析"""
+    spec = {
+        "_mode": "dynamic",
+        "_strategy": "last_full_month",
+        "start_date": "2026-06-01",  # 静态值应被覆盖
+        "end_date": "2026-06-30 23:59:59",
+    }
+    r = resolve_time_range(spec, datetime(2026, 7, 29))
+    assert r["start_date"] == "2026-06-01"
+    assert r["end_date"] == "2026-06-30 23:59:59"
+    assert r["_mode"] == "dynamic"
+    assert r["_strategy"] == "last_full_month"
+    assert r["_resolved"] is True
+
+
+def test_resolve_static_passthrough():
+    """static 模式直接使用配置值"""
+    spec = {
+        "start_date": "2025-12-01",
+        "end_date": "2025-12-31 23:59:59",
+    }
+    r = resolve_time_range(spec)
+    assert r["start_date"] == "2025-12-01"
+    assert r["end_date"] == "2025-12-31 23:59:59"
+    assert r["_mode"] == "static"
+    assert r["_resolved"] is False
+
+
+def test_resolve_unknown_strategy_raises():
+    """未知策略应抛错（fail-fast）"""
+    spec = {"_mode": "dynamic", "_strategy": "unknown"}
+    with pytest.raises(ValueError, match="未知的动态策略"):
+        resolve_time_range(spec)
+
+
+def test_quarterly_time_range_uses_config():
+    """读取 cleaning_config.json 后，季度范围走 dynamic 解析"""
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    r = get_quarterly_time_range(config, datetime(2026, 7, 29))
+    # dynamic 模式自动解析为 Q2（4-6月）
+    assert r["start_date"] == "2026-04-01"
+    assert r["end_date"] == "2026-06-30 23:59:59"
+    assert r["_mode"] == "dynamic"
+
+
+def test_current_config_uses_dynamic_mode():
+    """当前 cleaning_config.json 的时间范围必须使用 dynamic 模式
+
+    这是防止有人退回到硬编码日期的回归测试。
+    """
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    time_range = config["时间范围"]
+    assert time_range["月度数据"]["_mode"] == "dynamic"
+    assert time_range["月度数据"]["_strategy"] == "last_full_month"
+    assert time_range["季度累计筛选"]["_mode"] == "dynamic"
+    assert time_range["季度累计筛选"]["_strategy"] == "last_full_quarter"

@@ -12,8 +12,8 @@ import json
 
 import pandas as pd
 
-from .base import BaseRenderer, completion_html, rate_cls
-from .utils import fmt_wan, safe_float, extract_date_range
+from .base import BaseRenderer, completion_html, rate_cls, hero_rings_html
+from .utils import fmt_wan, safe_float, extract_date_range, get_config_range, range_banner_html
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 DEPT_COLORS = {"检测": "#2563eb", "信息": "#8b5cf6", "能源": "#f59e0b", "海外": "#0d9488"}
@@ -26,7 +26,8 @@ class OverviewPage(BaseRenderer):
     def render(self, data) -> str:
         df_inc = data.income.copy()
         df_pay = data.payment.copy()
-        df_tgt = data.total_targets.copy()
+        df_inc_tgt = data.annual_income_targets.copy()
+        df_pay_tgt = data.annual_payment_targets.copy()
         df_si = data.sales_income.copy()
         df_sp = data.sales_payment.copy()
 
@@ -35,80 +36,68 @@ class OverviewPage(BaseRenderer):
 
         t_inc = float(df_inc["金额_万"].sum())
         t_pay = float(df_pay["金额_万"].sum())
-        t_tgt = sum(safe_float(df_tgt[d].sum()) for d in DEPARTMENTS if d in df_tgt.columns)
-        inc_rate = t_inc / t_tgt if t_tgt else 0
-        pay_rate = t_pay / t_tgt if t_tgt else 0
+        t_inc_tgt = sum(safe_float(df_inc_tgt[d].sum()) for d in DEPARTMENTS if d in df_inc_tgt.columns)
+        t_pay_tgt = sum(safe_float(df_pay_tgt[d].sum()) for d in DEPARTMENTS if d in df_pay_tgt.columns)
+        inc_rate = t_inc / t_inc_tgt if t_inc_tgt else 0
+        pay_rate = t_pay / t_pay_tgt if t_pay_tgt else 0
 
+        # 年累计范围（从配置文件读取：1月~月度数据截止月）
+        annual_range = get_config_range(self.base_dir, "年度累计")
+        banner = range_banner_html(annual_range)
         return self.wrap_page(
-            self._kpi_strip(t_inc, t_pay, t_tgt, inc_rate, pay_rate, data, df_inc)
-            + self._dept_matrix(df_inc, df_pay, df_tgt)
+            banner + self._kpi_strip(t_inc, t_pay, t_inc_tgt, t_pay_tgt, inc_rate, pay_rate, data, df_inc)
+            + self._dept_matrix(df_inc, df_pay, df_inc_tgt, df_pay_tgt)
             + self._sales_achievement_landscape(df_si, df_sp, data)
             + self._extra_css()
         , extract_date_range(data.income))
 
     # ════════════════════════════════════════════════════════════
-    # [A] 顶部 4 KPI — 环形进度 + 大数字
+    # [A] 顶部 Hero — 同年度达成款：收入/总指标/回款 + 圆环
     # ════════════════════════════════════════════════════════════
-    def _kpi_strip(self, t_inc, t_pay, t_tgt, inc_rate, pay_rate, data, df_inc) -> str:
-        # 同比 2024 全年
-        yoy_inc = 0.0
-        yoy_pay = 0.0
+    def _kpi_strip(self, t_inc, t_pay, t_inc_tgt, t_pay_tgt, inc_rate, pay_rate, data, df_inc) -> str:
+        # 同比 2024 同期：起止月份从 "年度累计" 配置读取（手动模式驱动）
+        yoy_inc = None
+        yoy_pay = None
+        yoy_label = ""
+        cur_start_m = 1
+        cur_end_m = 6  # fallback
+        # 从配置文件读取年度累计起止月
+        annual_range = get_config_range(self.base_dir, "年度累计")
+        if annual_range and "~" in annual_range:
+            try:
+                cur_start_m = int(annual_range.split("~")[0].strip().split("-")[1])
+                cur_end_m = int(annual_range.split("~")[1].strip().split("-")[1])
+            except (IndexError, ValueError):
+                pass
+        # 真实数据兜底：保证截止月份不超出数据
+        if len(df_inc):
+            inc_dates = pd.to_datetime(df_inc["日期"], errors="coerce").dropna()
+            if len(inc_dates):
+                data_max_m = int(inc_dates.max().month)
+                if data_max_m < cur_end_m:
+                    cur_end_m = data_max_m
+        cur_year = int(inc_dates.min().year) if len(inc_dates) else pd.Timestamp.now().year
+        yoy_label = f"{cur_year}年{cur_start_m:02d}-{cur_end_m:02d}月 vs 2024年{cur_start_m:02d}-{cur_end_m:02d}月"
         if data.has_yearly_baseline:
             yi = data.yearly_income.copy()
             yp = data.yearly_payment.copy()
-            yi["日期"] = pd.to_datetime(yi["日期"], errors="coerce")
-            yp["日期"] = pd.to_datetime(yp["日期"], errors="coerce")
-            # 取 2024 全年合计（yearly_income 就是 2024 年基线）
-            yi_2024 = yi["金额"].sum() / 10000.0
-            yp_2024 = yp["金额"].sum() / 10000.0
-            if yi_2024 > 0:
-                yoy_inc = (t_inc - yi_2024) / yi_2024 * 100
-            if yp_2024 > 0:
-                yoy_pay = (t_pay - yp_2024) / yp_2024 * 100
+            yi["月"] = pd.to_datetime(yi["日期"], errors="coerce").dt.month
+            yp["月"] = pd.to_datetime(yp["日期"], errors="coerce").dt.month
+            prev_inc = float(yi[(yi["月"] >= cur_start_m) & (yi["月"] <= cur_end_m)]["金额"].sum()) / 10000.0
+            prev_pay = float(yp[(yp["月"] >= cur_start_m) & (yp["月"] <= cur_end_m)]["金额"].sum()) / 10000.0
+            if prev_inc > 0:
+                yoy_inc = (t_inc - prev_inc) / prev_inc
+            if prev_pay > 0:
+                yoy_pay = (t_pay - prev_pay) / prev_pay
 
-        # 客户集中度
-        cust_inc = df_inc.groupby("客户")["金额_万"].sum().sort_values(ascending=False)
-        top5_pct = cust_inc.head(5).sum() / cust_inc.sum() * 100 if len(cust_inc) else 0
-        top1_pct = cust_inc.iloc[0] / cust_inc.sum() * 100 if len(cust_inc) > 0 else 0
-
-        def ring_card(label, value, sub, color, ring_pct, ring_label, badge):
-            """环形进度 + 大数字 + 副信息"""
-            r = 36
-            circ = 2 * 3.14159 * r
-            offset = circ * (1 - min(ring_pct, 1))
-            return f"""<div class="ring-kpi" style="--accent:{color}">
-  <div class="ring-svg-wrap">
-    <svg width="84" height="84" viewBox="0 0 84 84">
-      <circle cx="42" cy="42" r="{r}" fill="none" stroke="#eef0f5" stroke-width="6"/>
-      <circle cx="42" cy="42" r="{r}" fill="none" stroke="{color}" stroke-width="6"
-        stroke-dasharray="{circ:.1f}" stroke-dashoffset="{offset:.1f}"
-        stroke-linecap="round" transform="rotate(-90 42 42)"/>
-      <text x="42" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="{color}">{ring_label}</text>
-    </svg>
-  </div>
-  <div class="ring-content">
-    <div class="ring-label">{label}</div>
-    <div class="ring-value" style="color:{color}">{value}</div>
-    <div class="ring-sub">{sub}</div>
-  </div>
-  {badge}
-</div>"""
-
-        # 同比徽章
-        inc_badge = f'<span class="ring-badge up">↑ +{yoy_inc:.0f}%</span>' if yoy_inc > 0 else f'<span class="ring-badge down">↓ {yoy_inc:.0f}%</span>'
-        pay_badge = f'<span class="ring-badge up">↑ +{yoy_pay:.0f}%</span>' if yoy_pay > 0 else f'<span class="ring-badge down">↓ {yoy_pay:.0f}%</span>'
-        conc_badge = '<span class="ring-badge warn">⚠ 高风险</span>' if top5_pct > 50 else '<span class="ring-badge ok">✓ 正常</span>'
-
-        return self.section("📊 核心指标速览 · 2026 年度", "sec-amber") + f"""<div class="ring-kpi-grid">
-  {ring_card("收入完成度", f"{inc_rate*100:.1f}%",
-            f"{fmt_wan(t_inc)} 万 / 目标 {fmt_wan(t_tgt)} 万",
-            "#16a34a" if inc_rate>=0.5 else "#f59e0b" if inc_rate>=0.3 else "#dc2626",
-            inc_rate, f"{inc_rate*100:.0f}%", inc_badge)}
-  {ring_card("回款完成度", f"{pay_rate*100:.1f}%",
-            f"{fmt_wan(t_pay)} 万 / 目标 {fmt_wan(t_tgt)} 万",
-            "#16a34a" if pay_rate>=0.5 else "#f59e0b" if pay_rate>=0.3 else "#dc2626",
-            pay_rate, f"{pay_rate*100:.0f}%", pay_badge)}
-</div>"""
+        total_tgt = t_inc_tgt + t_pay_tgt
+        return hero_rings_html(
+            t_inc, t_inc_tgt, t_pay, t_pay_tgt, "", "收入", "回款",
+            inc_yoy=yoy_inc, pay_yoy=yoy_pay,
+            yoy_period=yoy_label,
+            total_tgt=total_tgt, total_label="年度总指标",
+            show_cust_sales=False,
+        )
 
     # ════════════════════════════════════════════════════════════
     # [B] 月度趋势 + 销售TOP10（折线图 + 横向条形）
@@ -149,7 +138,7 @@ class OverviewPage(BaseRenderer):
         trend_chart = self._trend_chart(df_inc, df_pay)
 
         return (
-            self.section("📈 月度趋势 & 🏆 销售TOP10", "sec-blue")
+            self.section("月度趋势 & 销售TOP10", "sec-blue")
             + f'<div class="cols-2">'
             f'<div>{trend_chart}</div>'
             f'<div class="card" style="padding:10px 12px">'
@@ -203,7 +192,7 @@ class OverviewPage(BaseRenderer):
     # ════════════════════════════════════════════════════════════
     # [C] 部门完成度矩阵（cell-bg 风格）
     # ════════════════════════════════════════════════════════════
-    def _dept_matrix(self, df_inc, df_pay, df_tgt) -> str:
+    def _dept_matrix(self, df_inc, df_pay, df_inc_tgt, df_pay_tgt) -> str:
         def cell(pct):
             if pct == 0:
                 return '<td class="td-empty">—</td>'
@@ -222,15 +211,15 @@ class OverviewPage(BaseRenderer):
                 f'<div class="fill-bg"></div>'
                 f'<div class="cell-text">'
                 f'<span class="cell-pct{pct_cls}">{pct_label}</span>'
-                f'<div class="cell-main"><span class="cell-act">{fmt_wan(pct*100)}%</span></div>'
+                f'<div class="cell-main"><span class="cell-act-val">{fmt_wan(pct*100)}%</span></div>'
                 f'</div></td>'
             )
 
         thead = (
             "<tr>"
             '<th rowspan="2" class="th-name">事业部</th>'
-            '<th colspan="2" class="group-header inc-group">📈 收入（年度）</th>'
-            '<th colspan="2" class="group-header pay-group">💰 回款（年度）</th>'
+            '<th colspan="2" class="group-header inc-group">收入（年度）</th>'
+            '<th colspan="2" class="group-header pay-group">回款（年度）</th>'
             "</tr>"
             "<tr>"
             "<th>实际（万）</th><th>完成度</th>"
@@ -242,9 +231,10 @@ class OverviewPage(BaseRenderer):
         for d in DEPARTMENTS:
             inc_v = float(df_inc[df_inc["事业部"] == d]["金额_万"].sum())
             pay_v = float(df_pay[df_pay["事业部"] == d]["金额_万"].sum())
-            tgt = safe_float(df_tgt[d].sum())
-            inc_r = inc_v / tgt if tgt > 0 else 0
-            pay_r = pay_v / tgt if tgt > 0 else 0
+            inc_tgt = safe_float(df_inc_tgt[d].sum())
+            pay_tgt = safe_float(df_pay_tgt[d].sum())
+            inc_r = inc_v / inc_tgt if inc_tgt > 0 else 0
+            pay_r = pay_v / pay_tgt if pay_tgt > 0 else 0
             t_inc_act += inc_v; t_pay_act += pay_v
             dcolor = DEPT_COLORS.get(d, "#94a3b8")
             rows += (
@@ -257,8 +247,8 @@ class OverviewPage(BaseRenderer):
                 f'</tr>'
             )
         # 合计
-        t_inc_r = t_inc_act / sum(safe_float(df_tgt[d].sum()) for d in DEPARTMENTS) if sum(safe_float(df_tgt[d].sum()) for d in DEPARTMENTS) > 0 else 0
-        t_pay_r = t_pay_act / sum(safe_float(df_tgt[d].sum()) for d in DEPARTMENTS) if sum(safe_float(df_tgt[d].sum()) for d in DEPARTMENTS) > 0 else 0
+        t_inc_r = t_inc_act / sum(safe_float(df_inc_tgt[d].sum()) for d in DEPARTMENTS) if sum(safe_float(df_inc_tgt[d].sum()) for d in DEPARTMENTS) > 0 else 0
+        t_pay_r = t_pay_act / sum(safe_float(df_pay_tgt[d].sum()) for d in DEPARTMENTS) if sum(safe_float(df_pay_tgt[d].sum()) for d in DEPARTMENTS) > 0 else 0
         rows += (
             f'<tr class="row-total">'
             f'<td class="td-name td-total">合计（4部门）</td>'
@@ -270,7 +260,7 @@ class OverviewPage(BaseRenderer):
         )
 
         return (
-            self.section("🏢 部门完成度矩阵 · 4 部门 × 收入/回款", "sec-purple")
+            self.section("部门完成度矩阵 · 4 部门 × 收入/回款", "sec-purple")
             + f'<div class="card" style="padding:10px 12px">'
             f'<div class="table-wrap no-collapse"><table class="yoy-dept-table">'
             f'<thead>{thead}</thead>'
@@ -284,9 +274,9 @@ class OverviewPage(BaseRenderer):
     # [D] 销售年度收入/回款达成度（各 Top 10，分开两张卡）
     # ════════════════════════════════════════════════════════════
     def _sales_achievement_landscape(self, df_si, df_sp, data) -> str:
-        # 与销售页(page_sales._card1_sales)保持一致：直接从 total_targets 汇总
+        # 与销售页(page_sales._card1_sales)保持一致：直接从年度收入总指标汇总
         # 不用 data.sales_targets（_compute_sales_targets 按规则反推会包含没在总指标中列出的客户）
-        df_tgt = data.total_targets.copy()
+        df_tgt = data.annual_income_targets.copy()
         dept_cols = DEPARTMENTS
         sales_tgt: dict[str, float] = {}
         for _, row in df_tgt.iterrows():
@@ -325,7 +315,7 @@ class OverviewPage(BaseRenderer):
             return f'<div class="card"><div class="card-title">销售{label} TOP10<span style="font-size:11px;color:var(--text-muted);font-weight:400;margin-left:auto">总 {fmt_wan(total)} 万</span></div><div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">{sub}</div>{rows}</div>'
 
         return (
-            self.section("🏆 销售年度收入/回款达成度 · Top 10", "sec-green")
+            self.section("销售年度收入/回款达成度 · Top 10", "sec-green")
             + '<div class="cols-2">'
             + top_card("收入", si_all.to_dict(), float(si_all.sum()))
             + top_card("回款", sp_all.to_dict(), float(sp_all.sum()))
@@ -337,31 +327,6 @@ class OverviewPage(BaseRenderer):
     # ════════════════════════════════════════════════════════════
     def _extra_css(self) -> str:
         return """<style>
-/* 环形KPI卡 */
-.ring-kpi-grid{
-  display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:8px;
-}
-.ring-kpi{
-  background:#fff;padding:14px 14px 14px 14px;border-radius:10px;
-  border:1px solid var(--border);border-left:4px solid var(--accent);
-  box-shadow:var(--shadow-sm);position:relative;
-  display:flex;align-items:center;gap:14px;min-height:96px;
-  transition:box-shadow .2s,transform .2s;
-}
-.ring-kpi:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
-.ring-svg-wrap{flex-shrink:0;width:84px;height:84px}
-.ring-content{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.ring-label{font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-.ring-value{font-size:30px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1.1;margin:2px 0}
-.ring-sub{font-size:11px;color:#94a3b8;line-height:1.3}
-.ring-badge{
-  position:absolute;top:8px;right:8px;font-size:10px;font-weight:700;
-  padding:1px 6px;border-radius:10px;
-}
-.ring-badge.up{background:#fee2e2;color:#dc2626}
-.ring-badge.down{background:#dcfce7;color:#16a34a}
-.ring-badge.warn{background:#fff7ed;color:#f59e0b}
-.ring-badge.ok{background:#dcfce7;color:#16a34a}
 
 /* 销售TOP 列表 */
 .sales-top-list{display:flex;flex-direction:column;gap:4px;max-height:340px;overflow-y:auto}

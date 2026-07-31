@@ -7,10 +7,12 @@ from processors.utils import fmt_wan, fmt_pct, fmt_yoy, safe_float
 
 class TestFmtWan:
     def test_normal(self):
-        assert fmt_wan(1234.56) == "1,234.56"
+        # 全局 .0f 取整显示（用户要求无小数点）
+        assert fmt_wan(1234.56) == "1,235"
 
     def test_zero(self):
-        assert fmt_wan(0) == "0.00"
+        # 全局 .0f 取整显示
+        assert fmt_wan(0) == "0"
 
     def test_none(self):
         assert fmt_wan(None) == "—"

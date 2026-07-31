@@ -1,26 +1,15 @@
 """
 配置加载器 — 读取 cleaning_config.json 和映射文件
-
-增强功能：
-  - 支持模板化时间范围（自动推导当前月份）
-  - 统一配置读取入口，所有消费方通过此模块获取配置
 """
 from __future__ import annotations
 
+import calendar
 import json
-import re
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
-
 BASE_DIR = Path(__file__).parent.parent.parent
-CONFIG_PATH = BASE_DIR / "config" / "cleaning_config.json"
-
-# 当前系统年月（用于模板解析）
-_NOW = datetime.now()
-_CUR_YEAR = _NOW.year
-_CUR_MONTH = _NOW.month
+CONFIG_PATH = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
 
 
 def load_config():
@@ -75,100 +64,117 @@ def get_output_path(config, table_name):
 # 动态时间范围解析
 # ──────────────────────────────────────────────────────────────
 
-def _resolve_template(template_value, year=None, month=None):
-    """解析模板化时间值
+def _last_day_of_month(year: int, month: int) -> int:
+    """获取指定年月的最后一天（处理闰年）"""
+    return calendar.monthrange(year, month)[1]
 
-    支持格式：
-      "auto"           → 自动推导为上月（财务端数据是当月导出上月）
-      {"_mode": "dynamic"}  → 自动推导上月
-      {"start_date": "2026-06-01", "end_date": "..."}  → 静态，保持原样
 
-    返回: {"start_date": str, "end_date": str} 或 直接字符串
+def _compute_last_full_month(now: datetime | None = None) -> dict:
+    """计算上一个完整月的起止日期（不包含当前月）
+
+    逻辑：以"now"所在月为当前月（未结束），往前推一个月为上一个完整月
+    例如 now=2026-07-29 → 上一个完整月=2026-06 → 2026-06-01 ~ 2026-06-30
     """
-    if year is None:
-        year = _CUR_YEAR
-    if month is None:
-        month = _CUR_MONTH
-
-    # 动态模式取上月（财务端数据是当月导出上月数据）
-    # 如7月运行→取6月数据，8月运行→取7月数据
-    if month == 1:
-        prev_month = 12
-        prev_year = year - 1
+    if now is None:
+        now = datetime.now()
+    if now.month == 1:
+        prev_year, prev_month = now.year - 1, 12
     else:
-        prev_month = month - 1
-        prev_year = year
-
-    # 字符串模式
-    if isinstance(template_value, str):
-        if template_value == "auto":
-            start = f"{prev_year}-{prev_month:02d}-01"
-            if prev_month == 12:
-                end = f"{prev_year+1}-01-01 00:00:00"
-            else:
-                end = f"{prev_year}-{prev_month+1:02d}-01 00:00:00"
-            return {"start_date": start, "end_date": end}
-        return template_value
-
-    # 字典模式
-    if isinstance(template_value, dict):
-        mode = template_value.get("_mode", "static")
-        if mode == "dynamic":
-            start = f"{prev_year}-{prev_month:02d}-01"
-            if prev_month == 12:
-                end = f"{prev_year+1}-01-01 00:00:00"
-            else:
-                end = f"{prev_year}-{prev_month+1:02d}-01 00:00:00"
-            return {"start_date": start, "end_date": end}
-        # 静态模式，保留原值
-        return template_value
-
-    return template_value
+        prev_year, prev_month = now.year, now.month - 1
+    start = f"{prev_year}-{prev_month:02d}-01"
+    last_day = _last_day_of_month(prev_year, prev_month)
+    end = f"{prev_year}-{prev_month:02d}-{last_day:02d} 23:59:59"
+    return {"start_date": start, "end_date": end}
 
 
-def get_time_range(config, range_key, year=None, month=None):
-    """获取时间范围（支持模板化配置）
+def _compute_last_full_quarter(now: datetime | None = None) -> dict:
+    """计算上一个完整季度的起止日期（不包含当前季度）
 
-    Args:
-        config: 配置字典
-        range_key: 时间范围键名
-        year: 指定年份（默认当前年）
-        month: 指定月份（默认当前月）
-
-    Returns:
-        解析后的时间范围值（dict 或 str）
+    逻辑：当前季度未结束时，往前推一个季度
+    例如 now=2026-07-29（Q3 未结束）→ 上一个完整季度=Q2 → 2026-04-01 ~ 2026-06-30
     """
-    raw = config["时间范围"][range_key]
-    return _resolve_template(raw, year=year, month=month)
+    if now is None:
+        now = datetime.now()
+    current_q = (now.month - 1) // 3 + 1  # 1..4
+    if current_q == 1:
+        # Q1 未结束时，上一完整季度是去年的 Q4
+        prev_q, prev_year = 4, now.year - 1
+    else:
+        prev_q, prev_year = current_q - 1, now.year
+    start_month = (prev_q - 1) * 3 + 1
+    end_month = prev_q * 3
+    start = f"{prev_year}-{start_month:02d}-01"
+    last_day = _last_day_of_month(prev_year, end_month)
+    end = f"{prev_year}-{end_month:02d}-{last_day:02d} 23:59:59"
+    return {"start_date": start, "end_date": end}
 
 
-def get_financial_time_range(config):
-    """获取财务端筛选时间范围（自动推导当前月）"""
-    return get_time_range(config, "财务端筛选")
+_STRATEGY_REGISTRY = {
+    "last_full_month": _compute_last_full_month,
+    "last_full_quarter": _compute_last_full_quarter,
+}
 
 
-def get_ops_fixed_date(config):
-    """获取运营端固定日期（返回字符串，用于运营端日期回退）"""
-    raw = config["时间范围"]["运营端固定日期"]
-    resolved = _resolve_template(raw)
-    # dynamic 模式返回dict，取start_date作为固定日期字符串
-    if isinstance(resolved, dict):
-        return resolved.get("start_date", f"{_CUR_YEAR}-01-01")
-    return resolved
+def resolve_time_range(range_spec: dict, now: datetime | None = None) -> dict:
+    """解析时间范围配置
+
+    支持两种模式：
+    1. dynamic 模式（推荐）：`_mode: "dynamic"` + `_strategy` 指定计算策略
+       - `_strategy: "last_full_month"` → 上一个完整月
+       - `_strategy: "last_full_quarter"` → 上一个完整季度
+    2. static 模式（向后兼容）：使用 start_date / end_date 硬编码值
+
+    返回统一的 {"start_date": ..., "end_date": ...} 字典
+    """
+    if range_spec.get("_mode") == "dynamic":
+        strategy = range_spec.get("_strategy")
+        if strategy not in _STRATEGY_REGISTRY:
+            raise ValueError(
+                f"未知的动态策略: {strategy!r}，可选: {list(_STRATEGY_REGISTRY.keys())}"
+            )
+        result = _STRATEGY_REGISTRY[strategy](now)
+        # 保留 start_date/end_date 字段（用于其他只读字段）
+        result["_mode"] = "dynamic"
+        result["_strategy"] = strategy
+        result["_resolved"] = True
+        return result
+
+    # static 模式：直接使用配置值
+    return {
+        "start_date": range_spec["start_date"],
+        "end_date": range_spec["end_date"],
+        "_mode": "static",
+        "_resolved": False,
+    }
+
+
+# ──────────────────────────────────────────────────────────────
+# 时间范围读取（自动应用 dynamic / static 模式）
+# ──────────────────────────────────────────────────────────────
+
+def get_financial_time_range(config, now: datetime | None = None):
+    """获取月度数据时间范围（自动解析 dynamic 模式）"""
+    return resolve_time_range(config["时间范围"]["月度数据"], now)
+
+
+def get_quarterly_time_range(config, now: datetime | None = None):
+    """获取季度累计筛选时间范围（自动解析 dynamic 模式）"""
+    spec = config["时间范围"].get("季度累计筛选", config["时间范围"]["月度数据"])
+    return resolve_time_range(spec, now)
 
 
 # ──────────────────────────────────────────────────────────────
 # 统一的清洗参数加载（一次调用获取所有清洗所需参数）
 # ──────────────────────────────────────────────────────────────
 
-def load_clean_params(config):
+def load_clean_params(config, now: datetime | None = None):
     """加载清洗所需的所有参数
 
     返回: {
         "mapper": DepartmentMapper,
         "matcher": CustomerMatcher,
-        "fin_range": 财务端时间范围,
-        "ops_fixed_date": 运营端固定日期,
+        "fin_range": 财务端时间范围 (dict: start_date, end_date),
+        "quarter_range": 季度累计时间范围 (dict),
     }
     """
     from .mapping_loader import load_department_mapper, load_customer_list
@@ -177,12 +183,12 @@ def load_clean_params(config):
     mapper = load_department_mapper(config)
     customer_list = load_customer_list(config)
     matcher = CustomerMatcher(customer_list)
-    fin_range = get_financial_time_range(config)
-    ops_fixed_date = get_ops_fixed_date(config)
+    fin_range = get_financial_time_range(config, now)
+    quarter_range = get_quarterly_time_range(config, now)
 
     return {
         "mapper": mapper,
         "matcher": matcher,
         "fin_range": fin_range,
-        "ops_fixed_date": ops_fixed_date,
+        "quarter_range": quarter_range,
     }

@@ -82,7 +82,7 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
   <div class="modal-card modal-wide">
     <div class="modal-header">
       <div>
-        <div class="modal-title">⚠ 待确认客户 · 数据分析</div>
+        <div class="modal-title">待确认客户 · 数据分析</div>
         <div class="modal-sub">销售归属尚未明确 · 共 {pending_count} 家客户 · 合计 {fmt_wan(grand_total)} 万</div>
       </div>
       <button class="modal-close" onclick="closePendingModal()">×</button>
@@ -350,7 +350,7 @@ def _render_detail(pending, pending_total_inc, pending_total_pay, grand_total, p
             f'<td style="text-align:center;font-weight:600;color:{dcolor}">{dept}</td>'
             f'<td style="text-align:right">{fmt_wan(inc_v)}</td>'
             f'<td style="text-align:right">{fmt_wan(pay_v)}</td>'
-            f'<td style="text-align:right;font-weight:700;color:var(--accent)">{fmt_wan(tot)}</td>'
+            f'<td class="is-total" style="text-align:right;font-weight:700;color:var(--accent)">{fmt_wan(tot)}</td>'
             f'</tr>'
         )
     rows += (
@@ -359,7 +359,7 @@ def _render_detail(pending, pending_total_inc, pending_total_pay, grand_total, p
         f'<td></td>'
         f'<td style="text-align:right;font-weight:700">{fmt_wan(pending_total_inc)}</td>'
         f'<td style="text-align:right;font-weight:700">{fmt_wan(pending_total_pay)}</td>'
-        f'<td style="text-align:right;font-weight:800;color:var(--accent)">{fmt_wan(grand_total)}</td>'
+        f'<td class="is-total" style="text-align:right;font-weight:800;color:var(--accent)">{fmt_wan(grand_total)}</td>'
         f'</tr>'
     )
     return rows

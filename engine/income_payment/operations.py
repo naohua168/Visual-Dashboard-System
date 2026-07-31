@@ -30,7 +30,7 @@ def _parse_ops_date(s):
     return None
 
 
-def clean_operations_single(config, mapper, matcher, file_type, fixed_date):
+def clean_operations_single(config, mapper, matcher, file_type):
     """清洗单个运营端文件"""
     src_config = config["数据源"]["运营端"][file_type]
     file_path = get_data_path(config, "运营端", file_type)
@@ -68,16 +68,16 @@ def clean_operations_single(config, mapper, matcher, file_type, fixed_date):
             break
     if date_col_found:
         df["日期"] = df[date_col_found].apply(_parse_ops_date)
-        # 无法解析的 fallback 到固定日期
+        # 无法解析的 fallback 到年初
         fallback_count = df["日期"].isna().sum()
-        df["日期"] = df["日期"].fillna(pd.to_datetime(fixed_date))
+        df["日期"] = df["日期"].fillna(pd.Timestamp("2026-01-01"))
         if fallback_count > 0:
             log_step(f"运营端{file_type}", f"日期来源: 列'{date_col_found}' ({len(df)-fallback_count}行解析成功, {fallback_count}行回退固定日期)")
         else:
             log_step(f"运营端{file_type}", f"日期来源: 列'{date_col_found}' (全部解析成功)")
     else:
-        df["日期"] = pd.to_datetime(fixed_date)
-        log_step(f"运营端{file_type}", f"日期赋值: 固定日期 {fixed_date} (无真实日期列)")
+        df["日期"] = pd.Timestamp("2026-01-01")
+        log_step(f"运营端{file_type}", f"日期赋值: 无真实日期列, 默认2026-01-01")
 
     # 客户筛选 + 公司类型
     # 运营端用法人主体列（非核算单位），根据法人主体含"广东"标记广东公司
@@ -119,9 +119,9 @@ def clean_operations_single(config, mapper, matcher, file_type, fixed_date):
     return df
 
 
-def clean_operations(config, mapper, matcher, file_type, fixed_date):
+def clean_operations(config, mapper, matcher, file_type):
     """运营端完整清洗"""
     print(f"\n{'='*50}")
     print(f"  Phase 2: 运营端{file_type}清洗")
     print(f"{'='*50}")
-    return clean_operations_single(config, mapper, matcher, file_type, fixed_date)
+    return clean_operations_single(config, mapper, matcher, file_type)

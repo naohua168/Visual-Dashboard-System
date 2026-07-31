@@ -19,19 +19,23 @@ import pandas as pd
 # 客户统称映射器（子公司→母公司聚合）
 # ──────────────────────────────────────────────────────────────
 
+# 销售规则路径常量（渲染层独立使用，不再依赖 cleaning_config.json）
+_SALES_RULES_DIR = "config/销售规则"
+
+
 class CustomerUnifier:
     """客户统称映射器
 
-    加载 data/mappings/客户统称名单/客户统称名单.json，将 307 个子公司
-    名归并到 13 个母公司名下，使看板的客户维度展示为母公司层级。
+    加载 客户统称名单.json，将子公司名归并到母公司名下，
+    使看板的客户维度展示为母公司层级。
     """
 
     def __init__(self, base_dir: Path):
-        path = base_dir / "data" / "mappings" / "客户统称名单" / "客户统称名单.json"
+        path = base_dir / _SALES_RULES_DIR / "客户统称名单.json"
         self._subsidiary_to_parent: dict[str, str] = {}
         self._parents: set[str] = set()
 
-        if not path.exists():
+        if path is None or not path.exists():
             self._count = 0
             self._parent_count = 0
             return
@@ -95,10 +99,13 @@ class DashboardData:
     sales_income: pd.DataFrame      # 销售收入（7列）
     sales_payment: pd.DataFrame     # 销售回款（7列）
 
-    # 手工维护（3 张指标表）
-    total_targets: pd.DataFrame     # 总指标（客户+销售+4事业部）
-    monthly_income_targets: pd.DataFrame  # 月度收入指标
-    monthly_payment_targets: pd.DataFrame  # 月度回款指标
+    # 手工维护（6 张指标表）
+    annual_income_targets: pd.DataFrame      # 年度收入总指标（客户+销售+4事业部）
+    annual_payment_targets: pd.DataFrame     # 年度回款总指标
+    quarterly_income_targets: pd.DataFrame   # 季度收入指标（客户+销售+4事业部）
+    quarterly_payment_targets: pd.DataFrame  # 季度回款指标
+    monthly_income_targets: pd.DataFrame     # 月度收入指标
+    monthly_payment_targets: pd.DataFrame    # 月度回款指标
 
     # 年基线（2024，可能为空）
     yearly_income: pd.DataFrame | None = None
@@ -147,8 +154,8 @@ def _read_optional(path: Path) -> pd.DataFrame | None:
 
 
 def _find_xlsx(folder: Path) -> Path:
-    """从文件夹中查找唯一的 xlsx 文件"""
-    xlsx_files = list(folder.glob("*.xlsx"))
+    """从文件夹中查找唯一的 xlsx 文件（排除 ~$ 临时锁定文件）"""
+    xlsx_files = [f for f in folder.glob("*.xlsx") if not f.name.startswith("~$")]
     if len(xlsx_files) == 1:
         return xlsx_files[0]
     if len(xlsx_files) > 1:
@@ -194,12 +201,15 @@ def load_all(base_dir: Path) -> DashboardData:
     sales_income = pd.read_excel(_find_xlsx(sheets / SYS / "销售收入"))
     sales_payment = pd.read_excel(_find_xlsx(sheets / SYS / "销售回款"))
 
-    total_targets = pd.read_excel(_find_xlsx(sheets / MAN / "总指标"))
-    monthly_income = pd.read_excel(_find_xlsx(sheets / MAN / "月度收入指标"))
-    monthly_payment = pd.read_excel(_find_xlsx(sheets / MAN / "月度回款指标"))
+    annual_income_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "年度收入总指标"))
+    annual_payment_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "年度回款总指标"))
+    quarterly_income_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "季度收入指标"))
+    quarterly_payment_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "季度回款指标"))
+    monthly_income_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "月度收入指标"))
+    monthly_payment_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "月度回款指标"))
 
-    yearly_income = _read_optional(_find_xlsx(sheets / SYS / "年收入"))
-    yearly_payment = _read_optional(_find_xlsx(sheets / SYS / "年回款"))
+    yearly_income = _read_optional(_find_xlsx(sheets / SYS / "往年收入"))
+    yearly_payment = _read_optional(_find_xlsx(sheets / SYS / "往年回款"))
 
     # 季度累计数据
     quarterly_income = _read_optional(_find_xlsx(sheets / SYS / "季度累计收入"))
@@ -214,7 +224,9 @@ def load_all(base_dir: Path) -> DashboardData:
     if unifier.count > 0:
         # 遍历所有含"客户"列的 DataFrame 进行归并
         all_dfs = [income, payment, sales_income, sales_payment,
-                   total_targets, monthly_income, monthly_payment]
+                   annual_income_tgt, annual_payment_tgt,
+                   quarterly_income_tgt, quarterly_payment_tgt,
+                   monthly_income_tgt, monthly_payment_tgt]
         for _df in all_dfs:
             if "客户" in _df.columns:
                 _df["客户"] = _df["客户"].apply(unifier.unify)
@@ -233,26 +245,29 @@ def load_all(base_dir: Path) -> DashboardData:
         payment=payment,
         sales_income=sales_income,
         sales_payment=sales_payment,
-        total_targets=total_targets,
-        monthly_income_targets=monthly_income,
-        monthly_payment_targets=monthly_payment,
+        annual_income_targets=annual_income_tgt,
+        annual_payment_targets=annual_payment_tgt,
+        quarterly_income_targets=quarterly_income_tgt,
+        quarterly_payment_targets=quarterly_payment_tgt,
+        monthly_income_targets=monthly_income_tgt,
+        monthly_payment_targets=monthly_payment_tgt,
         yearly_income=yearly_income,
         yearly_payment=yearly_payment,
         quarterly_income=quarterly_income,
         quarterly_payment=quarterly_payment,
         monthly_income_detail=monthly_income_detail,
         monthly_payment_detail=monthly_payment_detail,
-        sales_targets=_compute_sales_targets(base_dir, total_targets),
+        sales_targets=_compute_sales_targets(base_dir, annual_income_tgt),
     )
 
 
-def _compute_sales_targets(base_dir: Path, total_targets: pd.DataFrame) -> dict[str, float] | None:
-    """根据 客户销售对应规则 × 总指标 计算每个销售人员的年度总目标（4 事业部合计）
+def _compute_sales_targets(base_dir: Path, annual_tgt: pd.DataFrame) -> dict[str, float] | None:
+    """根据 客户销售对应规则 × 年度收入总指标 计算每个销售人员的年度总目标（4 事业部合计）
 
     公式：销售 S 的目标 = sum_over_(客户 C, 部门 D)( 目标(C, D) × 比例(S in C, D) )
     """
-    rules_path = base_dir / "data" / "mappings" / "客户销售对应规则" / "客户销售对应规则.json"
-    if not rules_path.exists() or len(total_targets) == 0:
+    rules_path = base_dir / _SALES_RULES_DIR / "客户销售对应规则.json"
+    if rules_path is None or not rules_path.exists() or len(annual_tgt) == 0:
         return None
     try:
         with open(rules_path, "r", encoding="utf-8") as f:
@@ -266,7 +281,7 @@ def _compute_sales_targets(base_dir: Path, total_targets: pd.DataFrame) -> dict[
     # 总指标单位：万元（如 检测=5000 表示 5000 万年度目标）
     # 把总指标按 客户 汇总（同一客户可能有多行），目标是 4 列事业部
     tgt_by_cust: dict[str, dict[str, float]] = {}
-    for _, row in total_targets.iterrows():
+    for _, row in annual_tgt.iterrows():
         cust = str(row.get("客户", "")).strip()
         if not cust:
             continue

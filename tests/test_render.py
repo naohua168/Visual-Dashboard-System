@@ -12,9 +12,11 @@ OUTPUT = BASE_DIR / "output"
 def has_sheets():
     sheets = BASE_DIR / "data" / "sheets"
     required = ["当年累计收入/当年累计收入.xlsx", "当年累计回款/当年累计回款.xlsx",
-                "销售收入/销售收入.xlsx", "销售回款/销售回款.xlsx",
-                "总指标/总指标.xlsx"]
-    return all((sheets / r).exists() for r in required)
+                "销售收入/销售收入.xlsx", "销售回款/销售回款.xlsx"]
+    man = sheets / "手动维护"
+    required_man = ["年度收入总指标", "月度收入指标", "月度回款指标"]
+    return (all((sheets / r).exists() for r in required)
+            and all(list((man / d).glob("*.xlsx")) for d in required_man))
 
 
 pytestmark = pytest.mark.skipif(not has_sheets(), reason="data/sheets/ 不完整")
@@ -36,12 +38,12 @@ def test_render_generates_html():
     # 验证 HTML 结构
     assert html.startswith("<!DOCTYPE html>")
     assert "<html lang=\"zh-CN\">" in html
-    # 7 个页面
-    for page_id in ["overview", "annual", "monthly", "monthly_cumul", "sales", "yoy", "quarterly"]:
+    # 6 个页面
+    for page_id in ["overview", "annual", "monthly", "sales", "yoy", "quarterly"]:
         assert f'id="{page_id}"' in html, f"缺少页面 {page_id}"
-    # 7 个导航项（<a data-target="...">）
+    # 6 个导航项（<a data-target="...">）
     nav_count = html.count('<a data-target="')
-    assert nav_count == 7, f"应有 7 个导航项，实际 {nav_count}"
+    assert nav_count == 6, f"应有 6 个导航项，实际 {nav_count}"
     # Chart.js 引用
     assert "chart.js" in html
     # P4 年基线检查

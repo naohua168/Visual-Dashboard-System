@@ -1,9 +1,9 @@
 """
-销售拆分核心 — 4层匹配 + 金额不四舍五入 + 总额校验
+销售拆分核心 — 3层匹配 + 金额不四舍五入 + 总额校验
 
-4层匹配：广东公司规则 -> 深圳公司规则 -> 其他规则 -> 默认规则 -> 待确认兜底
+3层匹配：广东公司规则 -> 深圳公司规则 -> 销售规则（统称继承）-> 待确认兜底
 
-旧规则格式兼容（2026-07-24）：
+规则格式兼容：
   格式A: {"事业部": {"检测": {"销售": [...], "比例": {...}}}}  — 标准事业部级
   格式B: {"销售": ["..."], "比例": {"...": 1.0}}              — 无事业部(全适用)
   格式C: {"事业部": {}}                                        — 空事业部(全适用)
@@ -19,8 +19,12 @@ class SalesSplitter:
     def __init__(self, rules_data, subsidiary_to_parent=None):
         self.gd_rules = rules_data.get("广东公司规则", {})
         self.sz_rules = rules_data.get("深圳公司规则", {})
-        self.other_rules = rules_data.get("其他规则", {})
-        self.default_rules = rules_data.get("默认规则", {})
+        # 兼容旧格式：优先读合并后的"销售规则"，回退读旧的"其他规则"+"默认规则"
+        self.sales_rules = rules_data.get("销售规则") or {}
+        if not self.sales_rules:
+            old_other = rules_data.get("其他规则") or {}
+            old_default = rules_data.get("默认规则") or {}
+            self.sales_rules = {**old_other, **old_default}
         self._subsidiary_to_parent = subsidiary_to_parent or {}
 
     def _extract_sales(self, rule, customer, department):
@@ -92,7 +96,7 @@ class SalesSplitter:
         return {s: ratio for s in sales_list}
 
     def match(self, customer, department, is_guangdong, is_shenzhen, parent_attempt=False):
-        """4层匹配：广东->深圳->其他->默认->母公司继承->待确认"""
+        """3层匹配：广东->深圳->销售规则(含统称继承)->待确认"""
         if is_guangdong == "是":
             sales, ratios = self._query_rule(self.gd_rules, customer, department)
             if sales:
@@ -103,13 +107,10 @@ class SalesSplitter:
             if sales:
                 return sales, ratios, "深圳公司规则"
 
-        sales, ratios = self._query_rule(self.other_rules, customer, department)
+        # 统一销售规则匹配（精确名→统称继承）
+        sales, ratios = self._query_rule(self.sales_rules, customer, department)
         if sales:
-            return sales, ratios, "其他规则"
-
-        sales, ratios = self._query_rule(self.default_rules, customer, department)
-        if sales:
-            return sales, ratios, "默认规则"
+            return sales, ratios, "销售规则"
 
         # 母公司规则继承
         if not parent_attempt:
@@ -125,10 +126,10 @@ class SalesSplitter:
         results = []
         stats = {
             "广东公司规则": 0, "深圳公司规则": 0,
-            "其他规则": 0, "默认规则": 0, "待确认": 0,
+            "销售规则": 0, "待确认": 0,
             "继承": 0,
         }
-        # 继承层会动态添加键（如 "继承:广汽系(其他规则)"），用此汇总
+        # 继承层会动态添加键（如 "继承:广汽系(销售规则)"），用此汇总
 
         for _, row in df.iterrows():
             customer = row["客户"]

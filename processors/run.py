@@ -1,4 +1,4 @@
-"""渲染主入口 — 7页数据看板"""
+"""渲染主入口 — 6页数据看板"""
 from __future__ import annotations
 
 import datetime
@@ -22,9 +22,25 @@ CHART_JS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.j
 
 
 def _load_config() -> dict:
-    cfg_path = BASE_DIR / "config" / "cleaning_config.json"
+    cfg_path = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
     with open(cfg_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load_frontend_config() -> dict:
+    cfg_path = BASE_DIR / "config" / "前端展示配置" / "看板展示配置.json"
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+# 页面ID→渲染器类映射
+_PAGE_REGISTRY = {
+    "overview": OverviewPage,
+    "annual": AnnualPage,
+    "yoy": YoyPage,
+    "quarterly": QuarterlyPage,
+    "monthly": MonthlyPage,
+    "sales": SalesPage,
+}
 
 
 def _log(source: str, msg: str, level: str = "INFO"):
@@ -32,20 +48,27 @@ def _log(source: str, msg: str, level: str = "INFO"):
     print(f"{prefix.get(level, '  ')}[{source}] {msg}")
 
 
-def build_html(data, title: str) -> str:
-    # 顺序：按颗粒度从粗到细（全览→年度→跨年对比→季度→月度→月度明细→人员）
-    pages = [
-        OverviewPage(),
-        AnnualPage(),
-        YoyPage(),
-        QuarterlyPage(),
-        MonthlyPage(),
-        SalesPage(),
-    ]
+def build_html(data, title: str, frontend_cfg: dict) -> str:
+    # 从配置读取页面顺序
+    page_order = frontend_cfg.get("页面顺序", {}).get("顺序", ["数据总览", "年度达成", "月度达成", "季度达成", "销售达成", "年度同比"])
+    page_map = frontend_cfg.get("页面映射", {})
+    pages = []
+    for name in page_order:
+        info = page_map.get(name, {})
+        pid = info.get("page_id", "")
+        nav = info.get("nav_name", name)
+        cls = _PAGE_REGISTRY.get(pid)
+        if cls:
+            p = cls()
+            p.base_dir = BASE_DIR  # 传递基础路径供读取配置
+            p.nav_name = nav  # 可被配置覆盖
+            pages.append(p)
+    # 如果没有配置任何页面，使用默认全部
+    if not pages:
+        pages = [OverviewPage(), AnnualPage(), MonthlyPage(), QuarterlyPage(), SalesPage(), YoyPage()]
     page_html = "".join(p.render(data) for p in pages)
-    # 默认第一页为 active 状态（CSS .page{display:none}，需 .active 才显示）
+    # 默认第一页为 active 状态
     page_html = page_html.replace('class="page"', 'class="page active"', 1)
-    # 首屏图表 resize 确保正确尺寸
     page_html += '<script>setTimeout(window.__resizeAllCharts, 200);</script>'
     nav_items = "".join(
         f'<a data-target="{p.page_id}" href="#" class="{"active" if i == 0 else ""}" '
@@ -53,18 +76,6 @@ def build_html(data, title: str) -> str:
         for i, p in enumerate(pages)
     )
     today = datetime.date.today().strftime("%Y-%m-%d")
-    gen_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    # 页面级数据范围（默认使用 data.income 范围，实际由每页 data-range 属性覆盖）
-    default_range = ""
-    try:
-        if "日期" in data.income.columns:
-            dts = pd.to_datetime(data.income["日期"], errors="coerce").dropna()
-            if len(dts) > 0:
-                d_min = dts.min().strftime("%Y-%m-%d")
-                d_max = dts.max().strftime("%Y-%m-%d")
-                default_range = f"{d_min} ~ {d_max}"
-    except Exception:
-        pass
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -82,7 +93,6 @@ def build_html(data, title: str) -> str:
     <h1>{title}</h1>
   </div>
   <div class="header-right">
-    <div class="meta" id="pageMeta" data-default="{default_range}">数据 {default_range} &nbsp;|&nbsp; 生成于 {gen_time}</div>
     <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏切换 (ESC退出)">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
         <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
@@ -124,9 +134,9 @@ document.addEventListener('MSFullscreenChange',_fsUpdate);
 
 
 def run_render(output_path: str | None = None) -> Path:
-    config = _load_config()
-    render_cfg = config.get("渲染输出", {})
-    title = render_cfg.get("标题", "销售运营可视化看板")
+    frontend_cfg = _load_frontend_config()
+    title = frontend_cfg.get("看板标题", {}).get("标题", "销售运营可视化看板")
+    file_cfg = frontend_cfg.get("文件输出", {})
 
     _log("渲染", "加载数据")
     data = load_all(BASE_DIR)
@@ -134,21 +144,21 @@ def run_render(output_path: str | None = None) -> Path:
     _log("渲染", f"销售收入 {len(data.sales_income)} 行 / 销售回款 {len(data.sales_payment)} 行")
     _log("渲染", f"年基线: {'已就绪' if data.has_yearly_baseline else '未就绪'}")
 
-    _log("渲染", "构建 HTML（6 页分页）")
-    html = build_html(data, title)
+    _log("渲染", "构建 HTML")
+    html = build_html(data, title, frontend_cfg)
 
     if output_path:
         out = Path(output_path)
         if not out.is_absolute():
             out = BASE_DIR / output_path
     else:
-        base_out = BASE_DIR / "output"
-        html_dir = base_out / render_cfg.get("看板目录", "看板")
-        data_dir = base_out / render_cfg.get("数据目录", "数据")
+        base_out = BASE_DIR / file_cfg.get("目录", "output")
+        html_dir = base_out / "看板"
+        data_dir = base_out / "数据"
         html_dir.mkdir(parents=True, exist_ok=True)
         data_dir.mkdir(parents=True, exist_ok=True)
         today = datetime.date.today().strftime("%Y%m%d")
-        filename = render_cfg.get("文件名", "看板_{date}.html").format(date=today)
+        filename = file_cfg.get("看板文件名", "看板_{date}.html").format(date=today)
         out = html_dir / filename
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -166,11 +176,14 @@ def run_render(output_path: str | None = None) -> Path:
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             data.income.to_excel(writer, sheet_name="收入", index=False)
             data.payment.to_excel(writer, sheet_name="回款", index=False)
-            data.total_targets.to_excel(writer, sheet_name="总指标", index=False)
+            data.annual_income_targets.to_excel(writer, sheet_name="年度收入指标", index=False)
+            data.annual_payment_targets.to_excel(writer, sheet_name="年度回款指标", index=False)
             data.sales_income.to_excel(writer, sheet_name="销售收入", index=False)
             data.sales_payment.to_excel(writer, sheet_name="销售回款", index=False)
             data.monthly_income_targets.to_excel(writer, sheet_name="月度收入指标", index=False)
             data.monthly_payment_targets.to_excel(writer, sheet_name="月度回款指标", index=False)
+            data.quarterly_income_targets.to_excel(writer, sheet_name="季度收入指标", index=False)
+            data.quarterly_payment_targets.to_excel(writer, sheet_name="季度回款指标", index=False)
             if data.yearly_income is not None:
                 data.yearly_income.to_excel(writer, sheet_name="2024年收入", index=False)
             if data.yearly_payment is not None:
