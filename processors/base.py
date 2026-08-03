@@ -108,11 +108,6 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
   color:#fbbf24;border-bottom-color:#fbbf24;background:transparent;
   text-shadow:0 0 8px rgba(251,191,36,.4);
 }
-.nav a.active::before{
-  content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
-  width:6px;height:6px;background:#fbbf24;border-radius:50%;
-  box-shadow:0 0 6px rgba(251,191,36,.6);
-}
 
 /* ═══════════════════─ 页面容器 ─══════════════════ */
 .page{display:none;padding:8px 10px;height:calc(100vh - 82px);overflow-y:auto;}
