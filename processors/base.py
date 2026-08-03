@@ -1738,9 +1738,13 @@ GLOBAL_OV_CSS = """
   background:linear-gradient(135deg,#0a1628 0%,#162944 100%);
   padding:14px;
   position:relative;
-  display:flex;flex-direction:column;
+  display:none;
+  flex-direction:column;
   overflow-y:auto;
   min-height:calc(100vh - 72px);
+}
+.page.active#overview{
+  display:flex;
 }
 .page#overview > *{position:relative;z-index:1;}
 
