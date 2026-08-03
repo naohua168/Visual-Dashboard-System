@@ -7,7 +7,6 @@ import pytest
 
 BASE_DIR = Path(__file__).parent.parent
 CONFIG_PATH = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
-SALES_DIR = BASE_DIR / "config" / "销售规则"
 
 
 def test_config_exists():
@@ -33,7 +32,7 @@ def test_config_data_sources():
         data = json.load(f)
     src = data["数据源"]
     assert "财务端" in src and "运营端" in src
-    # 财务端必需的子源（客户名单从映射文件加载，不在此处）
+    # 财务端必需的子源
     for sub in ["收入", "回款", "广东公司", "湖南公司"]:
         assert sub in src["财务端"], f"财务端缺少子源: {sub}"
     # 运营端必需的子源
@@ -51,7 +50,7 @@ def test_config_output_paths():
 
 
 def test_mappings_exist():
-    """映射和规则 JSON 文件均存在且有效（2份在 data/mappings/ + 2份在 config/销售规则/）"""
+    """映射和规则 JSON 文件均存在且有效（2份在 data/mappings/ + 2份在 config/清洗配置/）"""
     # data/mappings/ 下的清洗映射
     for folder, filename in [
         ("部门事业部映射", "部门事业部映射.json"),
@@ -59,14 +58,6 @@ def test_mappings_exist():
     ]:
         path = BASE_DIR / "data" / "mappings" / folder / filename
         assert path.exists(), f"映射文件不存在: {path}"
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        assert isinstance(data, dict)
-
-    # config/销售规则/ 下的销售规则
-    for filename in ["客户统称名单.json", "客户销售对应规则.json"]:
-        path = SALES_DIR / filename
-        assert path.exists(), f"销售规则文件不存在: {path}"
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         assert isinstance(data, dict)
@@ -83,29 +74,6 @@ def test_dept_mapping_structure():
     valid_depts = {"检测", "信息", "能源", "海外"}
     income_values = {v for k, v in data["income_mapping"].items() if not k.startswith("_")}
     assert income_values.issubset(valid_depts), f"收入映射值异常: {income_values}"
-
-
-def test_customer_list_count():
-    """客户白名单数量 > 0"""
-    path = BASE_DIR / "data" / "mappings" / "客户名单" / "客户名单.json"
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    customers = data.get("customers", [])
-    assert len(customers) > 0, "客户白名单为空"
-    # 不应有重复
-    no_space = [c.replace(" ", "") for c in customers]
-    assert len(no_space) == len(set(no_space)), "客户白名单有重复（去空格后）"
-
-
-def test_sales_rules_structure():
-    """销售规则包含 3 个层级（广东/深圳/销售规则 合并）"""
-    path = SALES_DIR / "客户销售对应规则.json"
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    for layer in ["广东公司规则", "深圳公司规则", "销售规则"]:
-        assert layer in data, f"销售规则缺少层级: {layer}"
-        assert isinstance(data[layer], dict)
-
 
 # ──────────────────────────────────────────────────────────────
 # 动态时间范围解析测试（dynamic / static 模式）

@@ -1,13 +1,9 @@
 """数据加载器 — 统一读取 data/sheets/ 下的所有数据表
 
 所有渲染器都通过此模块获取数据，单一数据出口便于维护与测试。
-
-加载时自动应用客户统称名单（子公司→母公司聚合），确保看板展示的
-客户名以母公司维度呈现，使数据聚合更符合业务管理视角。
 """
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,77 +12,8 @@ import pandas as pd
 
 
 # ──────────────────────────────────────────────────────────────
-# 客户统称映射器（子公司→母公司聚合）
+# 客户统称映射器已移除 — 不再使用客户统称名单.json
 # ──────────────────────────────────────────────────────────────
-
-# 销售规则路径常量（渲染层独立使用，不再依赖 cleaning_config.json）
-_SALES_RULES_DIR = "config/销售规则"
-
-
-class CustomerUnifier:
-    """客户统称映射器
-
-    加载 客户统称名单.json，将子公司名归并到母公司名下，
-    使看板的客户维度展示为母公司层级。
-    """
-
-    def __init__(self, base_dir: Path):
-        path = base_dir / _SALES_RULES_DIR / "客户统称名单.json"
-        self._subsidiary_to_parent: dict[str, str] = {}
-        self._parents: set[str] = set()
-
-        if path is None or not path.exists():
-            self._count = 0
-            self._parent_count = 0
-            return
-
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        company_mapping = data.get("company_mapping", {})
-        for parent, subsidiaries in company_mapping.items():
-            self._parents.add(parent)
-            for sub in subsidiaries:
-                # 若子公司名 == 母公司名（自引用），跳过
-                if str(sub).strip() == str(parent).strip():
-                    continue
-                self._subsidiary_to_parent[str(sub).strip()] = parent
-
-        self._count = len(self._subsidiary_to_parent)
-        self._parent_count = len(self._parents)
-
-    @property
-    def count(self) -> int:
-        """子公司数量（可被归并的客户数）"""
-        return self._count
-
-    @property
-    def parent_count(self) -> int:
-        """母公司数量"""
-        return self._parent_count
-
-    def unify(self, customer_name) -> str:
-        """将客户名统一为母公司名
-
-        规则：
-          1. 名称为母公司名 → 保持不变
-          2. 名称为子公司名 → 映射为母公司名
-          3. 其他 → 保持不变
-        """
-        if customer_name is None or (isinstance(customer_name, float) and math.isnan(customer_name)):
-            return customer_name
-        name = str(customer_name).strip()
-        if name in self._parents:
-            return name
-        return self._subsidiary_to_parent.get(name, name)
-
-    def unify_df(self, df: pd.DataFrame, col: str = "客户") -> pd.DataFrame:
-        """统一 DataFrame 中指定列的客户名"""
-        if col not in df.columns:
-            return df
-        df = df.copy()
-        df[col] = df[col].apply(self.unify)
-        return df
 
 
 @dataclass
@@ -219,27 +146,6 @@ def load_all(base_dir: Path) -> DashboardData:
     monthly_income_detail = _read_optional(_find_xlsx(sheets / SYS / "月收入"))
     monthly_payment_detail = _read_optional(_find_xlsx(sheets / SYS / "月回款"))
 
-    # ── 统一客户名（子公司→母公司聚合）──
-    unifier = CustomerUnifier(base_dir)
-    if unifier.count > 0:
-        # 遍历所有含"客户"列的 DataFrame 进行归并
-        all_dfs = [income, payment, sales_income, sales_payment,
-                   annual_income_tgt, annual_payment_tgt,
-                   quarterly_income_tgt, quarterly_payment_tgt,
-                   monthly_income_tgt, monthly_payment_tgt]
-        for _df in all_dfs:
-            if "客户" in _df.columns:
-                _df["客户"] = _df["客户"].apply(unifier.unify)
-
-        for _df in [yearly_income, yearly_payment,
-                    quarterly_income, quarterly_payment,
-                    monthly_income_detail, monthly_payment_detail]:
-            if _df is not None and "客户" in _df.columns:
-                _df["客户"] = _df["客户"].apply(unifier.unify)
-
-        print(f"  [数据加载] 客户统称映射已应用: {unifier.parent_count}个母公司, "
-              f"{unifier.count}个子公司将被归并")
-
     return DashboardData(
         income=income,
         payment=payment,
@@ -257,63 +163,8 @@ def load_all(base_dir: Path) -> DashboardData:
         quarterly_payment=quarterly_payment,
         monthly_income_detail=monthly_income_detail,
         monthly_payment_detail=monthly_payment_detail,
-        sales_targets=_compute_sales_targets(base_dir, annual_income_tgt),
+        sales_targets=None,  # 销售规则已移除，目标由手工指标表直接读取
     )
-
-
-def _compute_sales_targets(base_dir: Path, annual_tgt: pd.DataFrame) -> dict[str, float] | None:
-    """根据 客户销售对应规则 × 年度收入总指标 计算每个销售人员的年度总目标（4 事业部合计）
-
-    公式：销售 S 的目标 = sum_over_(客户 C, 部门 D)( 目标(C, D) × 比例(S in C, D) )
-    """
-    rules_path = base_dir / _SALES_RULES_DIR / "客户销售对应规则.json"
-    if rules_path is None or not rules_path.exists() or len(annual_tgt) == 0:
-        return None
-    try:
-        with open(rules_path, "r", encoding="utf-8") as f:
-            rules = json.load(f)
-    except Exception:
-        return None
-
-    # 4 大事业部
-    DEPARTMENTS = ["检测", "信息", "能源", "海外"]
-
-    # 总指标单位：万元（如 检测=5000 表示 5000 万年度目标）
-    # 把总指标按 客户 汇总（同一客户可能有多行），目标是 4 列事业部
-    tgt_by_cust: dict[str, dict[str, float]] = {}
-    for _, row in annual_tgt.iterrows():
-        cust = str(row.get("客户", "")).strip()
-        if not cust:
-            continue
-        if cust not in tgt_by_cust:
-            tgt_by_cust[cust] = {d: 0.0 for d in DEPARTMENTS}
-        for d in DEPARTMENTS:
-            tgt_by_cust[cust][d] += safe_float(row.get(d, 0))
-
-    # 累加每个销售的目标
-    sales_tgt: dict[str, float] = {}
-    rule_keys = [k for k in rules if not k.startswith("_") and isinstance(rules[k], dict)]
-    for section in rule_keys:
-        section_data = rules[section]
-        for cust, cfg in section_data.items():
-            if not isinstance(cfg, dict):
-                continue
-            if "事业部" not in cfg:
-                continue
-            cust_tgt = tgt_by_cust.get(str(cust).strip(), {})
-            dept_cfg = cfg.get("事业部", {})
-            for dept, dcfg in dept_cfg.items():
-                if not isinstance(dcfg, dict) or "比例" not in dcfg:
-                    continue
-                ratio_dict = dcfg["比例"]
-                if not isinstance(ratio_dict, dict):
-                    continue
-                dept_target = cust_tgt.get(dept, 0)
-                if not dept_target:
-                    continue
-                for sales, ratio in ratio_dict.items():
-                    sales_tgt[sales] = sales_tgt.get(sales, 0) + dept_target * float(ratio)
-    return sales_tgt if sales_tgt else None
 
 
 def safe_float(v) -> float:

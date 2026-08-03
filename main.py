@@ -108,15 +108,6 @@ def preflight_check() -> list[str]:
             if not (mappings_dir / sub).exists():
                 issues.append(f"缺失映射目录: data/mappings/{sub}/")
 
-    sales_dir = BASE_DIR / "config" / "销售规则"
-    expected_sales = ["客户统称名单.json", "客户销售对应规则.json"]
-    if not sales_dir.exists():
-        issues.append(f"缺失目录: config/销售规则/")
-    else:
-        for fname in expected_sales:
-            if not (sales_dir / fname).exists():
-                issues.append(f"缺失销售规则: config/销售规则/{fname}")
-
     raw_dir = BASE_DIR / "data" / "raw"
     if not raw_dir.exists():
         issues.append(f"缺失目录: data/raw/（请放入原始 Excel）")

@@ -24,6 +24,73 @@ class YoyPage(BaseRenderer):
     page_id = "yoy"
     nav_name = "年度同比"
 
+    def _fallback_no_baseline(self, df_inc, df_pay, data) -> str:
+        """降级方案：无年基线时展示当前年数据概况，不对比"""
+        cur_year = 2026
+        if len(df_inc):
+            cur_dates = pd.to_datetime(df_inc["日期"], errors="coerce").dropna()
+            if len(cur_dates):
+                cur_year = int(cur_dates.min().year)
+
+        # 部门汇总
+        dept_rows = ""
+        for d in DEPARTMENTS:
+            iv = float(df_inc[df_inc["事业部"] == d]["金额_万"].sum()) if "事业部" in df_inc.columns else 0
+            pv = float(df_pay[df_pay["事业部"] == d]["金额_万"].sum()) if "事业部" in df_pay.columns else 0
+            dept_rows += (
+                f'<tr>'
+                f'<td class="dept-name"><strong>{d}</strong></td>'
+                f'<td class="num-cell">{fmt_wan(iv)}</td>'
+                f'<td class="num-cell muted">—</td>'
+                f'<td class="yoy-cell flat"><span class="yoy-pct">N/A</span></td>'
+                f'<td class="num-cell">{fmt_wan(pv)}</td>'
+                f'<td class="num-cell muted">—</td>'
+                f'<td class="yoy-cell flat"><span class="yoy-pct">N/A</span></td>'
+                f'</tr>'
+            )
+
+        t_inc = float(df_inc["金额_万"].sum())
+        t_pay = float(df_pay["金额_万"].sum())
+        h = (
+            "<tr>"
+            "<th rowspan='2'>事业部</th>"
+            "<th colspan='3' class='group-header inc-group'>收入</th>"
+            "<th colspan='3' class='group-header pay-group'>回款</th>"
+            "</tr>"
+            "<tr>"
+            f"<th>{cur_year}年</th><th>2024年</th><th>同比</th>"
+            f"<th>{cur_year}年</th><th>2024年</th><th>同比</th>"
+            "</tr>"
+        )
+
+        dept_table = (
+            f'<div class="section-title sec-purple">事业部年度数据（万元）</div>'
+            f'<div class="table-wrap no-collapse">'
+            f'<table class="yoy-dept-table"><thead>{h}</thead><tbody>{dept_rows}</tbody></table>'
+            f'</div>'
+        )
+
+        return (
+            # 状态横幅
+            f'<div class="alert-banner" style="background:#fff7ed;border-left:4px solid #f59e0b">'
+            f'<span style="font-size:14px">&#9888;</span>'
+            f'<div style="flex:1"><strong>同比分析暂不可用</strong><br>'
+            f'<span style="font-size:11px;color:var(--text-secondary)">'
+            f'缺少 2024 年基线数据（yearly_baseline/），无法进行同比对比。'
+            f'以下展示 {cur_year} 年各部门实际数据。</span></div>'
+            f'</div>'
+            # 当前年 KPI
+            + f'<div class="cols-3 kpi-strip">'
+            f'<div class="card text-center"><div class="label-text">{cur_year}年收入</div>'
+            f'<div class="kpi-value">{fmt_wan(t_inc)}<span class="unit">万</span></div></div>'
+            f'<div class="card text-center"><div class="label-text">{cur_year}年回款</div>'
+            f'<div class="kpi-value">{fmt_wan(t_pay)}<span class="unit">万</span></div></div>'
+            f'<div class="card text-center"><div class="label-text">数据状态</div>'
+            f'<div class="kpi-value" style="font-size:16px;color:var(--orange)">无对比基准</div></div>'
+            f'</div>'
+            + dept_table
+        )
+
     def render(self, data) -> str:
         # 年累计范围（从配置文件读取：1月~月度数据截止月）
         annual_range = get_config_range(self.base_dir, "年度累计")
@@ -34,10 +101,10 @@ class YoyPage(BaseRenderer):
         df_pay["金额_万"] = df_pay["金额"].apply(safe_float) / 10000.0
 
         if not data.has_yearly_baseline:
+            # ── 降级方案：无年基线时展示当前年数据 + 空状态提示 ──
             return self.wrap_page(
-                banner + self.section("同比分析", "sec-purple")
-                + '<div class="empty">年基线数据（2024）未就绪</div>'
-            , extract_date_range(data.income))
+                banner + self._fallback_no_baseline(df_inc, df_pay, data),
+                extract_date_range(data.income))
 
         # 起止月份：优先从 "年度累计" 配置读取（与其他页面保持一致）
         cur_start_m = 1

@@ -99,20 +99,16 @@ def clean_operations_single(config, mapper, matcher, file_type):
         df_sz["是否为广东公司"] = ""
         df_sz["是否为深圳公司"] = "是"
 
-        before = len(df_other)
-        df_other = matcher.filter_dataframe(df_other, "客户", keep_unmatched=False)
         df_other["是否为广东公司"] = ""
         df_other["是否为深圳公司"] = ""
         log_step(f"运营端{file_type}",
-                 f"客户筛选: 广东{len(df_gd)}行 + 深圳{len(df_sz)}行 + 其他{len(df_other)}行(丢弃{before - len(df_other)}行)")
+                 f"客户全量通过: 广东{len(df_gd)}行 + 深圳{len(df_sz)}行 + 其他{len(df_other)}行")
 
         df = pd.concat([df_gd, df_sz, df_other], ignore_index=True)
     else:
-        before = len(df)
-        df = matcher.filter_dataframe(df, "客户", keep_unmatched=False)
         df["是否为广东公司"] = ""
         df["是否为深圳公司"] = ""
-        log_step(f"运营端{file_type}", f"白名单匹配: 成功{len(df)}行, 丢弃{before - len(df)}行")
+        log_step(f"运营端{file_type}", f"客户全量通过: {len(df)}行")
 
     df = standardize_output(df)
     log_step(f"运营端{file_type}", f"最终: {len(df)}行", "OK")
