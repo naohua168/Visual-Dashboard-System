@@ -12,7 +12,7 @@ import pytest
 BASE_DIR = Path(__file__).parent.parent
 RAW_FIN = BASE_DIR / "data" / "raw" / "财务端数据"
 RAW_OPS = BASE_DIR / "data" / "raw" / "运营端数据"
-SHEETS = BASE_DIR / "data" / "sheets"
+SHEETS = BASE_DIR / "data" / "sheets" / "系统数据清理"
 
 
 def has_raw_data():

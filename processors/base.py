@@ -137,14 +137,6 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
 .section-title.sec-sky::after{background:linear-gradient(90deg,#7dd3fc,transparent);}
 .section-title.sec-amber{background:#fffbeb;color:#f59e0b;}
 .section-title.sec-amber::after{background:linear-gradient(90deg,#fde68a,transparent);}
-/* 分色段落标题 */
-.section-title.sec-blue{background:#eef2ff;color:#2563eb;}
-.section-title.sec-green{background:#f0fdf4;color:#16a34a;}
-.section-title.sec-orange{background:#fff7ed;color:#f97316;}
-.section-title.sec-purple{background:#f5f3ff;color:#8b5cf6;}
-.section-title.sec-teal{background:#f0fdfa;color:#0d9488;}
-.section-title.sec-sky{background:#f0f9ff;color:#0284c7;}
-.section-title.sec-amber{background:#fffbeb;color:#f59e0b;}
 
 /* ═══════════════════─ KPI 指标卡 ─══════════════════ */
 .kpi-grid{display:grid;gap:4px;margin-bottom:6px;}
@@ -485,13 +477,9 @@ table.yoy-matrix-table th{
   border-bottom:3px solid #f59e0b;text-shadow:0 1px 2px rgba(0,0,0,.3);
 }
 /* 双层表头 — 事业部/合计大组 */
-/* 双层表头 — 事业部/合计大组 (Q2 风格) */
 table.yoy-matrix-table th.th-dept-group{
   font-size:19px;padding:14px 8px;font-weight:900;background:#0f172a;
   border-bottom:1px solid #1e293b;letter-spacing:0.06em;
-}
-  font-size:18px;padding:14px 8px;font-weight:900;background:#0f172a;
-  border-bottom:1px solid #1e293b;
 }
 table.yoy-matrix-table th.th-dept-group.th-dept-total{
   background:linear-gradient(135deg,#1e3a5f 0%,#0f172a 100%);
@@ -504,7 +492,6 @@ table.yoy-matrix-table th.th-sub{
   text-transform:uppercase;letter-spacing:0.06em;
   border-bottom:1px solid #1e293b;
 }
-)}
 table.yoy-matrix-table th.th-sub-amount{color:#bfdbfe;}
 table.yoy-matrix-table th.th-sub-yoy{color:#fbbf24;}
 th:first-child,td:first-child{text-align:left;position:sticky;left:0;z-index:4;}
@@ -977,6 +964,17 @@ table.q2-cust-table tr.row-total td.td-name{
   border-right:1px dashed rgba(255,255,255,0.2);
   min-width:260px;
 }
+/* 中间：总指标大数字（total_tgt 模式） */
+.hero-rings .hr-center-label{
+  display:flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:600;opacity:0.85;color:#fbbf24;letter-spacing:0.04em;
+}
+.hero-rings .hr-center-value{
+  font-size:48px;font-weight:900;color:#fbbf24;font-variant-numeric:tabular-nums;
+  letter-spacing:0.005em;line-height:1.1;text-shadow:0 2px 18px rgba(251,191,36,0.3);
+  white-space:nowrap;
+}
+.hero-rings .hr-center-value .hr-center-unit{font-size:16px;font-weight:600;color:#94a3b8;}
 .hero-rings .hr-center-split{display:flex;align-items:center;gap:16px;}
 .hero-rings .hr-cs-col{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;}
 .hero-rings .hr-cs-label{font-size:13px;font-weight:600;opacity:0.85;color:#fbbf24;letter-spacing:0.04em;}
@@ -1920,7 +1918,7 @@ def hero_rings_html(inc_act: float, inc_tgt: float, pay_act: float, pay_tgt: flo
     cust_inc = f'{_metric_row("客户/销售", f"{inc_cust} 家 / {inc_sales} 人")}' if show_cust_sales else ""
     cust_pay = f'{_metric_row("客户/销售", f"{pay_cust} 家 / {pay_sales} 人")}' if show_cust_sales else ""
 
-    # 中间区
+    # 中间区：total_tgt 传入 → 中间显示"XX总指标"大数字；否则 → 收入实际|回款实际
     if total_tgt is not None:
         center = (
             f'<div class="hr-center-box">'
@@ -1928,29 +1926,17 @@ def hero_rings_html(inc_act: float, inc_tgt: float, pay_act: float, pay_tgt: flo
             f'<div class="hr-center-value">{fmt_wan(total_tgt)}<span class="hr-center-unit">万元</span></div>'
             f'</div>'
         )
-        side_rings = (
-            f'<div class="hr-side-ring inc-side-ring">{ring_svg_html(inc_r, "inc", 130, header_left)}</div>'
-            f'{center}'
-            f'<div class="hr-side-ring pay-side-ring">{ring_svg_html(pay_r, "pay", 130, header_right)}</div>'
-        )
     else:
-        side_rings = (
-            f'<div class="hr-rings">'
-            f'{ring_svg_html(inc_r, "inc", 130, header_left)}'
-            f'{ring_svg_html(pay_r, "pay", 130, header_right)}'
+        center = (
+            f'<div class="hr-center-box">'
+            f'<div class="hr-center-split">'
+            f'<div class="hr-cs-col"><div class="hr-cs-label">收入实际</div><div class="hr-cs-val">{fmt_wan(inc_act)} 万</div></div>'
+            f'<div class="hr-cs-div"></div>'
+            f'<div class="hr-cs-col"><div class="hr-cs-label">回款实际</div><div class="hr-cs-val">{fmt_wan(pay_act)} 万</div></div>'
+            f'</div>'
             f'</div>'
         )
-
-    # 中间双环 + 收入/回款总指标
-    center = (
-        f'<div class="hr-center-box">'
-        f'<div class="hr-center-split">'
-        f'<div class="hr-cs-col"><div class="hr-cs-label">收入实际</div><div class="hr-cs-val">{fmt_wan(inc_act)} 万</div></div>'
-        f'<div class="hr-cs-div"></div>'
-        f'<div class="hr-cs-col"><div class="hr-cs-label">回款实际</div><div class="hr-cs-val">{fmt_wan(pay_act)} 万</div></div>'
-        f'</div>'
-        f'</div>'
-    )
+    # 两侧各一环，中间为上面选择的 center 块
     side_rings = (
         f'<div class="hr-side-ring inc-side-ring">{ring_svg_html(inc_r, "inc", 130, header_left)}</div>'
         f'{center}'

@@ -203,25 +203,27 @@ def test_resolve_unknown_strategy_raises():
 
 
 def test_quarterly_time_range_uses_config():
-    """读取 cleaning_config.json 后，季度范围走 dynamic 解析"""
+    """读取 cleaning_config.json 后，季度范围从配置读取（手动模式）"""
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         config = json.load(f)
     r = get_quarterly_time_range(config, datetime(2026, 7, 29))
-    # dynamic 模式自动解析为 Q2（4-6月）
-    assert r["start_date"] == "2026-04-01"
+    # 手动模式（用户偏好 2026-07-31）：直接使用配置中的日期
+    assert r["start_date"] == "2026-05-01"
     assert r["end_date"] == "2026-06-30 23:59:59"
-    assert r["_mode"] == "dynamic"
+    assert r["_mode"] == "static"
 
 
-def test_current_config_uses_dynamic_mode():
-    """当前 cleaning_config.json 的时间范围必须使用 dynamic 模式
+def test_current_config_uses_static_mode():
+    """当前 cleaning_config.json 的时间范围必须使用手动模式（用户偏好）
 
-    这是防止有人退回到硬编码日期的回归测试。
+    2026-07-31 起明确：所有时间范围手动配置，不使用 dynamic 推导。
     """
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         config = json.load(f)
     time_range = config["时间范围"]
-    assert time_range["月度数据"]["_mode"] == "dynamic"
-    assert time_range["月度数据"]["_strategy"] == "last_full_month"
-    assert time_range["季度累计筛选"]["_mode"] == "dynamic"
-    assert time_range["季度累计筛选"]["_strategy"] == "last_full_quarter"
+    for key in ["年度累计", "月度数据", "季度累计筛选"]:
+        spec = time_range[key]
+        assert spec.get("_mode") != "dynamic", f"{key} 不应使用 dynamic 模式"
+        assert "start_date" in spec and "end_date" in spec
+    assert time_range["月度数据"]["start_date"] == "2026-06-01"
+    assert time_range["季度累计筛选"]["start_date"] == "2026-05-01"

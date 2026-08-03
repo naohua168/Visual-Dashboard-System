@@ -158,6 +158,9 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
   display:flex;flex-direction:column;
   box-shadow:0 20px 60px rgba(0,0,0,.3);
   animation:slideUp .25s ease;
+  margin:auto;
+  margin-top:6vh;
+  max-width:95vw;max-height:85vh;
 }}
 .modal-card.modal-wide{{width:min(960px,95vw);max-height:90vh}}
 .modal-header{{
@@ -177,7 +180,7 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
 .modal-body{{padding:14px 18px;overflow-y:auto}}
 
 .pending-section{{margin-bottom:14px;padding:10px 12px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0}}
-.pending-h{{font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px;padding-left:4px;border-left:3px solid #f59e0b}}
+.pending-h{{font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px;padding-left:4px;border-left:3px solid #f59e0b;word-wrap:break-word;overflow-wrap:anywhere;line-height:1.45}}
 
 .pending-kpi-grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}}
 .pending-kpi{{background:#fff;padding:8px 10px;border-radius:4px;border:1px solid #e2e8f0;border-left-width:3px}}
