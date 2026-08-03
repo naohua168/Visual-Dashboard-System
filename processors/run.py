@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from .data_loader import load_all
-from .base import GLOBAL_CSS, GLOBAL_JS
+from .base import GLOBAL_CSS, GLOBAL_JS, GLOBAL_OV_CSS
 from .page_overview import OverviewPage
 from .page_annual import AnnualPage
 from .page_yoy import YoyPage
@@ -28,7 +28,7 @@ def _load_config() -> dict:
 
 
 def _load_frontend_config() -> dict:
-    cfg_path = BASE_DIR / "config" / "前端展示配置" / "看板展示配置.json"
+    cfg_path = BASE_DIR / "config" / "前端渲染" / "看板展示配置.json"
     with open(cfg_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -82,8 +82,18 @@ def build_html(data, title: str, frontend_cfg: dict) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0">
 <title>{title} · {today}</title>
-<style>{GLOBAL_CSS}</style>
-<script src="{CHART_JS_CDN}"></script>
+<style>{GLOBAL_CSS}{GLOBAL_OV_CSS}</style>
+<script>
+// Chart.js 异步加载包装器：CDN 失败时不影响页面功能
+(function(){{
+  var s=document.createElement('script');
+  s.src='{CHART_JS_CDN}';
+  s.async=true;
+  s.defer=true;
+  s.onerror=function(){{console.warn('Chart.js CDN failed; charts will be skipped')}};
+  document.head.appendChild(s);
+}})();
+</script>
 </head>
 <body>
 <script>{GLOBAL_JS}</script>
