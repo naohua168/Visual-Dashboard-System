@@ -88,11 +88,11 @@ def build_html(data, title: str, frontend_cfg: dict) -> str:
 <body>
 <script>{GLOBAL_JS}</script>
 <header class="header">
-  <div class="header-left">
-    <div class="header-logo">V</div>
-    <h1>{title}</h1>
+  <div class="header-top">
+    <h1 class="header-title">{title}</h1>
   </div>
-  <div class="header-right">
+  <div class="header-bottom">
+    <nav class="nav">{nav_items}</nav>
     <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏切换 (ESC退出)">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
         <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
@@ -123,9 +123,6 @@ document.addEventListener('webkitfullscreenchange',_fsUpdate);
 document.addEventListener('mozfullscreenchange',_fsUpdate);
 document.addEventListener('MSFullscreenChange',_fsUpdate);
 </script>
-<nav class="nav">
-{nav_items}
-</nav>
 <main>
 {page_html}
 </main>
