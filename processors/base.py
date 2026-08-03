@@ -21,7 +21,10 @@ from abc import ABC, abstractmethod
 from .utils import fmt_wan
 
 
-GLOBAL_CSS = """
+# ═══════════════════════════════════════════════════════════════
+# 模块化 CSS 常量（按功能域拆分，便于维护）
+# ═══════════════════════════════════════════════════════════════
+CSS_CORE = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 /* ═══════════════════════════════════════════════════════════════
    专业数据驾驶舱 — Data-Dense Dashboard 风格
@@ -98,10 +101,18 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
   padding:0 20px;color:#cbd5e1;text-decoration:none;
   font-size:13px;font-weight:600;display:flex;align-items:center;
   border-bottom:3px solid transparent;transition:all 0.2s;
-  letter-spacing:0.02em;
+  letter-spacing:0.02em;position:relative;
 }
 .nav a:hover{color:#fbbf24;background:rgba(255,255,255,0.08);}
-.nav a.active{color:#fbbf24;border-bottom-color:#fbbf24;background:transparent;}
+.nav a.active{
+  color:#fbbf24;border-bottom-color:#fbbf24;background:transparent;
+  text-shadow:0 0 8px rgba(251,191,36,.4);
+}
+.nav a.active::before{
+  content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:6px;height:6px;background:#fbbf24;border-radius:50%;
+  box-shadow:0 0 6px rgba(251,191,36,.6);
+}
 
 /* ═══════════════════─ 页面容器 ─══════════════════ */
 .page{display:none;padding:8px 10px;height:calc(100vh - 72px);overflow-y:auto;}
@@ -137,7 +148,9 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
 .section-title.sec-sky::after{background:linear-gradient(90deg,#7dd3fc,transparent);}
 .section-title.sec-amber{background:#fffbeb;color:#f59e0b;}
 .section-title.sec-amber::after{background:linear-gradient(90deg,#fde68a,transparent);}
+"""
 
+CSS_COMPONENTS = """
 /* ═══════════════════─ KPI 指标卡 ─══════════════════ */
 .kpi-grid{display:grid;gap:4px;margin-bottom:6px;}
 .kpi-grid.cols-9{grid-template-columns:repeat(9,1fr);}
@@ -1471,7 +1484,9 @@ table.yoy-matrix-table .td-empty{color:#cbd5e1;font-style:italic;}
 }
 .yoy-cust-tabs .tab-panel{display:none;}
 .yoy-cust-tabs .tab-panel.active{display:block;}
+"""
 
+CSS_RESPONSIVE = """
 /* ═══════════════════─ 响应式 ─══════════════════ */
 @media(max-width:1200px){
   .kpi-grid.cols-9,.kpi-grid.cols-8,.kpi-grid.cols-6{grid-template-columns:repeat(4,1fr);}
@@ -1493,7 +1508,9 @@ table.yoy-matrix-table .td-empty{color:#cbd5e1;font-style:italic;}
 @media(max-width:480px){
   .kpi-grid.cols-9,.kpi-grid.cols-8,.kpi-grid.cols-3,.kpi-grid.cols-4,.kpi-grid.cols-6{grid-template-columns:1fr;}
 }
+"""
 
+CSS_ANIMATIONS = """
 /* ══════════════════════════════════════════════════════
    动画系统 — 6项动画
    ══════════════════════════════════════════════════════ */
@@ -1527,6 +1544,9 @@ table.yoy-matrix-table .td-empty{color:#cbd5e1;font-style:italic;}
 .page { transform: translateY(0); }
 """
 
+# ── 向后兼容：合并所有 CSS 模块 ──
+GLOBAL_CSS = CSS_CORE + CSS_COMPONENTS + CSS_RESPONSIVE + CSS_ANIMATIONS
+
 GLOBAL_JS = """
 // ══════════════════════════════════════════════════════
 // 页面切换 + 动画触发
@@ -1540,6 +1560,8 @@ function showPage(id){
     return;
   }
   pageEl.classList.add('active');
+  // 滚动到页面顶部（解决页面内部滚动的视觉一致性问题）
+  pageEl.scrollTop=0;
   // 触发卡片交错入场动画
   delayAnim(pageEl, '.kpi, .hero-kpi, .ring-kpi, .mini-rate, .kpi-row>*', 80);
   var t=document.querySelector('.nav a[data-target="'+id+'"]');
