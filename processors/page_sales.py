@@ -137,10 +137,10 @@ class SalesPage(BaseRenderer):
     # KPI
     # ════════════════════════════════════════════════════════════
     def _kpi_row(self, total_target: float, total_inc: float, total_pay: float) -> str:
-        """销售页 KPI：同年度达成 Hero，总指标 / 收入达成度 / 回款达成度"""
+        """销售页 KPI：同年度达成 Hero"""
         return hero_rings_html(
             total_inc, total_target, total_pay, total_target, '', '收入', '回款',
-            total_tgt=total_target, total_label='年度总指标',
+            total_tgt=None, total_label='',
             show_cust_sales=False,
         )
 
