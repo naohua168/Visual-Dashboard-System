@@ -71,16 +71,16 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
 }
 .header-top{
   display:flex;align-items:center;justify-content:center;
-  height:36px;border-bottom:1px solid rgba(255,255,255,0.08);
+  height:26px;border-bottom:1px solid rgba(255,255,255,0.08);
 }
 .header-title{
-  font-size:18px;font-weight:800;letter-spacing:0.04em;
+  font-size:15px;font-weight:800;letter-spacing:0.04em;
   margin:0;color:#fbbf24;text-align:center;
   text-shadow:0 1px 2px rgba(0,0,0,.3);
 }
 .header-bottom{
   display:flex;align-items:center;justify-content:space-between;
-  height:36px;
+  height:30px;
 }
 .header-left{display:flex;align-items:center;gap:16px;}
 .header-logo{display:none;}
@@ -98,9 +98,9 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
   flex:1;
 }
 .nav a{
-  padding:0 20px;color:#cbd5e1;text-decoration:none;
-  font-size:13px;font-weight:600;display:flex;align-items:center;
-  border-bottom:3px solid transparent;transition:all 0.2s;
+  padding:0 16px;color:#cbd5e1;text-decoration:none;
+  font-size:12px;font-weight:600;display:flex;align-items:center;
+  border-bottom:2px solid transparent;transition:all 0.2s;
   letter-spacing:0.02em;position:relative;
 }
 .nav a:hover{color:#fbbf24;background:rgba(255,255,255,0.08);}
@@ -115,7 +115,7 @@ table, .kpi-value, .progress-val, .rank, .mini-rate .val, .yoy-up, .yoy-down, .c
 }
 
 /* ═══════════════════─ 页面容器 ─══════════════════ */
-.page{display:none;padding:8px 10px;height:calc(100vh - 72px);overflow-y:auto;}
+.page{display:none;padding:8px 10px;height:calc(100vh - 56px);overflow-y:auto;}
 .page.active{display:block;}
 /* 自定义滚动条 */
 .page::-webkit-scrollbar{width:6px;}
@@ -1741,7 +1741,7 @@ GLOBAL_OV_CSS = """
   display:none;
   flex-direction:column;
   overflow-y:auto;
-  min-height:calc(100vh - 72px);
+  min-height:calc(100vh - 56px);
 }
 .page.active#overview{
   display:flex;
