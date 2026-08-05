@@ -50,7 +50,7 @@ def test_data_has_required_dataframes():
 
 def test_income_columns():
     data = load_all(BASE_DIR)
-    expected = ["事业部", "金额", "客户", "日期", "是否为广东公司", "是否为深圳公司"]
+    expected = ["事业部", "金额", "客户", "法人主体", "日期"]
     for col in expected:
         assert col in data.income.columns, f"收入表缺少列: {col}"
 

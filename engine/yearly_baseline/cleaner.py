@@ -28,7 +28,7 @@ DEPT_MAP = {
     "海外事业部": "海外",
 }
 
-STD_COLS = ["事业部", "金额", "客户", "日期", "是否为广东公司", "是否为深圳公司"]
+STD_COLS = ["事业部", "金额", "客户", "法人主体", "日期"]
 
 # 年份标签（用于日期生成）
 YEAR_LABEL = "2024"
@@ -100,6 +100,20 @@ def _clean_single(label, file_path, mapper=None):
 
     log_step("年%s" % label, "重命名: %s" % str(rename_map))
 
+    # 法人主体从核算单位列提取，简称转全称
+    for src in ["核算单位", "法人主体"]:
+        if src in df.columns:
+            _col_remap(df, src, "法人主体", rename_map)
+            break
+    if "法人主体" not in df.columns:
+        df["法人主体"] = ""
+    # 简称→全称映射
+    _ENTITY_FULL = {
+        "广东公司": "广东汽车检测中心有限公司",
+        "湖南公司": "中汽院智能网联汽车检测中心（湖南）有限公司",
+    }
+    df["法人主体"] = df["法人主体"].astype(str).str.strip().map(_ENTITY_FULL).fillna(df["法人主体"])
+
     # 事业部分类（全名→简称）
     if mapper:
         try:
@@ -129,8 +143,6 @@ def _clean_single(label, file_path, mapper=None):
         log_step("年%s" % label, "无日期列，默认 %s-01-01" % YEAR_LABEL, "WARN")
 
     # 标准列补齐
-    df["是否为广东公司"] = ""
-    df["是否为深圳公司"] = ""
     for col in STD_COLS:
         if col not in df.columns:
             df[col] = ""

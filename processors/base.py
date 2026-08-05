@@ -1728,9 +1728,9 @@ GLOBAL_OV_CSS = """
    数据总览页 — 毛玻璃卡片 + 飞入动画
    ═══════════════════════════════════════════════════════════════ */
 
-/* Overview 页背景：CAERI 图 + 深色渐变遮罩 */
+/* Overview 页背景：统一浅色，与其他页面保持一致 */
 .page#overview{
-  background:linear-gradient(135deg,#0a1628 0%,#162944 100%);
+  background:transparent;
   padding:14px;
   position:relative;
   display:none;

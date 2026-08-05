@@ -5,7 +5,7 @@
 """
 import pandas as pd
 from ..core.column_resolver import extract_columns, print_hit_columns
-from ..core.utils import log_step, filter_by_date, init_company_type, standardize_output
+from ..core.utils import log_step, filter_by_date, standardize_output
 from ..core.mapping_loader import DepartmentMapper
 from ..core.customer_matcher import CustomerMatcher
 from ..core.config import get_data_path, load_clean_params
@@ -49,9 +49,6 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     df = df.dropna(subset=["事业部"])
     log_step(f"财务端{file_type}", f"事业部映射: 成功{len(df)}行, 丢弃{before - len(df)}行")
 
-    # 公司类型初始化
-    df = init_company_type(df)
-
     # 客户白名单匹配
     before = len(df)
     df = matcher.filter_dataframe(df, "客户", keep_unmatched=False)
@@ -78,8 +75,7 @@ def clean_guangdong(config, matcher, time_range, file_type):
     # 广东公司原始数据是万元，乘以10000转为元，统一单位
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * 10000.0
     df["事业部"] = src_config["事业部固定"]
-    df["是否为广东公司"] = src_config.get("是否为广东公司", "是")
-    df["是否为深圳公司"] = ""
+    df["法人主体"] = "广东汽车检测中心有限公司"
 
     before = len(df)
     df = matcher.filter_dataframe(df, "客户", keep_unmatched=False)
@@ -106,8 +102,7 @@ def clean_hunan(config, matcher, time_range, file_type):
     # 湖南公司原始数据是万元，乘以10000转为元，统一单位
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * 10000.0
     df["事业部"] = src_config["事业部固定"]
-    df["是否为广东公司"] = ""
-    df["是否为深圳公司"] = ""
+    df["法人主体"] = "中汽院智能网联汽车检测中心（湖南）有限公司"
 
     before = len(df)
     df = matcher.filter_dataframe(df, "客户", keep_unmatched=False)

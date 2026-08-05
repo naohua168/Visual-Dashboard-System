@@ -37,7 +37,7 @@ def test_clean_single_output_columns(tmp_path):
     p = tmp_path / "t.xlsx"
     pd.DataFrame({"事业部": ["检测工程事业部"], "客户名称": ["T"], "金额": [100], "确认时间": ["5月"]}).to_excel(p, index=False)
     r = _clean_single("收入", p)
-    for c in ["事业部","金额","客户","日期","是否为广东公司","是否为深圳公司"]:
+    for c in ["事业部","金额","客户","法人主体","日期"]:
         assert c in r.columns
 
 def test_clean_single_dept_mapping(tmp_path):

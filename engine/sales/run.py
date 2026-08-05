@@ -1,11 +1,12 @@
 """
-销售数据直通 — 不拆分，只添加"销售"列用于前端展示
+销售数据引擎 — 基于 客户销售归属.json 按收入/回款分别拆分
 
 用法:
     python -m engine.sales.run              # 处理销售收入+销售回款
     python -m engine.sales.run --type=收入   # 只处理销售收入
     python -m engine.sales.run --type=回款   # 只处理销售回款
 """
+import json
 import sys
 
 import pandas as pd
@@ -13,49 +14,154 @@ import pandas as pd
 from ..core.config import load_config, get_output_path, BASE_DIR
 from ..core.utils import log_step
 
+# 4 大事业部
+DEPARTMENTS = ["检测", "信息", "能源", "海外"]
+
+
+def _load_excluded_companies() -> list[str]:
+    """加载内部交易排除名单（与清洗层一致）"""
+    path = BASE_DIR / "data" / "mappings" / "部门事业部映射" / "部门事业部映射.json"
+    if not path.exists():
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            m = json.load(f)
+        exc = m.get("excluded_internal_companies", {})
+        if isinstance(exc, list):
+            return exc
+        return exc.get("companies", [])
+    except Exception:
+        return []
+
+
+def _load_attribution() -> dict[str, dict]:
+    """加载客户销售归属.json，扁平化为 {客户名: {收入: {部门: {销售: 比例}}, 回款: ...}}"""
+    path = BASE_DIR / "config" / "清洗配置" / "客户销售归属.json"
+    if not path.exists():
+        log_step("销售引擎", "客户销售归属.json 不存在", "WARN")
+        return {}
+
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    flat: dict[str, dict] = {}
+    for parent, group in data.get("客户归属", {}).items():
+        for sub_name, sub_data in group.get("子公司", {}).items():
+            flat[sub_name.strip()] = sub_data
+
+    log_step("销售引擎", f"加载 {len(flat)} 条客户→销售映射")
+    return flat
+
 
 def run_split(file_type, config=None):
-    """直通模式：不拆分，直接添加"销售"列为空"""
+    """按客户销售归属拆分单个表（收入或回款）"""
     if config is None:
         config = load_config()
 
-    # 读取已清洗的收入/回款表（当年累计）
+    # 加载客户→销售映射
+    attribution = _load_attribution()
+
+    # 读取已清洗的当年累计数据
     source_key = f"当年累计{file_type}"
-    if source_key not in config["输出"]:
-        log_step(f"销售{file_type}", f"配置中缺少 '{source_key}'，回退到 '{file_type}'", "WARN")
-        source_key = file_type
     source_folder = BASE_DIR / config["输出"][source_key]
     if source_folder.is_dir():
         xlsx_files = [f for f in source_folder.glob("*.xlsx") if not f.name.startswith("~$")]
-        if xlsx_files:
-            source_path = xlsx_files[0]
-        else:
-            source_path = source_folder / f"{source_key}.xlsx"
+        source_path = xlsx_files[0] if xlsx_files else source_folder / f"{source_key}.xlsx"
     else:
         source_path = source_folder
-    log_step(f"销售{file_type}", f"读取已清洗数据: {source_path.name}")
-    df = pd.read_excel(source_path)
-    log_step(f"销售{file_type}", f"原始数据: {len(df)}行, 金额{df['金额'].sum():,.2f}")
 
-    # 直通模式：添加"销售"列，不拆分
+    log_step(f"销售{file_type}", f"读取: {source_path.name}")
+    df = pd.read_excel(source_path)
+    total_in = len(df)
+    total_amount = df["金额"].sum()
+    log_step(f"销售{file_type}", f"原始: {total_in}行, 金额{total_amount:,.2f}")
+
+    # 排除内部交易公司（客户=自身，与清洗层排除名单一致）
+    excluded = _load_excluded_companies()
+    if excluded and "客户" in df.columns:
+        before = len(df)
+        df = df[~df["客户"].astype(str).str.strip().isin(excluded)].copy()
+        if before - len(df) > 0:
+            log_step(f"销售{file_type}", f"排除内部交易客户: 丢弃{before - len(df)}行", "OK")
+
+    if not attribution:
+        log_step(f"销售{file_type}", "无归属映射，跳过拆分", "WARN")
+        df["销售"] = ""
+        return df
+
+    # 确定查收入的还是回款的
+    metric_key = "收入" if file_type == "收入" else "回款"
+
     print(f"\n{'='*50}")
-    print(f"  Phase 3: 销售{file_type}（直通模式）")
+    print(f"  Phase 3: 销售{file_type}拆分")
     print(f"{'='*50}")
 
-    df["销售"] = ""
+    results = []
+    matched = 0
+    unmatched = 0
 
-    log_step(f"销售{file_type}", f"输出: {len(df)}行 (直通, 不拆分)")
-    log_step(f"销售{file_type}", f"金额合计: {df['金额'].sum():,.2f}")
+    for _, row in df.iterrows():
+        customer = str(row.get("客户", "")).strip()
+        department = str(row.get("事业部", "")).strip()
+        amount = float(row.get("金额", 0))
+
+        # 查客户映射
+        cust_data = attribution.get(customer)
+        if not cust_data:
+            # 未匹配 → 保留原始行，销售为空
+            row_dict = row.to_dict()
+            row_dict["销售"] = ""
+            results.append(row_dict)
+            unmatched += 1
+            continue
+
+        # 取收入/回款的部门比例
+        metric_ratios = cust_data.get(metric_key, {})
+        dept_ratios = metric_ratios.get(department, {})
+
+        if not dept_ratios:
+            # 该部门无比例 → 保留原始行
+            row_dict = row.to_dict()
+            row_dict["销售"] = ""
+            results.append(row_dict)
+            unmatched += 1
+            continue
+
+        # 按比例拆分
+        for sales_name, ratio in dept_ratios.items():
+            allocated = amount * float(ratio)
+            r = row.to_dict()
+            r["销售"] = sales_name
+            r["金额"] = allocated
+            results.append(r)
+
+        matched += 1
+
+    split_df = pd.DataFrame(results)
+    split_total = split_df["金额"].sum()
+
+    # 统计
+    unique_sales = split_df.loc[split_df["销售"] != "", "销售"].unique()
+    log_step(f"销售{file_type}", f"拆分后: {len(split_df)}行 (匹配{matched}行, 未匹配{unmatched}行)")
+    log_step(f"销售{file_type}", f"销售人数: {len(unique_sales)}人")
+    log_step(f"销售{file_type}", f"金额合计: {split_total:,.2f}")
+
+    # 总额校验
+    diff = abs(total_amount - split_total)
+    if diff < 1e-6:
+        log_step(f"销售{file_type}", f"总额校验: {total_amount:,.2f} = {split_total:,.2f} 完全一致", "OK")
+    else:
+        log_step(f"销售{file_type}", f"总额校验: 差异 {diff:,.6f}", "WARN")
 
     # 写入
     output_key = f"销售{file_type}"
     output_path = get_output_path(config, output_key)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df = df.fillna("")
-    df.to_excel(output_path, index=False)
+    split_df = split_df.fillna("")
+    split_df.to_excel(output_path, index=False)
     log_step(f"销售{file_type}", f"写入: {output_path}", "OK")
 
-    return df
+    return split_df
 
 
 def main():
@@ -70,7 +176,7 @@ def main():
         file_types = ["收入", "回款"]
 
     print(f"\n{'#'*60}")
-    print(f"  销售数据直通模式")
+    print(f"  销售拆分引擎 — 基于 客户销售归属.json")
     print(f"  处理对象: {', '.join(file_types)}")
     print(f"  时间: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'#'*60}")
@@ -81,7 +187,7 @@ def main():
         results[ft] = run_split(ft, config)
 
     print(f"\n{'#'*60}")
-    print(f"  完成")
+    print(f"  拆分完成")
     for ft, df in results.items():
         print(f"  销售{ft}: {len(df)}行, 金额{df['金额'].sum():,.2f}")
     print(f"{'#'*60}")

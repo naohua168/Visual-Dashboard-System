@@ -20,17 +20,31 @@ def filter_by_date(df, date_col, start_date, end_date):
     return df[mask].copy()
 
 
-def init_company_type(df):
-    """初始化公司类型列为空字符串"""
-    df = df.copy()
-    df["是否为广东公司"] = ""
-    df["是否为深圳公司"] = ""
-    return df
+def infer_company_type(entity):
+    """根据法人主体名推断公司类型 (is_gd, is_sz)
+
+    Args:
+        entity: 法人主体全称字符串
+
+    Returns:
+        (is_gd, is_sz): ("是"/"", "是"/"")
+        - "广东汽车检测中心有限公司" → ("是", "")
+        - 含"深圳" → ("", "是")
+        - 其他 → ("", "")
+    """
+    if pd.isna(entity):
+        return "", ""
+    e = str(entity).strip()
+    if e == "广东汽车检测中心有限公司":
+        return "是", ""
+    if "深圳" in e:
+        return "", "是"
+    return "", ""
 
 
 def standardize_output(df):
     """标准化输出列顺序"""
-    std_cols = ["事业部", "金额", "客户", "日期", "是否为广东公司", "是否为深圳公司"]
+    std_cols = ["事业部", "金额", "客户", "法人主体", "日期"]
     for col in std_cols:
         if col not in df.columns:
             df[col] = ""

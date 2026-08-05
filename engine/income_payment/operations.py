@@ -79,35 +79,19 @@ def clean_operations_single(config, mapper, matcher, file_type):
         df["日期"] = pd.Timestamp("2026-01-01")
         log_step(f"运营端{file_type}", f"日期赋值: 无真实日期列, 默认2026-01-01")
 
-    # 客户筛选 + 公司类型
-    # 运营端用法人主体列（非核算单位），根据法人主体含"广东"标记广东公司
+    # 客户筛选 + 公司类型（仅统计，不添加列）
     accounting_col = None
     for candidate in ["核算单位", "法人主体", "所属单位"]:
         if candidate in df.columns:
             accounting_col = candidate
             break
     if accounting_col:
-        is_gd = df[accounting_col].astype(str).str.strip().str.contains("广东|广州", na=False)
-        is_sz = df[accounting_col].astype(str).str.strip().str.contains("深圳", na=False)
-
-        df_gd = df[is_gd].copy()
-        df_sz = df[is_sz & ~is_gd].copy()  # 深圳公司（排除已标记为广东的）
-        df_other = df[~(is_gd | is_sz)].copy()
-
-        df_gd["是否为广东公司"] = "是"
-        df_gd["是否为深圳公司"] = ""
-        df_sz["是否为广东公司"] = ""
-        df_sz["是否为深圳公司"] = "是"
-
-        df_other["是否为广东公司"] = ""
-        df_other["是否为深圳公司"] = ""
+        n_gd = df[accounting_col].astype(str).str.strip().eq("广东汽车检测中心有限公司").sum()
+        n_sz = df[accounting_col].astype(str).str.strip().str.contains("深圳", na=False).sum()
+        n_other = len(df) - n_gd - n_sz
         log_step(f"运营端{file_type}",
-                 f"客户全量通过: 广东{len(df_gd)}行 + 深圳{len(df_sz)}行 + 其他{len(df_other)}行")
-
-        df = pd.concat([df_gd, df_sz, df_other], ignore_index=True)
+                 f"客户全量通过: 广东{n_gd}行 + 深圳{n_sz}行 + 其他{n_other}行")
     else:
-        df["是否为广东公司"] = ""
-        df["是否为深圳公司"] = ""
         log_step(f"运营端{file_type}", f"客户全量通过: {len(df)}行")
 
     df = standardize_output(df)

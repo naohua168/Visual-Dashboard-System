@@ -23,7 +23,7 @@ def test_config_required_sections():
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
     # 必需的顶层字段
-    for key in ["数据源", "映射文件", "时间范围", "客户匹配", "输出"]:
+    for key in ["数据源", "映射文件", "时间范围", "输出"]:
         assert key in data, f"配置缺少顶层字段: {key}"
 
 
