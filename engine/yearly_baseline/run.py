@@ -12,7 +12,7 @@ import pandas as pd
 
 from ..core.config import load_config
 from ..core.mapping_loader import load_department_mapper
-from .cleaner import run_clean, clean_yearly, INCOME_DIR, PAYMENT_DIR
+from .cleaner import run_clean, clean_yearly
 
 
 def main():

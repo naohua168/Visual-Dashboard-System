@@ -133,18 +133,25 @@ class TestSortedCustomers:
     def _make_df(self, names, values):
         return pd.DataFrame({"合计": values}, index=names)
 
-    def test_includes_actual_only_customers(self):
-        """有实际但无目标的客户也应包含在客户列表中"""
+    def test_non_target_above_50w_shown(self):
+        """非指标客户：实际≥50万就展示"""
         tgt = self._make_df(["A", "B"], [100, 50])
-        piv = self._make_df(["A", "B", "C"], [80, 30, 60])
-        out = _sorted_customers(tgt, piv=piv)
-        assert "C" in out, "有实际但无目标的客户 C 应被包含"
-        # 有目标的按目标降序在前：A(100), B(50)；无目标但有实际的排在最后：C
-        assert out == ["A", "B", "C"]
+        piv = self._make_df(["A", "B", "C", "D"], [80, 30, 60, 30])
+        pri, rest = _sorted_customers(tgt, piv=piv)
+        assert "C" in pri, "非指标但实际≥50万的客户 C 应展示"
+        assert "D" not in pri, "非指标且实际<50万的客户 D 不应展示"
+        # 指标客户在前：A(100), B(50)；非指标≥50万在后：C
+        assert pri == ["A", "B", "C"]
+
+    def test_target_all_zero_excluded(self):
+        """指标客户指标全为0不展示"""
+        tgt = self._make_df(["A", "B"], [100, 0])
+        pri, rest = _sorted_customers(tgt)
+        assert "B" not in pri, "指标全为0的客户 B 应排除"
 
     def test_empty_piv_still_works(self):
         """piv 为空时只返回有目标的客户"""
         tgt = self._make_df(["A", "B"], [100, 50])
         piv = self._make_df([], [])
-        out = _sorted_customers(tgt, piv=piv)
-        assert out == ["A", "B"]
+        pri, rest = _sorted_customers(tgt, piv=piv)
+        assert pri == ["A", "B"]

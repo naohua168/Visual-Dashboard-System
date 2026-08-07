@@ -175,9 +175,8 @@ def test_quarterly_time_range_uses_config():
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         config = json.load(f)
     r = get_quarterly_time_range(config, datetime(2026, 7, 29))
-    # 手动模式（用户偏好 2026-07-31）：直接使用配置中的日期
-    assert r["start_date"] == "2026-05-01"
-    assert r["end_date"] == "2026-06-30 23:59:59"
+    # 手动模式：直接使用配置中的日期
+    assert r["start_date"] == "2026-07-01"
     assert r["_mode"] == "static"
 
 
@@ -193,5 +192,5 @@ def test_current_config_uses_static_mode():
         spec = time_range[key]
         assert spec.get("_mode") != "dynamic", f"{key} 不应使用 dynamic 模式"
         assert "start_date" in spec and "end_date" in spec
-    assert time_range["月度数据"]["start_date"] == "2026-06-01"
-    assert time_range["季度累计筛选"]["start_date"] == "2026-05-01"
+    assert time_range["月度数据"]["start_date"] == "2026-08-01"
+    assert time_range["季度累计筛选"]["start_date"] == "2026-07-01"

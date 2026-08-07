@@ -1,25 +1,21 @@
-"""年基线清洗逻辑 — 适配新数据格式（2025年1-7月汇总数据）
+"""年基线清洗逻辑 — 配置驱动文件路径（不再 glob 通配取首个）
 
 新格式列结构：
   收入文件: 事业部, 核算单位, 确认时间, 客户, 所在省, 市场区域, 收入, 是否属于内部交易
   回款文件: 事业部, 核算单位, 到款时间, 客户, 所在省, 市场区域, 到款, 是否属于内部款项
 
 输出标准列: 事业部, 金额, 客户, 法人主体, 日期
+文件路径从 config/清洗配置/cleaning_config.json → 数据源.年基线数据 读取。
 年份+月份范围从 config/清洗配置/cleaning_config.json → 时间范围.年基线数据 读取。
 """
 import json
-import glob as glob_module
 from pathlib import Path
 
 import pandas as pd
 
-from ..core.config import BASE_DIR, CONFIG_PATH
+from ..core.config import BASE_DIR, CONFIG_PATH, get_yearly_baseline_path
 from ..core.mapping_loader import load_department_mapper
 from ..core.utils import log_step
-
-# 默认源目录
-INCOME_DIR = BASE_DIR / "data" / "raw" / "往年收入数据"
-PAYMENT_DIR = BASE_DIR / "data" / "raw" / "往年回款数据"
 
 # 事业部全名→简称
 DEPT_MAP = {
@@ -55,19 +51,36 @@ def _get_yearly_cfg() -> dict:
     return _YEARLY_CFG
 
 
-def _find_xlsx(dir_path: Path) -> Path | None:
-    """在目录中查找第一个 .xlsx 文件（通配符）"""
-    if not dir_path.exists():
-        return None
-    files = sorted(dir_path.glob("*.xlsx"))
-    return files[0] if files else None
-
-
 def _col_remap(df, source_col, target_col, rename_map):
     """如果源列存在且目标列不存在，重命名"""
     if source_col in df.columns and target_col not in df.columns:
         df.rename(columns={source_col: target_col}, inplace=True)
         rename_map[target_col] = source_col
+
+
+def _parse_yearly_date(val, default_year: int = 2024) -> str | None:
+    """解析年基线日期字符串（用于旧格式数据兼容）
+
+    "3月" → "2024-03-01", "1-4月" → "2024-04-01"（取末月）
+    """
+    import math
+    import re
+    if val is None:
+        return None
+    if isinstance(val, float) and math.isnan(val):
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    # 匹配 "X-Y月" 格式
+    m = re.match(r'(\d+)-(\d+)月', s)
+    if m:
+        return f"{default_year}-{int(m.group(2)):02d}-01"
+    # 匹配 "X月" 格式
+    m = re.match(r'(\d+)月', s)
+    if m:
+        return f"{default_year}-{int(m.group(1)):02d}-01"
+    return None
 
 
 # ──────────────────────────────────────────────────────────────
@@ -160,19 +173,28 @@ def _clean_single(label, file_path, mapper=None):
 
 
 def clean_yearly(source_dir=None, mapper=None):
-    """清洗年基线数据（收入+回款）
+    """清洗年基线数据（收入+回款）— 配置驱动文件路径
 
     Args:
-        source_dir: 可选路径（None 时使用默认目录）
+        source_dir: 可选路径（None 时从 config 读取；支持 --source= 单文件覆盖）
         mapper: 部门映射器
 
     Returns:
         dict: {"收入": DataFrame, "回款": DataFrame} 或 None
     """
-    if source_dir is None:
-        inc_path = _find_xlsx(INCOME_DIR)
-        pay_path = _find_xlsx(PAYMENT_DIR)
-    else:
+    # ── 从配置加载文件路径 ──
+    inc_path = None
+    pay_path = None
+    try:
+        from ..core.config import load_config
+        config = load_config()
+        inc_path = get_yearly_baseline_path(config, "收入")
+        pay_path = get_yearly_baseline_path(config, "回款")
+    except (KeyError, FileNotFoundError, ImportError):
+        pass
+
+    if source_dir is not None:
+        # 用户显式指定路径时覆盖配置
         src = Path(source_dir)
         if src.is_file() and src.suffix == ".xlsx":
             name = src.stem
@@ -180,16 +202,20 @@ def clean_yearly(source_dir=None, mapper=None):
             pay_path = src if "回款" in name else None
             if not inc_path and not pay_path:
                 inc_path = src
-        elif src.is_dir():
-            files = sorted(src.glob("*.xlsx"))
-            inc_path = files[0] if files else None
-            pay_path = None
         else:
             inc_path = None
             pay_path = None
 
+    # 校验文件存在
+    if inc_path and not inc_path.exists():
+        log_step("年基线", f"收入文件不存在: {inc_path}", "WARN")
+        inc_path = None
+    if pay_path and not pay_path.exists():
+        log_step("年基线", f"回款文件不存在: {pay_path}", "WARN")
+        pay_path = None
+
     if inc_path is None and pay_path is None:
-        log_step("年基线", "往年收入/回款数据文件夹均未找到 .xlsx 文件", "WARN")
+        log_step("年基线", "往年收入/回款数据文件均不存在（请检查 config → 数据源 → 年基线数据）", "WARN")
         return None
 
     results = {}
@@ -209,13 +235,11 @@ def clean_yearly(source_dir=None, mapper=None):
 
 
 def run_clean(mapper=None):
-    """运行年基线清洗并写入 data/sheets/系统数据清理/往年收入/往年回款"""
+    """运行年基线清洗并写入输出目录（输出路径由 config → 输出.往年收入/往年回款 控制）"""
     yc = _get_yearly_cfg()
     log_step("年基线", "=" * 50)
     log_step("年基线", "开始清洗年基线数据")
     log_step("年基线", "年份: %d, 月份范围: %d-%d月" % (yc["year"], yc["months"][0], yc["months"][-1]))
-    log_step("年基线", "收入源目录: %s" % INCOME_DIR)
-    log_step("年基线", "回款源目录: %s" % PAYMENT_DIR)
 
     results = clean_yearly(mapper=mapper)
     if results is None:
@@ -223,9 +247,19 @@ def run_clean(mapper=None):
         return {}
 
     _LABEL_MAP = {"收入": "往年收入", "回款": "往年回款"}
+    # 从配置读取输出目录
+    try:
+        from ..core.config import load_config
+        config = load_config()
+        out_base = {k: BASE_DIR / config["输出"].get(v, f"data/sheets/系统数据清理/{v}/")
+                    for k, v in _LABEL_MAP.items()}
+    except Exception:
+        out_base = {k: BASE_DIR / "data" / "sheets" / "系统数据清理" / v
+                    for k, v in _LABEL_MAP.items()}
+
     for label, df in results.items():
         dir_name = _LABEL_MAP.get(label, label)
-        out_dir = BASE_DIR / "data" / "sheets" / "系统数据清理" / dir_name
+        out_dir = out_base.get(label, BASE_DIR / "data" / "sheets" / "系统数据清理" / dir_name)
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / ("%s.xlsx" % dir_name)
         df.to_excel(out_path, index=False)
