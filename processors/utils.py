@@ -7,8 +7,8 @@ import math
 def fmt_wan(amount: float | int | None) -> str:
     """金额格式化为万元展示（千分位、无小数）
 
-    输入金额单位：元（清洗阶段已统一为元）
-    本函数按万元展示，取整显示（无小数点）。
+    输入金额单位：万元（page_data_utils._add_wan 已做 ÷10000 转换）
+    本函数仅做千分位格式化，不改变数值。
     """
     if amount is None or (isinstance(amount, float) and math.isnan(amount)):
         return "—"

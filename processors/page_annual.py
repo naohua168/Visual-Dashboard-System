@@ -35,8 +35,8 @@ class AnnualPage(BaseRenderer):
         )
 
         # 收入/回款两个 tab 各自独立 matrix 和 toggle ID
-        inc_table = self._build_matrix(d.inc_piv, d.inc_tgt_grouped, d.inc_customers, d.t_inc, d.inc_rest, tab="inc", subs_with_data=d.subs_with_data)
-        pay_table = self._build_matrix(d.pay_piv, d.pay_tgt_grouped, d.pay_customers, d.t_pay, d.pay_rest, tab="pay", subs_with_data=d.subs_with_data)
+        inc_table = self._build_matrix(d.inc_piv, d.inc_tgt_grouped, d.inc_customers, d.t_inc, d.inc_rest, tab="inc", subs_with_data=d.subs_with_data, subs_detail=d.subs_detail_inc)
+        pay_table = self._build_matrix(d.pay_piv, d.pay_tgt_grouped, d.pay_customers, d.t_pay, d.pay_rest, tab="pay", subs_with_data=d.subs_with_data, subs_detail=d.subs_detail_pay)
         matrix = (
             f'<div class="section-title sec-sky">重要客户年度达成 · 收入/回款（万元）</div>'
             + cust_tab_bar("annual-cust-inc", "annual-cust-pay")
@@ -48,7 +48,7 @@ class AnnualPage(BaseRenderer):
             range_banner_html(d.annual_range) + hero + dept_cards + matrix, d.date_range
         )
 
-    def _build_matrix(self, piv, tgt_grouped, customers, t_all, rest_customers=None, tab="inc", subs_with_data=None) -> str:
+    def _build_matrix(self, piv, tgt_grouped, customers, t_all, rest_customers=None, tab="inc", subs_with_data=None, subs_detail=None) -> str:
         """纯 HTML 生成 — 接收已 pivoted 的 DataFrame，支持折叠其余客户 + 点击母公司看子公司
 
         tab="inc"/"pay" 用于生成独立的 matrix 和 toggle 按钮 ID，避免收入/回款两 tab ID 冲突。
@@ -57,9 +57,12 @@ class AnnualPage(BaseRenderer):
             rest_customers = []
         if subs_with_data is None:
             subs_with_data = {}
+        if subs_detail is None:
+            subs_detail = {}
         all_custs = customers + rest_customers
         matrix_id = f"annual-{tab}-matrix"
         toggle_id = f"annual-{tab}-toggle"
+        uid = f"annual_{tab}"
 
         h = f'<tr><th class="th-name">客户（{len(all_custs)}家）</th>' + "".join(
             f"<th>{d}</th>" for d in DEPARTMENTS
@@ -84,7 +87,7 @@ class AnnualPage(BaseRenderer):
                 if subs_in_table:
                     cust_html = (
                         f'<td class="td-name td-name-clickable" '
-                        f'onclick="annual_show(\'{c}\')" '
+                        f'onclick="{uid}_show(this,\'{c}\')" '
                         f'title="点击查看 {len(subs_in_table)} 家子公司" '
                         f'style="cursor:pointer;color:var(--accent)">'
                         f'<span class="row-num">{start_idx+i+1}</span>{c} '
@@ -123,7 +126,7 @@ class AnnualPage(BaseRenderer):
 
         # 子公司数据 JSON（用于弹窗）— 仅在有至少一个有数据的母公司时输出
         import json
-        sub_data = {p: subs_with_data[p] for p in all_custs if p in subs_with_data}
+        sub_data = {p: subs_detail[p] for p in all_custs if p in subs_detail}
         sub_json = json.dumps(sub_data, ensure_ascii=False)
 
         return (
@@ -133,6 +136,6 @@ class AnnualPage(BaseRenderer):
             f'<div style="font-size:11px;color:var(--text-muted);margin-top:6px">'
             f'每格：百分比 / 实际金额 / 目标金额 · 全公司合计 '
             f'<strong style="color:var(--accent)">{fmt_wan(t_all)}</strong> 万</div>'
-            f'{children_modal_html("annual")}'
-            f'{children_modal_js("annual", sub_json)}'
+            f'{children_modal_html(uid)}'
+            f'{children_modal_js(uid, sub_json)}'
         )

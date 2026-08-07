@@ -154,6 +154,91 @@ def _build_subs_with_data(
     return sub_data
 
 
+def _build_subs_detail(
+    raw_actual: pd.DataFrame | None,
+    raw_target: pd.DataFrame | None,
+    children_map: dict[str, list[str]],
+    parents: list[str],
+) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
+    """为每个母公司构建子公司×4部门实际/目标明细（弹窗表格用）。
+
+    返回结构：
+    {
+      "母公司": {
+        "子公司": {
+          "检测": {"act": 100, "tgt": 200},
+          ...
+          "合计": {"act": 400, "tgt": 800}
+        }
+      }
+    }
+    """
+    # 实际数据：客户 × 事业部 → 金额_万
+    actual: dict[str, dict[str, float]] = {}
+    if raw_actual is not None and len(raw_actual):
+        df = _add_wan(raw_actual.copy())
+        if "客户" in df.columns and "事业部" in df.columns:
+            g = df.groupby(["客户", "事业部"], as_index=False, dropna=False)["金额_万"].sum()
+            for _, row in g.iterrows():
+                c = str(row["客户"]).strip()
+                dpt = str(row["事业部"]).strip()
+                if c and dpt:
+                    actual.setdefault(c, {})[dpt] = safe_float(row["金额_万"])
+
+    # 目标数据：客户 → 部门指标（同一客户多行 → 累加）
+    target: dict[str, dict[str, float]] = {}
+    if raw_target is not None and len(raw_target) and "客户" in raw_target.columns:
+        dept_cols = [c for c in DEPARTMENTS if c in raw_target.columns]
+        for _, row in raw_target.iterrows():
+            c = str(row["客户"]).strip()
+            if c:
+                t = target.setdefault(c, {dpt: 0.0 for dpt in dept_cols})
+                for dpt in dept_cols:
+                    t[dpt] += safe_float(row[dpt])
+
+    result: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
+    for p in parents:
+        sub_detail: dict[str, dict[str, dict[str, float]]] = {}
+
+        # 1) 母公司本部（原始数据中直接挂在母公司名下、未拆分给任何子公司的金额）
+        parent_act_data = actual.get(p, {})
+        parent_tgt_data = target.get(p, {})
+        if parent_act_data or parent_tgt_data:
+            row: dict[str, dict[str, float]] = {}
+            total_act = total_tgt = 0.0
+            for dpt in DEPARTMENTS:
+                act = parent_act_data.get(dpt, 0.0)
+                tgt = parent_tgt_data.get(dpt, 0.0)
+                row[dpt] = {"act": act, "tgt": tgt}
+                total_act += act
+                total_tgt += tgt
+            row["合计"] = {"act": total_act, "tgt": total_tgt}
+            sub_detail[f"{p}（本部）"] = row
+
+        # 2) 子公司明细
+        all_subs = children_map.get(p, [])
+        subs = [s for s in all_subs if s != p]
+        for s in subs:
+            row = {}
+            total_act = total_tgt = 0.0
+            has_data = False
+            for dpt in DEPARTMENTS:
+                act = actual.get(s, {}).get(dpt, 0.0)
+                tgt = target.get(s, {}).get(dpt, 0.0)
+                row[dpt] = {"act": act, "tgt": tgt}
+                total_act += act
+                total_tgt += tgt
+                if act or tgt:
+                    has_data = True
+            row["合计"] = {"act": total_act, "tgt": total_tgt}
+            if has_data:
+                sub_detail[s] = row
+
+        if sub_detail:
+            result[p] = sub_detail
+    return result
+
+
 def _get_yearly_year(base_dir: Path) -> int:
     """从 cleaning_config.json 读取年基线年份"""
     import json

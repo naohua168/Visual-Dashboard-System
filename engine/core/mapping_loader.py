@@ -63,28 +63,30 @@ def load_department_mapper(config):
 
 
 def load_customer_list(config):
-    """加载客户白名单"""
+    """加载客户白名单 — 每次从 Excel 重新生成 JSON"""
+    import json
     import os
 
-    try:
-        data = load_mapping("客户名单", config)
-        if isinstance(data, list):
-            return [item.get("客户", item) if isinstance(item, dict) else str(item) for item in data]
-        elif isinstance(data, dict):
-            for k, v in data.items():
-                if not k.startswith("_") and isinstance(v, list):
-                    return v
-    except (FileNotFoundError, KeyError):
-        # JSON 客户名单加载失败：回退到 Excel 文件
-        pass
-
+    json_path = BASE_DIR / config["映射文件"].get("客户名单", "data/mappings/客户名单/客户名单.json")
     raw_path = BASE_DIR / "data" / "raw" / "客户名单" / "客户名单.xlsx"
-    if os.path.exists(raw_path):
-        df = pd.read_excel(raw_path)
-        col = _find_first_column(df, ["客户", "客户名称", "客户名"])
-        return df[col].dropna().astype(str).tolist()
 
-    raise FileNotFoundError("客户名单文件未找到")
+    if not os.path.exists(raw_path):
+        raise FileNotFoundError(
+            f"客户名单文件未找到，请将 '客户名单.xlsx' 放入:\n"
+            f"  {raw_path}"
+        )
+
+    # 从 Excel 读取
+    df = pd.read_excel(raw_path)
+    col = _find_first_column(df, ["客户", "客户名称", "客户名"])
+    customers = df[col].dropna().astype(str).tolist()
+
+    # 每次覆盖写入 JSON（保持与 Excel 同步）
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(customers, f, ensure_ascii=False, indent=2)
+
+    return customers
 
 
 def _find_first_column(df, candidates):

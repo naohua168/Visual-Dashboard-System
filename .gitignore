@@ -46,10 +46,17 @@ wheels/
 .pytest_cache/
 htmlcov/
 
+# ===== 打包产物 =====
+Visual-Dashboard-System_*.zip
+
 # ===== 临时文件 =====
 *.tmp
 *.bak
 *.log
+*_result.txt
+node_modules/
+package.json
+package-lock.json
 
 # ===== Excel 临时锁文件 =====
 ~$*.xlsx

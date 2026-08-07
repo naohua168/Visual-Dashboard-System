@@ -90,20 +90,6 @@ def _find_xlsx(folder: Path) -> Path:
     return folder / f"{folder.name}.xlsx"
 
 
-def _to_wan(df: pd.DataFrame, amount_col: str = "金额") -> pd.DataFrame:
-    """将金额列统一转为万元（÷10000）
-
-    根据设计：财务/运营端是元，广东/湖南是万元。
-    由于已清洗表中混在一起且无来源标识，按"统一÷10000"处理。
-    若原值是万元（如广东），会变成"万元÷10000=元"，与原始口径不一致。
-
-    ⚠️ 折中方案：已清洗数据保留原始值（元/万元混合），渲染层不再÷10000，
-       按原始数值展示并标注"（单位：元/万元混合，请参照数据源）"。
-       实际看板展示建议由用户在数据源端统一单位。
-    """
-    return df  # 保留原始值，单位换算交给数据源端
-
-
 def load_all(base_dir: Path) -> DashboardData:
     """加载 data/sheets/ 下全部数据表
 

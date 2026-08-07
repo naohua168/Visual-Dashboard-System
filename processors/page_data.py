@@ -15,7 +15,7 @@ import pandas as pd
 from .utils import safe_float, get_config_range
 from .config_loader import CustomerFilter
 from .page_data_utils import (
-    _add_wan, _build_cust_parent_map, _build_subs_with_data,
+    _add_wan, _build_cust_parent_map, _build_subs_detail, _build_subs_with_data,
     _consolidate_customers, _consolidate_target, _customer_pivot,
     _data_max_month, _dept_target_sum, _get_yearly_year,
     _group_by_parent, _load_children_map, _parse_month_range,
@@ -134,6 +134,9 @@ class AnnualData:
     customers: list[str] = field(default_factory=list)
     # 弹窗：母公司→有数据的子公司列表
     subs_with_data: dict = field(default_factory=dict)
+    # 弹窗：母公司→子公司×4部门实际/目标明细
+    subs_detail_inc: dict = field(default_factory=dict)
+    subs_detail_pay: dict = field(default_factory=dict)
     # 部门卡用 DataFrame
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -198,6 +201,12 @@ def prepare_annual_data(data, base_dir: Path) -> AnnualData:
         [data.annual_income_targets, data.annual_payment_targets],
         children_map, all_parents,
     )
+    d.subs_detail_inc = _build_subs_detail(
+        data.income, data.annual_income_targets, children_map, all_parents
+    )
+    d.subs_detail_pay = _build_subs_detail(
+        data.payment, data.annual_payment_targets, children_map, all_parents
+    )
 
     d.df_inc = df_inc; d.df_pay = df_pay
     d.inc_tgt_df = inc_tgt; d.pay_tgt_df = pay_tgt
@@ -231,6 +240,9 @@ class MonthlyData:
     customers: list[str] = field(default_factory=list)
     # 弹窗：母公司→有数据的子公司列表
     subs_with_data: dict = field(default_factory=dict)
+    # 弹窗：母公司→子公司×4部门实际/目标明细
+    subs_detail_inc: dict = field(default_factory=dict)
+    subs_detail_pay: dict = field(default_factory=dict)
     # 部门卡
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -331,6 +343,12 @@ def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
         [data.monthly_income_targets, data.monthly_payment_targets],
         children_map, all_parents,
     )
+    d.subs_detail_inc = _build_subs_detail(
+        raw_inc, data.monthly_income_targets, children_map, all_parents
+    )
+    d.subs_detail_pay = _build_subs_detail(
+        raw_pay, data.monthly_payment_targets, children_map, all_parents
+    )
 
     d.df_inc = df_inc; d.df_pay = df_pay
     d.inc_tgt_df = inc_tgt; d.pay_tgt_df = pay_tgt
@@ -366,6 +384,9 @@ class QuarterlyData:
     customers: list[str] = field(default_factory=list)
     # 弹窗：母公司→有数据的子公司列表
     subs_with_data: dict = field(default_factory=dict)
+    # 弹窗：母公司→子公司×4部门实际/目标明细
+    subs_detail_inc: dict = field(default_factory=dict)
+    subs_detail_pay: dict = field(default_factory=dict)
     # 部门卡
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -450,6 +471,12 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
         [q_inc, q_pay],
         [data.quarterly_income_targets, data.quarterly_payment_targets],
         children_map, all_parents,
+    )
+    d.subs_detail_inc = _build_subs_detail(
+        q_inc, data.quarterly_income_targets, children_map, all_parents
+    )
+    d.subs_detail_pay = _build_subs_detail(
+        q_pay, data.quarterly_payment_targets, children_map, all_parents
     )
 
     d.df_inc = q_inc; d.df_pay = q_pay

@@ -39,8 +39,8 @@ class QuarterlyPage(BaseRenderer):
             "quarterly-dept-wrap"
         ))
 
-        inc_table = self._build_matrix(d.inc_piv, d.inc_tgt_grouped, d.inc_customers, d.inc_rest, tab="inc", subs_with_data=d.subs_with_data)
-        pay_table = self._build_matrix(d.pay_piv, d.pay_tgt_grouped, d.pay_customers, d.pay_rest, tab="pay", subs_with_data=d.subs_with_data)
+        inc_table = self._build_matrix(d.inc_piv, d.inc_tgt_grouped, d.inc_customers, d.inc_rest, tab="inc", subs_with_data=d.subs_with_data, subs_detail=d.subs_detail_inc)
+        pay_table = self._build_matrix(d.pay_piv, d.pay_tgt_grouped, d.pay_customers, d.pay_rest, tab="pay", subs_with_data=d.subs_with_data, subs_detail=d.subs_detail_pay)
         parts.append(
             f'<div class="section-title sec-sky">客户季度达成 · 收入/回款（万元）</div>'
             + cust_tab_bar("q-cust-inc", "q-cust-pay")
@@ -50,17 +50,20 @@ class QuarterlyPage(BaseRenderer):
 
         return self.wrap_page("".join(parts), d.date_range)
 
-    def _build_matrix(self, piv, tgt_grouped, customers, rest_customers=None, tab="inc", subs_with_data=None) -> str:
+    def _build_matrix(self, piv, tgt_grouped, customers, rest_customers=None, tab="inc", subs_with_data=None, subs_detail=None) -> str:
         """纯 HTML 生成，支持折叠其余客户 + 点击母公司看子公司。tab="inc"/"pay" 区分收入/回款独立 ID。"""
         if rest_customers is None:
             rest_customers = []
         if subs_with_data is None:
             subs_with_data = {}
+        if subs_detail is None:
+            subs_detail = {}
         all_custs = customers + rest_customers
         if not all_custs:
             return '<div class="card"><p style="color:var(--text-muted);padding:20px;text-align:center">无季度目标数据</p></div>'
         matrix_id = f"qtr-{tab}-matrix"
         toggle_id = f"qtr-{tab}-toggle"
+        uid = f"qtr_{tab}"
 
         h = f'<tr><th class="th-name">客户（{len(all_custs)}家）</th>' + "".join(
             f"<th>{d}</th>" for d in DEPARTMENTS
@@ -84,7 +87,7 @@ class QuarterlyPage(BaseRenderer):
                 if subs_in_table:
                     cust_html = (
                         f'<td class="td-name td-name-clickable" '
-                        f'onclick="qtr_show(\'{c}\')" '
+                        f'onclick="{uid}_show(this,\'{c}\')" '
                         f'title="点击查看 {len(subs_in_table)} 家子公司" '
                         f'style="cursor:pointer;color:var(--accent)">'
                         f'<span class="row-num">{start_idx+i+1}</span>{c} '
@@ -115,7 +118,7 @@ class QuarterlyPage(BaseRenderer):
 
         # 弹窗数据：仅展示有数据的子公司
         import json
-        sub_data = {p: subs_with_data[p] for p in all_custs if p in subs_with_data}
+        sub_data = {p: subs_detail[p] for p in all_custs if p in subs_detail}
         sub_json = json.dumps(sub_data, ensure_ascii=False)
 
         return (
@@ -124,6 +127,6 @@ class QuarterlyPage(BaseRenderer):
             f'</div>'
             f'<div style="font-size:11px;color:var(--text-muted);margin-top:6px">'
             f'每格：百分比 / 实际金额 / 目标金额</div>'
-            f'{children_modal_html("qtr")}'
-            f'{children_modal_js("qtr", sub_json)}'
+            f'{children_modal_html(uid)}'
+            f'{children_modal_js(uid, sub_json)}'
         )

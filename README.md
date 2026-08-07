@@ -7,10 +7,29 @@
 ## 快速开始
 
 ```bash
+# 安装依赖
 pip install -r requirements.txt
-python main.py                           # 全流程: 年基线 → 清洗 → 拆分 → 渲染
-python main.py --dry-run                 # 预检（检查 raw/mappings/config）
-# 看板在 output/看板/看板_YYYYMMDD.html
+
+# 预检（确认数据就绪）
+python main.py --dry-run
+
+# 全流程一键运行
+python main.py
+
+# 或 Windows 双击
+run_all.bat
+```
+
+> 详细部署说明请参阅 [docs/部署指南.md](docs/部署指南.md)
+
+## 打包交付
+
+```bash
+# Windows 用户双击即可
+package.bat
+
+# 生成 Visual-Dashboard-System_vYYYYMMDD.zip
+# 包含全部代码 + 配置 + 目录骨架，不含敏感数据
 ```
 
 ## 目录结构
@@ -19,12 +38,14 @@ python main.py --dry-run                 # 预检（检查 raw/mappings/config�
 Visual Dashboard_system/
 ├── main.py                           # ★ 顶层调度器（argparse + subprocess）
 ├── run_all.bat                       # Windows 双击运行
+├── package.bat                       # 打包脚本（生成交付 zip）
 ├── config/
 │   ├── 清洗配置/
-│   │   └── cleaning_config.json      # ★ 清洗核心配置（数据源/列映射/时间/输出/映射路径指针）
-│   ├── 前端展示配置/
-│   │   └── 看板展示配置.json          #   页面顺序/标题/事业部配色/输出命名
-│   └── 销售规则/                      #   客户统称名单.json + 客户销售对应规则.json
+│   │   ├── cleaning_config.json      # ★ 清洗核心配置（数据源/列映射/时间/输出/映射路径）
+│   │   └── 客户销售归属.json          #   客户→销售对应规则
+│   └── 前端渲染/
+│       ├── 看板展示配置.json          #   页面顺序/标题/事业部配色/输出命名
+│       └── 展示规则.json              #   筛选/排序/TopN/优先级
 ├── data/
 │   ├── raw/                          # 【用户维护】原始 Excel（财务端/运营端/往期/客户名单）
 │   ├── mappings/                     # 清洗映射（部门/客户），不上传 Git
