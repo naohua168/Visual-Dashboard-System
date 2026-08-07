@@ -157,6 +157,12 @@ def get_financial_time_range(config, now: datetime | None = None):
     return resolve_time_range(config["时间范围"]["月度数据"], now)
 
 
+def get_annual_time_range(config, now: datetime | None = None):
+    """获取年度累计时间范围（用于清洗层上限裁剪）"""
+    spec = config["时间范围"]["年度累计"]
+    return resolve_time_range(spec, now)
+
+
 def get_quarterly_time_range(config, now: datetime | None = None):
     """获取季度累计筛选时间范围（自动解析 dynamic 模式）"""
     spec = config["时间范围"].get("季度累计筛选", config["时间范围"]["月度数据"])
@@ -184,11 +190,13 @@ def load_clean_params(config, now: datetime | None = None):
     customer_list = load_customer_list(config)
     matcher = CustomerMatcher(customer_list)
     fin_range = get_financial_time_range(config, now)
+    annual_range = get_annual_time_range(config, now)
     quarter_range = get_quarterly_time_range(config, now)
 
     return {
         "mapper": mapper,
         "matcher": matcher,
         "fin_range": fin_range,
+        "annual_range": annual_range,
         "quarter_range": quarter_range,
     }

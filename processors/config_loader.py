@@ -119,6 +119,7 @@ class CustomerFilter:
     """客户筛选器 — 根据配置过滤/排序/截断客户列表"""
 
     include: list[str] = field(default_factory=list)  # 白名单（母公司名 + 客户名混合）
+    priority: list[str] = field(default_factory=list)  # 优先展示（母公司名 + 客户名混合）
     max_rows: int = 0     # 0 = 不限
     sort_by: str = "目标合计降序"  # 排序方式
     known_parents: list[str] = field(default_factory=list)  # 从归属文件加载的所有母公司
@@ -138,6 +139,7 @@ class CustomerFilter:
         if isinstance(cfg, dict):
             return cls(
                 include=cfg.get("客户筛选", []),
+                priority=cfg.get("优先展示", []),
                 max_rows=cfg.get("最大行数", 0),
                 sort_by=cfg.get("排序", "目标合计降序"),
                 known_parents=get_parent_names(base_dir),
@@ -147,6 +149,14 @@ class CustomerFilter:
     def is_empty(self) -> bool:
         """是否未启用筛选（白名单为空）"""
         return len(self.include) == 0
+
+    def has_priority(self) -> bool:
+        """是否配置了优先展示列表"""
+        return len(self.priority) > 0
+
+    def get_priority_names(self, base_dir: Path) -> set[str]:
+        """获取展开后的优先展示客户名集合（母公司名→子公司展开）"""
+        return expand_to_customer_names(base_dir, self.priority)
 
     def apply(self, customers: list[str],
               piv: Any = None, tgt: Any = None,

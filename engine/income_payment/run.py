@@ -91,9 +91,11 @@ def run_clean(file_type, config=None):
     mapper = params["mapper"]
     matcher = params["matcher"]
     fin_range = params["fin_range"]
+    annual_range = params["annual_range"]
 
     log_step("系统", f"客户白名单: {matcher.count}个客户")
     log_step("系统", f"财务端时间范围: {fin_range} (mode={fin_range.get('_mode', 'static')})")
+    log_step("系统", f"年度累计上限: {annual_range['end_date']}")
 
     # ── Phase 1: 财务端（当月数据） ──
     df_financial = clean_financial(config, mapper, matcher, file_type, fin_range)
@@ -113,9 +115,11 @@ def run_clean(file_type, config=None):
     log_step(file_type, f"月{file_type}: {len(df_monthly)}行（仅财务端）")
     _write_output(df_monthly, f"月{file_type}", config, f"月{file_type}")
 
-    # ---- 3b. 当年累计：财务端 + 运营端全部 ----
-    df_yearly_cumulative = pd.concat([df_financial, df_operations], ignore_index=True)
-    log_step(file_type, f"当年累计{file_type}: 财务{len(df_financial)} + 运营{len(df_operations)} = {len(df_yearly_cumulative)}行")
+    # ---- 3b. 当年累计：财务端 + 运营端（按年度累计 end_date 上限裁剪） ----
+    df_ops_annual = _filter_by_date_range(df_operations, annual_range["start_date"], annual_range["end_date"])
+    df_yearly_cumulative = pd.concat([df_financial, df_ops_annual], ignore_index=True)
+    log_step(file_type,
+             f"当年累计{file_type}: 财务{len(df_financial)} + 运营{len(df_ops_annual)}(/ {len(df_operations)}全量) = {len(df_yearly_cumulative)}行")
     _write_output(df_yearly_cumulative, f"当年累计{file_type}", config, f"当年累计{file_type}")
 
     # ---- 3c. 季度累计：按配置时间范围筛选 ----

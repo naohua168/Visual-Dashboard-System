@@ -1,26 +1,27 @@
-"""年基线清洗逻辑 - 从 data/raw/往年收入数据/ 和 data/raw/往年回款数据/ 提取清洗
+"""年基线清洗逻辑 — 适配新数据格式（2025年1-7月汇总数据）
 
-源文件结构：
-  data/raw/
-    ├── 往年收入数据/           ← 通配 *.xlsx（如 2024年收入.xlsx）
-    └── 往年回款数据/           ← 通配 *.xlsx（如 2024年回款.xlsx）
+新格式列结构：
+  收入文件: 事业部, 核算单位, 确认时间, 客户, 所在省, 市场区域, 收入, 是否属于内部交易
+  回款文件: 事业部, 核算单位, 到款时间, 客户, 所在省, 市场区域, 到款, 是否属于内部款项
 
-通过通配符 glob 自动查找文件夹内第一个 .xlsx 文件，不依赖硬编码文件名。
+输出标准列: 事业部, 金额, 客户, 法人主体, 日期
+年份+月份范围从 config/清洗配置/cleaning_config.json → 时间范围.年基线数据 读取。
 """
+import json
 import glob as glob_module
-import re
 from pathlib import Path
 
 import pandas as pd
 
-from ..core.config import BASE_DIR
+from ..core.config import BASE_DIR, CONFIG_PATH
 from ..core.mapping_loader import load_department_mapper
 from ..core.utils import log_step
 
-# 默认源目录 — 通配符查找近年数据
+# 默认源目录
 INCOME_DIR = BASE_DIR / "data" / "raw" / "往年收入数据"
 PAYMENT_DIR = BASE_DIR / "data" / "raw" / "往年回款数据"
 
+# 事业部全名→简称
 DEPT_MAP = {
     "检测工程事业部": "检测",
     "信息智能事业部": "信息",
@@ -30,8 +31,28 @@ DEPT_MAP = {
 
 STD_COLS = ["事业部", "金额", "客户", "法人主体", "日期"]
 
-# 年份标签（用于日期生成）
-YEAR_LABEL = "2024"
+
+def _load_yearly_config() -> dict:
+    """从 cleaning_config.json 读取年基线时间配置"""
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        yc = cfg.get("时间范围", {}).get("年基线数据", {})
+        year = yc.get("年份", 2025)
+        months = yc.get("月份范围", [1, 6])
+        return {"year": year, "months": months}
+    except Exception:
+        return {"year": 2025, "months": [1, 6]}
+
+
+_YEARLY_CFG = None
+
+
+def _get_yearly_cfg() -> dict:
+    global _YEARLY_CFG
+    if _YEARLY_CFG is None:
+        _YEARLY_CFG = _load_yearly_config()
+    return _YEARLY_CFG
 
 
 def _find_xlsx(dir_path: Path) -> Path | None:
@@ -42,24 +63,6 @@ def _find_xlsx(dir_path: Path) -> Path | None:
     return files[0] if files else None
 
 
-def _parse_yearly_date(s):
-    """解析年基线日期：
-    "3月" → "2024-03-01"
-    "12月" → "2024-12-01"
-    "1-4月" → "2024-04-01"（取末月）
-    """
-    if pd.isna(s):
-        return None
-    s = str(s).strip()
-    m = re.match(r"(\d{1,2})-(\d{1,2})月?$", s)
-    if m:
-        return f"{YEAR_LABEL}-{int(m.group(2)):02d}-01"
-    m = re.match(r"(\d{1,2})月?$", s)
-    if m:
-        return f"{YEAR_LABEL}-{int(m.group(1)):02d}-01"
-    return None
-
-
 def _col_remap(df, source_col, target_col, rename_map):
     """如果源列存在且目标列不存在，重命名"""
     if source_col in df.columns and target_col not in df.columns:
@@ -67,13 +70,21 @@ def _col_remap(df, source_col, target_col, rename_map):
         rename_map[target_col] = source_col
 
 
+# ──────────────────────────────────────────────────────────────
+# 法人主体简称→全称（通用映射，适用于新老数据）
+# ──────────────────────────────────────────────────────────────
+_ENTITY_FULL = {
+    "广东公司": "广东汽车检测中心有限公司",
+    "湖南公司": "中汽院智能网联汽车检测中心（湖南）有限公司",
+}
+
+
 def _clean_single(label, file_path, mapper=None):
     """清洗单个年基线文件（收入或回款）
 
-    Args:
-        label: "收入" 或 "回款"
-        file_path: xlsx 文件路径
-        mapper: 部门映射器（可选）
+    适配新格式列：
+      - 收入: 事业部/核算单位/确认时间/客户/收入
+      - 回款: 事业部/核算单位/到款时间/客户/到款
     """
     if not file_path.exists():
         log_step("年%s" % label, "文件未找到: %s" % file_path, "WARN")
@@ -86,63 +97,59 @@ def _clean_single(label, file_path, mapper=None):
     log_step("年%s" % label, "原始列: %s" % str(list(df.columns)))
 
     rename_map = {}
-    # 客户名列重命名
-    for src in ["客户名称", "客户名", "客户"]:
-        if src in df.columns:
-            _col_remap(df, src, "客户", rename_map)
-            break
 
-    # 金额列重命名
-    for src in ["收入金额", "到款金额", "收入", "到款", "金额"]:
+    # ── 列重命名 ──
+    # 金额: 收入/到款 → 金额
+    for src in ["收入", "到款", "收入金额", "到款金额", "金额"]:
         if src in df.columns:
             _col_remap(df, src, "金额", rename_map)
             break
 
-    log_step("年%s" % label, "重命名: %s" % str(rename_map))
-
-    # 法人主体从核算单位列提取，简称转全称
+    # 法人主体: 核算单位 → 法人主体
     for src in ["核算单位", "法人主体"]:
         if src in df.columns:
             _col_remap(df, src, "法人主体", rename_map)
             break
     if "法人主体" not in df.columns:
         df["法人主体"] = ""
-    # 简称→全称映射
-    _ENTITY_FULL = {
-        "广东公司": "广东汽车检测中心有限公司",
-        "湖南公司": "中汽院智能网联汽车检测中心（湖南）有限公司",
-    }
-    df["法人主体"] = df["法人主体"].astype(str).str.strip().map(_ENTITY_FULL).fillna(df["法人主体"])
 
-    # 事业部分类（全名→简称）
+    # 简称→全称映射
+    df["法人主体"] = (
+        df["法人主体"].astype(str).str.strip()
+        .map(_ENTITY_FULL).fillna(df["法人主体"])
+    )
+
+    # 客户名
+    for src in ["客户名称", "客户名", "客户"]:
+        if src in df.columns:
+            _col_remap(df, src, "客户", rename_map)
+            break
+
+    log_step("年%s" % label, "重命名: %s" % str(rename_map))
+
+    # ── 事业部映射 ──
     if mapper:
         try:
-            df["事业部"] = df["事业部"].apply(mapper.map_income_dept).fillna(
-                df["事业部"].map(DEPT_MAP))
+            df["事业部"] = (
+                df["事业部"].apply(mapper.map_income_dept)
+                .fillna(df["事业部"].map(DEPT_MAP))
+            )
         except Exception:
             df["事业部"] = df["事业部"].map(DEPT_MAP).fillna(df["事业部"])
     else:
         df["事业部"] = df["事业部"].map(DEPT_MAP).fillna(df["事业部"])
     log_step("年%s" % label, "事业部分布: %s" % str(df["事业部"].value_counts().to_dict()))
 
-    # 金额转数值
+    # ── 金额转数值 ──
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0)
 
-    # 日期解析
-    date_found = None
-    for col in df.columns:
-        cs = str(col).strip()
-        if any(kw in cs for kw in ["时间", "日期", "确认"]):
-            date_found = col
-            break
-    if date_found:
-        df["日期"] = df[date_found].apply(_parse_yearly_date)
-        log_step("年%s" % label, "日期来源: %s" % date_found)
-    else:
-        df["日期"] = "%s-01-01" % YEAR_LABEL
-        log_step("年%s" % label, "无日期列，默认 %s-01-01" % YEAR_LABEL, "WARN")
+    # ── 日期: 从配置读取年份+末月 → YYYY-MM-01 ──
+    yc = _get_yearly_cfg()
+    year = yc["year"]
+    last_month = yc["months"][-1]
+    df["日期"] = f"{year}-{last_month:02d}-01"
 
-    # 标准列补齐
+    # ── 标准列输出 ──
     for col in STD_COLS:
         if col not in df.columns:
             df[col] = ""
@@ -154,13 +161,6 @@ def _clean_single(label, file_path, mapper=None):
 
 def clean_yearly(source_dir=None, mapper=None):
     """清洗年基线数据（收入+回款）
-
-    当 source_dir=None 时，通过通配符查找：
-      data/raw/往年收入数据/*.xlsx
-      data/raw/往年回款数据/*.xlsx
-
-    当 source_dir 传入目录时，在该目录下用通配符找 .xlsx 并按文件名区分收入/回款。
-    当 source_dir 传入 .xlsx 文件路径时，按文件名区分类型。
 
     Args:
         source_dir: 可选路径（None 时使用默认目录）
@@ -175,33 +175,21 @@ def clean_yearly(source_dir=None, mapper=None):
     else:
         src = Path(source_dir)
         if src.is_file() and src.suffix == ".xlsx":
-            # 单文件：按文件名区分
             name = src.stem
-            if "收入" in name:
-                inc_path, pay_path = src, None
-            elif "回款" in name:
-                inc_path, pay_path = None, src
-            else:
-                inc_path, pay_path = src, None
+            inc_path = src if "收入" in name else None
+            pay_path = src if "回款" in name else None
+            if not inc_path and not pay_path:
+                inc_path = src
         elif src.is_dir():
-            # 目录：用通配符找
-            inc_files = sorted(src.glob("*.xlsx"))
-            inc_path = inc_files[0] if inc_files else None
-            pay_files = sorted(src.glob("*.xlsx"))
-            pay_path = pay_files[0] if pay_files and len(pay_files) > 0 else None
-            # 如果目录下只有一个文件且无法区分，同时用作收入和回款
-            if inc_path and pay_path and inc_path == pay_path:
-                pay_path = None if "收入" in inc_path.stem else inc_path
-                if "收入" not in inc_path.stem and "回款" not in inc_path.stem:
-                    pay_path = None
+            files = sorted(src.glob("*.xlsx"))
+            inc_path = files[0] if files else None
+            pay_path = None
         else:
             inc_path = None
             pay_path = None
 
     if inc_path is None and pay_path is None:
         log_step("年基线", "往年收入/回款数据文件夹均未找到 .xlsx 文件", "WARN")
-        log_step("年基线", "  收入目录: %s" % INCOME_DIR)
-        log_step("年基线", "  回款目录: %s" % PAYMENT_DIR)
         return None
 
     results = {}
@@ -209,7 +197,6 @@ def clean_yearly(source_dir=None, mapper=None):
         inc_df = _clean_single("收入", inc_path, mapper)
         if inc_df is not None:
             results["收入"] = inc_df
-
     if pay_path:
         pay_df = _clean_single("回款", pay_path, mapper)
         if pay_df is not None:
@@ -218,14 +205,15 @@ def clean_yearly(source_dir=None, mapper=None):
     if not results:
         log_step("年基线", "无数据可处理", "WARN")
         return None
-
     return results
 
 
 def run_clean(mapper=None):
     """运行年基线清洗并写入 data/sheets/系统数据清理/往年收入/往年回款"""
+    yc = _get_yearly_cfg()
     log_step("年基线", "=" * 50)
     log_step("年基线", "开始清洗年基线数据")
+    log_step("年基线", "年份: %d, 月份范围: %d-%d月" % (yc["year"], yc["months"][0], yc["months"][-1]))
     log_step("年基线", "收入源目录: %s" % INCOME_DIR)
     log_step("年基线", "回款源目录: %s" % PAYMENT_DIR)
 
@@ -234,16 +222,14 @@ def run_clean(mapper=None):
         log_step("年基线", "源文件缺失，跳过年基线清洗", "WARN")
         return {}
 
-    # 映射 label → 目录名
     _LABEL_MAP = {"收入": "往年收入", "回款": "往年回款"}
     for label, df in results.items():
         dir_name = _LABEL_MAP.get(label, label)
         out_dir = BASE_DIR / "data" / "sheets" / "系统数据清理" / dir_name
         out_dir.mkdir(parents=True, exist_ok=True)
-        file_name = "%s.xlsx" % dir_name
-        out_path = out_dir / file_name
+        out_path = out_dir / ("%s.xlsx" % dir_name)
         df.to_excel(out_path, index=False)
-        log_step("年%s" % label, "写入: %s (%d行, 金额%.2f)" % (
-            out_path, len(df), df["金额"].sum()), "OK")
+        log_step("年%s" % label,
+                 "写入: %s (%d行, 金额%.2f)" % (out_path, len(df), df["金额"].sum()), "OK")
 
     return results

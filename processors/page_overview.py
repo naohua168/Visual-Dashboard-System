@@ -6,6 +6,7 @@ from .base import BaseRenderer, hero_rings_html, rate_cls
 from .utils import fmt_wan, safe_float, extract_date_range, range_banner_html
 from .page_data import prepare_overview_data, DEPARTMENTS
 from .config_loader import get_value
+from .components import cell_bg_pct_only
 
 DEPT_COLORS = {"检测": "#2563eb", "信息": "#8b5cf6", "能源": "#f59e0b", "海外": "#0d9488"}
 
@@ -33,28 +34,6 @@ class OverviewPage(BaseRenderer):
         )
 
     def _dept_matrix(self, d) -> str:
-        def _cell(pct):
-            if pct == 0:
-                return '<td class="td-empty">—</td>'
-            pct_num = min(pct * 100, 100)
-            pct_label = f"{pct * 100:.0f}%"
-            if pct >= 1:
-                fill_var = "#22c55e"; pct_cls = " achieved"
-            elif pct >= 0.5:
-                fill_var = "#fb923c"; pct_cls = ""
-            elif pct > 0:
-                fill_var = "#fdba74"; pct_cls = " low"
-            else:
-                fill_var = "#f1f5f9"; pct_cls = ""
-            return (
-                f'<td class="cell-bg" style="--pct:{pct_num:.1f}%;--fill:{fill_var}">'
-                f'<div class="fill-bg"></div>'
-                f'<div class="cell-text">'
-                f'<span class="cell-pct{pct_cls}">{pct_label}</span>'
-                f'<div class="cell-main"><span class="cell-act">{fmt_wan(pct * 100)}%</span></div>'
-                f'</div></td>'
-            )
-
         thead = (
             "<tr>"
             '<th rowspan="2" class="th-name">事业部</th>'
@@ -77,9 +56,9 @@ class OverviewPage(BaseRenderer):
                 f'<tr>'
                 f'<td class="td-name"><span style="color:{dcolor};font-weight:800">● {dpt_name}</span></td>'
                 f'<td class="num-cell" style="font-weight:700">{fmt_wan(inc_v)}</td>'
-                + _cell(inc_r) +
+                + cell_bg_pct_only(inc_r) +
                 f'<td class="num-cell" style="font-weight:700">{fmt_wan(pay_v)}</td>'
-                + _cell(pay_r) +
+                + cell_bg_pct_only(pay_r) +
                 f'</tr>'
             )
 
@@ -90,9 +69,9 @@ class OverviewPage(BaseRenderer):
             f'<tr class="row-total">'
             f'<td class="td-name td-total">合计（4部门）</td>'
             f'<td class="num-cell" style="font-weight:800">{fmt_wan(t_inc_act)}</td>'
-            + _cell(t_inc_r) +
+            + cell_bg_pct_only(t_inc_r) +
             f'<td class="num-cell" style="font-weight:800">{fmt_wan(t_pay_act)}</td>'
-            + _cell(t_pay_r) +
+            + cell_bg_pct_only(t_pay_r) +
             f'</tr>'
         )
 

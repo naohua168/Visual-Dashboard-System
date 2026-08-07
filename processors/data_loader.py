@@ -51,13 +51,12 @@ class DashboardData:
 
     @property
     def has_yearly_baseline(self) -> bool:
-        """年基线数据是否就绪（P5 同比页面是否可渲染）"""
-        return (
-            self.yearly_income is not None
-            and len(self.yearly_income) > 0
-            and self.yearly_payment is not None
-            and len(self.yearly_payment) > 0
-        )
+        """年基线数据是否可用于同比（有数据即认为就绪，汇总模式不再要求月份粒度）"""
+        if self.yearly_income is None or len(self.yearly_income) == 0:
+            return False
+        if self.yearly_payment is None or len(self.yearly_payment) == 0:
+            return False
+        return True
 
     @property
     def has_quarterly_data(self) -> bool:

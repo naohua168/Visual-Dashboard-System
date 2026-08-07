@@ -6,6 +6,7 @@ from .base import BaseRenderer, hero_rings_html
 from .utils import fmt_wan, range_banner_html
 from .components import (
     cell_bg_html, cust_tab_bar, hidden_dept_card_wrapper, dept_card_html,
+    children_modal_html, children_modal_js,
 )
 from .page_data import prepare_annual_data, DEPARTMENTS
 
@@ -33,8 +34,9 @@ class AnnualPage(BaseRenderer):
             "annual-dept-wrap"
         )
 
-        inc_table = self._build_matrix(d.inc_piv, d.inc_tgt_grouped, d.inc_customers, d.t_inc)
-        pay_table = self._build_matrix(d.pay_piv, d.pay_tgt_grouped, d.pay_customers, d.t_pay)
+        # 收入/回款两个 tab 各自独立 matrix 和 toggle ID
+        inc_table = self._build_matrix(d.inc_piv, d.inc_tgt_grouped, d.inc_customers, d.t_inc, d.inc_rest, tab="inc", subs_with_data=d.subs_with_data)
+        pay_table = self._build_matrix(d.pay_piv, d.pay_tgt_grouped, d.pay_customers, d.t_pay, d.pay_rest, tab="pay", subs_with_data=d.subs_with_data)
         matrix = (
             f'<div class="section-title sec-sky">重要客户年度达成 · 收入/回款（万元）</div>'
             + cust_tab_bar("annual-cust-inc", "annual-cust-pay")
@@ -46,40 +48,91 @@ class AnnualPage(BaseRenderer):
             range_banner_html(d.annual_range) + hero + dept_cards + matrix, d.date_range
         )
 
-    def _build_matrix(self, piv, tgt_grouped, customers, t_all) -> str:
-        """纯 HTML 生成 — 接收已 pivoted 的 DataFrame"""
-        h = f'<tr><th class="th-name">客户（{len(customers)}家）</th>' + "".join(
+    def _build_matrix(self, piv, tgt_grouped, customers, t_all, rest_customers=None, tab="inc", subs_with_data=None) -> str:
+        """纯 HTML 生成 — 接收已 pivoted 的 DataFrame，支持折叠其余客户 + 点击母公司看子公司
+
+        tab="inc"/"pay" 用于生成独立的 matrix 和 toggle 按钮 ID，避免收入/回款两 tab ID 冲突。
+        """
+        if rest_customers is None:
+            rest_customers = []
+        if subs_with_data is None:
+            subs_with_data = {}
+        all_custs = customers + rest_customers
+        matrix_id = f"annual-{tab}-matrix"
+        toggle_id = f"annual-{tab}-toggle"
+
+        h = f'<tr><th class="th-name">客户（{len(all_custs)}家）</th>' + "".join(
             f"<th>{d}</th>" for d in DEPARTMENTS
         ) + '<th class="th-name th-total">合计</th></tr>'
 
-        # 横合计行
+        # 横合计行（全部客户加总）
         tc = [f'<td class="td-name td-total">合计</td>']
         for d in DEPARTMENTS:
-            a = sum(float(piv.loc[c, d]) for c in customers if c in piv.index and d in piv.columns) if customers else 0
-            tg = sum(float(tgt_grouped.loc[c, d]) for c in customers if c in tgt_grouped.index)
+            a = sum(float(piv.loc[c, d]) for c in all_custs if c in piv.index and d in piv.columns) if all_custs else 0
+            tg = sum(float(tgt_grouped.loc[c, d]) for c in all_custs
+                     if c in tgt_grouped.index and d in tgt_grouped.columns)
             tc.append(cell_bg_html(a, tg))
-        imp_total = sum(float(piv.loc[c, "合计"]) for c in customers if c in piv.index)
-        imp_tgt = sum(float(tgt_grouped.loc[c, "合计"]) for c in customers if c in tgt_grouped.index)
+        imp_total = sum(float(piv.loc[c, "合计"]) for c in all_custs if c in piv.index)
+        imp_tgt = sum(float(tgt_grouped.loc[c, "合计"]) for c in all_custs if c in tgt_grouped.index)
         tc.append(cell_bg_html(imp_total, imp_tgt, is_total_col=True))
         tr = f'<tr class="row-total">{"".join(tc)}</tr>'
 
-        rows = ""
-        for i, c in enumerate(customers):
-            cs = [f'<td class="td-name"><span class="row-num">{i+1}</span>{c}</td>']
-            for d in DEPARTMENTS:
-                a = float(piv.loc[c, d]) if c in piv.index and d in piv.columns else 0
-                tg = float(tgt_grouped.loc[c, d]) if c in tgt_grouped.index else 0
-                cs.append(cell_bg_html(a, tg))
-            a_t = float(piv.loc[c, "合计"]) if c in piv.index else 0
-            tg_t = float(tgt_grouped.loc[c, "合计"]) if c in tgt_grouped.index else 0
-            cs.append(cell_bg_html(a_t, tg_t, is_total_col=True))
-            rows += '<tr class="row-data">' + "".join(cs) + '</tr>'
+        def _render_rows(cust_list, start_idx, row_class="row-data"):
+            out = ""
+            for i, c in enumerate(cust_list):
+                subs_in_table = subs_with_data.get(c, [])
+                if subs_in_table:
+                    cust_html = (
+                        f'<td class="td-name td-name-clickable" '
+                        f'onclick="annual_show(\'{c}\')" '
+                        f'title="点击查看 {len(subs_in_table)} 家子公司" '
+                        f'style="cursor:pointer;color:var(--accent)">'
+                        f'<span class="row-num">{start_idx+i+1}</span>{c} '
+                        f'<span class="expand-hint">▾ {len(subs_in_table)}家</span></td>'
+                    )
+                else:
+                    cust_html = f'<td class="td-name"><span class="row-num">{start_idx+i+1}</span>{c}</td>'
+                cs = [cust_html]
+                for d in DEPARTMENTS:
+                    a = float(piv.loc[c, d]) if c in piv.index and d in piv.columns else 0
+                    tg = float(tgt_grouped.loc[c, d]) if c in tgt_grouped.index and d in tgt_grouped.columns else 0
+                    cs.append(cell_bg_html(a, tg))
+                a_t = float(piv.loc[c, "合计"]) if c in piv.index else 0
+                tg_t = float(tgt_grouped.loc[c, "合计"]) if c in tgt_grouped.index else 0
+                cs.append(cell_bg_html(a_t, tg_t, is_total_col=True))
+                out += f'<tr class="{row_class}">{"".join(cs)}</tr>'
+            return out
+
+        rows = _render_rows(customers, 0)
+        rest_rows = _render_rows(rest_customers, len(customers), "row-data row-hidden") if rest_customers else ""
+
+        # 查看全部按钮 — tab 独立 ID
+        toggle_btn = ""
+        if rest_customers:
+            toggle_btn = (
+                f'<tr class="row-toggle"><td colspan="{len(DEPARTMENTS)+2}" style="text-align:center;padding:8px">'
+                f'<button class="toggle-all-btn" id="{toggle_id}" '
+                f'onclick="var t=document.querySelectorAll(\'#{matrix_id} .row-hidden\');'
+                f'var b=document.getElementById(\'{toggle_id}\');'
+                f'var isCollapsed=b.textContent.indexOf(\'查看\')>=0;'
+                f't.forEach(r=>r.style.display=isCollapsed?\'table-row\':\'none\');'
+                f'b.textContent=isCollapsed?\'收起\':\'查看全部 ({len(rest_customers)}家)\';'
+                f'b.classList.toggle(\'expanded\',isCollapsed)">'
+                f'查看全部 ({len(rest_customers)}家)</button></td></tr>'
+            )
+
+        # 子公司数据 JSON（用于弹窗）— 仅在有至少一个有数据的母公司时输出
+        import json
+        sub_data = {p: subs_with_data[p] for p in all_custs if p in subs_with_data}
+        sub_json = json.dumps(sub_data, ensure_ascii=False)
 
         return (
-            f'<div class="table-wrap ann-matrix-wrap no-collapse">'
-            f'<table class="ann-matrix"><thead>{h}</thead><tbody>{tr}{rows}</tbody></table>'
+            f'<div class="table-wrap ann-matrix-wrap no-collapse" id="{matrix_id}">'
+            f'<table class="ann-matrix"><thead>{h}</thead><tbody>{tr}{rows}{rest_rows}{toggle_btn}</tbody></table>'
             f'</div>'
             f'<div style="font-size:11px;color:var(--text-muted);margin-top:6px">'
             f'每格：百分比 / 实际金额 / 目标金额 · 全公司合计 '
             f'<strong style="color:var(--accent)">{fmt_wan(t_all)}</strong> 万</div>'
+            f'{children_modal_html("annual")}'
+            f'{children_modal_js("annual", sub_json)}'
         )

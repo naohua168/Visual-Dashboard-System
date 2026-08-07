@@ -75,6 +75,7 @@ def load_customer_list(config):
                 if not k.startswith("_") and isinstance(v, list):
                     return v
     except (FileNotFoundError, KeyError):
+        # JSON 客户名单加载失败：回退到 Excel 文件
         pass
 
     raw_path = BASE_DIR / "data" / "raw" / "客户名单" / "客户名单.xlsx"

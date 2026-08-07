@@ -1158,8 +1158,8 @@ table.ann-matrix tbody tr:hover td, .ann-matrix tbody tr:hover td{
 table.ann-matrix tbody tr.row-data:nth-child(even):hover td{
   background:#bfdbfe !important;
 }
-/* 悬停加深（仅普通格）—— fill-bg 也跟着加深 */
-table.ann-matrix tbody tr.row-data:hover td.cell-bg:not(.is-total) .fill-bg{ filter:brightness(0.85) saturate(1.15); }
+/* 悬停加深（仅普通格） */
+table.ann-matrix tbody tr.row-data:hover td.cb:not(.is-total)::before{ filter:brightness(0.85) saturate(1.15); }
 table.ann-matrix tbody tr:nth-child(even) td, .ann-matrix tbody tr:nth-child(even) td{
   background:#fafbfc;
 }
@@ -1169,15 +1169,15 @@ table.ann-matrix tr.row-total td,
   border-top:2px solid #1e40af!important;
   border-bottom:2px solid #1e40af!important;
 }
-table.ann-matrix tr.row-total td.cell-bg.is-total,
-.ann-matrix tr.row-total td.cell-bg.is-total{
+table.ann-matrix tr.row-total td.cb.is-total,
+.ann-matrix tr.row-total td.cb.is-total{
   border-top:2px solid #1e40af!important;
   border-bottom:2px solid #1e40af!important;
   border-left:1px solid #cbd5e1!important;
   border-right:1px solid #cbd5e1!important;
 }
-table.ann-matrix tr.row-total td:not(.cell-bg),
-.ann-matrix tr.row-total td:not(.cell-bg){
+table.ann-matrix tr.row-total td:not(.cb),
+.ann-matrix tr.row-total td:not(.cb){
   background:#dbeafe;font-weight:700;color:#1e3a8a;font-size:14px;
   border:1px solid #cbd5e1!important;
   border-top:2px solid #1e40af!important;
@@ -1188,89 +1188,61 @@ table.ann-matrix .row-total td.td-name,
 .ann-matrix .row-total td.td-name{
   font-size:15px;font-weight:800;letter-spacing:0.02em;
 }
+/* 折叠行 — 默认隐藏 */
+tr.row-hidden{display:none;}
+/* 查看全部按钮 */
+.toggle-all-btn{
+  padding:6px 20px;border:1px solid #93c5fd;border-radius:6px;
+  background:#eff6ff;color:#1d4ed8;font-size:13px;font-weight:600;
+  cursor:pointer;transition:all .2s;
+}
+.toggle-all-btn:hover{background:#dbeafe;border-color:#3b82f6;}
+.toggle-all-btn.expanded{background:#1d4ed8;color:#fff;border-color:#1d4ed8;}
 table.ann-matrix .td-total, .ann-matrix .td-total{font-weight:700;}
 /* 单元格主次层次（紧凑） */
 .cell-main{font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;}
 .cell-sub{font-size:10px;color:var(--text-muted);margin-top:1px;line-height:1.2;}
-/* ══════════ 格子背景填充（按完成度宽度+左右布局）══════════ */
-td.cell-bg{
-  position:relative; padding:7px 8px; overflow:hidden;
-  border:1px solid #cbd5e1;
-  background:#f8fafc;
-  vertical-align:middle;
+/* ══════════ 格子背景填充（CSS类优化版）══════════ */
+td.cb{
+  position:relative;padding:7px 8px;overflow:hidden;
+  border:1px solid #cbd5e1;background:#f8fafc;vertical-align:middle;
 }
+/* 填充条（::before伪元素替代fill-bg div） */
+td.cb::before{
+  content:"";position:absolute;top:0;left:0;bottom:0;
+  width:var(--pct,0%);z-index:0;transition:width .3s;
+}
+/* 填充色 — 用CSS类替代--fill变量 */
+td.cb.fg::before{background:#22c55e;}
+td.cb.fo::before{background:#fb923c;}
+td.cb.fl::before{background:#fdba74;}
+td.cb.fy::before{background:#f1f5f9;}
+/* 0%不显示填充 */
+td.cb.is-empty::before{display:none;}
+td.cb.is-total::before{display:none;}
 /* 表格整体网格 */
 table.ann-matrix{border-collapse:collapse;border:1px solid #cbd5e1;}
 table.ann-matrix thead th{border:1px solid #1e293b;}
 table.ann-matrix td{border:1px solid #cbd5e1;}
-td.cell-bg .fill-bg{
-  position:absolute; top:0; left:0; bottom:0;
-  width:var(--pct, 0%);
-  background:var(--fill, #fb923c);
-  z-index:0;
-}
-td.cell-bg .cell-text{
-  position:relative; z-index:1;
-  display:flex; align-items:center; justify-content:space-between;
-  gap:4px;
-  height:100%;
-}
-/* 百分比在左 — 大字突出 */
-td.cell-bg .cell-text .cell-pct{
-  font-size:20px;line-height:1; font-weight:800;letter-spacing:-0.5px;
-  color:#0f172a;
-  text-shadow:
-    0 0 5px rgba(255,255,255,0.95),
-    0 0 10px rgba(255,255,255,0.85),
-    0 2px 4px rgba(255,255,255,0.9);
-  flex-shrink:0;
-}
-/* 金额在右 — 完成+指标两行 */
-td.cell-bg .cell-text .cell-main{
-  display:flex; flex-direction:column; align-items:flex-end;
-  font-size:18px;line-height:1.2;font-weight:700;color:#0f172a;
-  text-align:right; flex:1; min-width:0;
-}
-td.cell-bg .cell-text .cell-main .cell-act{color:#0f172a;font-weight:800;}
-td.cell-bg .cell-text .cell-main .cell-tgt{color:#64748b;font-size:16px;margin-top:1px;font-weight:500;}
-td.cell-bg .cell-text .cell-pct.up{color:#dc2626;}
-td.cell-bg .cell-text .cell-pct.down{color:#16a34a;}
-td.cell-bg .cell-text .cell-pct.achieved{color:#16a34a;}
-td.cell-bg .cell-text .cell-pct.low{color:#b45309;}
-/* 0% 不显示填充（浅灰底） */
-td.cell-bg.is-empty .fill-bg{display:none;}
-/* 合计列：实色背景+白字（强制优先级超过所有 hover） */
-td.cell-bg.is-total{
-  background:transparent!important;
-  border-left:1px solid #cbd5e1!important;
-  border-right:1px solid #cbd5e1!important;
-  border-top:1px solid #cbd5e1!important;
-  border-bottom:1px solid #cbd5e1!important;
-}
-/* 只有当 is-total 不在 row-total 内时才用 2px 顶/底 */
-table.ann-matrix tbody tr:not(.row-total) td.cell-bg.is-total,
-.ann-matrix tbody tr:not(.row-total) td.cell-bg.is-total{
-  border-top:2px solid #1e40af!important;
-  border-bottom:2px solid #1e40af!important;
-}
-td.cell-bg.is-total .cell-text{color:#0f172a!important;text-shadow:none!important;}
-td.cell-bg.is-total .cell-text .cell-main{color:#0f172a!important;font-size:13.5px!important;}
-td.cell-bg.is-total .cell-text .cell-pct{color:#0f172a!important;font-size:19px!important;text-shadow:none!important;}
-/* hover 时合计列保持深色文字 */
-table.ann-matrix tbody tr:hover td.cell-bg.is-total,
-table.ann-matrix tbody tr:hover td.cell-bg.is-total .cell-text,
-table.ann-matrix tbody tr:hover td.cell-bg.is-total .cell-text *,
-table.ann-matrix tbody tr:hover td.cell-bg.is-total .cell-text .cell-main,
-table.ann-matrix tbody tr:hover td.cell-bg.is-total .cell-text .cell-pct{
-  color:#0f172a!important;
-  background:transparent!important;
-  text-shadow:none!important;
-}
-/* 悬停加深（仅普通格） */
+/* 内容层 */
+td.cb .ct{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:4px;height:100%;}
+td.cb .ct .cp{font-size:20px;line-height:1;font-weight:800;letter-spacing:-0.5px;color:#0f172a;text-shadow:0 0 5px rgba(255,255,255,0.95),0 0 10px rgba(255,255,255,0.85),0 2px 4px rgba(255,255,255,0.9);flex-shrink:0;}
+td.cb .ct .cm{display:flex;flex-direction:column;align-items:flex-end;font-size:18px;line-height:1.2;font-weight:700;color:#0f172a;text-align:right;flex:1;min-width:0;}
+td.cb .ct .cm .ca{color:#0f172a;font-weight:800;}
+td.cb .ct .cm .ctv{color:#64748b;font-size:16px;margin-top:1px;font-weight:500;}
+td.cb .ct .cp.up{color:#dc2626;}
+td.cb .ct .cp.down{color:#16a34a;}
+td.cb .ct .cp.achieved{color:#16a34a;}
+td.cb .ct .cp.low{color:#b45309;}
+/* 合计列 */
+td.cb.is-total{background:transparent!important;border:1px solid #cbd5e1!important;}
+table.ann-matrix tbody tr:not(.row-total) td.cb.is-total, .ann-matrix tbody tr:not(.row-total) td.cb.is-total{border-top:2px solid #1e40af!important;border-bottom:2px solid #1e40af!important;}
+td.cb.is-total .ct{color:#0f172a!important;text-shadow:none!important;}
+td.cb.is-total .ct .cm{color:#0f172a!important;font-size:13.5px!important;}
+td.cb.is-total .ct .cp{color:#0f172a!important;font-size:19px!important;text-shadow:none!important;}
+table.ann-matrix tbody tr:hover td.cb.is-total, table.ann-matrix tbody tr:hover td.cb.is-total .ct, table.ann-matrix tbody tr:hover td.cb.is-total .ct *, table.ann-matrix tbody tr:hover td.cb.is-total .ct .cm, table.ann-matrix tbody tr:hover td.cb.is-total .ct .cp{color:#0f172a!important;background:transparent!important;text-shadow:none!important;}
 /* 空单元格 */
-table.ann-matrix .td-empty, .ann-matrix .td-empty{
-  text-align:center;color:#94a3b8;font-size:14px;padding:8px 0;
-}
+table.ann-matrix .td-empty, .ann-matrix .td-empty{text-align:center;color:#94a3b8;font-size:14px;padding:8px 0;}
 
 /* ══════════ 事业部同比专用表（双维度清晰对比）══════════ */
 table.yoy-dept-table{width:100%;border-collapse:collapse;font-size:13px;}
@@ -1547,22 +1519,26 @@ GLOBAL_JS = """
 // 页面切换 + 动画触发
 // ══════════════════════════════════════════════════════
 function showPage(id){
-  document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.querySelectorAll('.nav a').forEach(function(a){a.classList.remove('active');});
-  var pageEl=document.getElementById(id);
-  if(!pageEl){
-    console.warn('Page not found:', id);
-    return;
-  }
-  pageEl.classList.add('active');
-  // 滚动到页面顶部（解决页面内部滚动的视觉一致性问题）
-  pageEl.scrollTop=0;
-  // 触发卡片交错入场动画
-  delayAnim(pageEl, '.kpi, .hero-kpi, .ring-kpi, .mini-rate, .kpi-row>*', 80);
   var t=document.querySelector('.nav a[data-target="'+id+'"]');
   if(t)t.classList.add('active');
-  setTimeout(window.__resizeAllCharts, 100);
+  var tpl=document.getElementById('tpl-'+id);
+  if(!tpl){console.warn('Template not found:',id);return;}
+  var host=document.getElementById('page-host');
+  if(!host)return;
+  host.innerHTML='';
+  host.appendChild(document.importNode(tpl.content,true));
+  var pageEl=host.firstElementChild;
+  if(pageEl)pageEl.classList.add('active');
+  delayAnim(host,'.kpi,.hero-kpi,.ring-kpi,.mini-rate,.kpi-row>*',80);
+  setTimeout(window.__resizeAllCharts,100);
+  window.scrollTo(0,0);
 }
+// 初始加载第一页（延迟确保 DOM 就绪）
+setTimeout(function(){
+  var firstTpl=document.querySelector('template[id^="tpl-"]');
+  if(firstTpl)showPage(firstTpl.id.replace('tpl-',''));
+}, 50);
 
 /* ══════════════════════════════════════════════════════
    数字递增计数（#3）
@@ -1923,7 +1899,7 @@ def hero_rings_html(inc_act: float, inc_tgt: float, pay_act: float, pay_tgt: flo
     def _metric_row(label: str, value: str, cls: str = "") -> str:
         return f'<div class="hr-metric {cls}"><span class="hr-metric-label">{label}</span><span class="hr-metric-val">{value}</span></div>'
 
-    yoy_note = f'<span class="hr-yoy-period">{yoy_period}</span>' if yoy_period else ""
+    yoy_note = ""  # 取消显示同比时间标签（避免双侧重复）
 
     chart_icon = (
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" '

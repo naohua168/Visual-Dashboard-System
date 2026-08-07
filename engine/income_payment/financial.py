@@ -34,6 +34,9 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     # 日期筛选
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"财务端{file_type}", f"日期筛选后: {len(df)}行 (排除{total_in - len(df)}行)")
+    if len(df) == 0:
+        log_step(f"财务端{file_type}", "无数据（时间范围内无匹配记录），跳过", "WARN")
+        return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
 
     # 排除内部交易
     before = len(df)

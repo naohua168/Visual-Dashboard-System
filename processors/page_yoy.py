@@ -32,14 +32,14 @@ class YoyPage(BaseRenderer):
                 banner + self._fallback_no_baseline(d), d.date_range
             )
 
-        kpi = self._kpi_block(d.ci, d.pvi, d.cp, d.pvp, d.cur_year)
+        kpi = self._kpi_block(d.ci, d.pvi, d.cp, d.pvp, d.cur_year, d.prev_year)
         period_chip = f"""<div class="period-chip">
   <span class="period-tag">同比周期</span>
   <span class="period-text">{d.period}</span>
 </div>"""
-        dt = self._dept_table(d.dept_yoy, d.cur_year)
-        ct_inc = self._cust_matrix(d.inc_cust_piv, d.inc_prev_piv, d.top_customers, d.cur_year, "收入", d.top_n)
-        ct_pay = self._cust_matrix(d.pay_cust_piv, d.pay_prev_piv, d.top_customers, d.cur_year, "回款", d.top_n)
+        dt = self._dept_table(d.dept_yoy, d.cur_year, d.prev_year)
+        ct_inc = self._cust_matrix(d.inc_cust_piv, d.inc_prev_piv, d.top_customers, d.cur_year, "收入", d.top_n, d.top_rest, tab="inc")
+        ct_pay = self._cust_matrix(d.pay_cust_piv, d.pay_prev_piv, d.top_customers, d.cur_year, "回款", d.top_n, d.top_rest, tab="pay")
         ct_tabs = (
             f'<div class="yoy-cust-tabs">'
             f'<div class="tab-header">'
@@ -81,8 +81,8 @@ class YoyPage(BaseRenderer):
         h = ("<tr><th rowspan='2'>事业部</th>"
              "<th colspan='3' class='group-header inc-group'>收入</th>"
              "<th colspan='3' class='group-header pay-group'>回款</th></tr>"
-             f"<tr><th>{d.cur_year}年</th><th>2024年</th><th>同比</th>"
-             f"<th>{d.cur_year}年</th><th>2024年</th><th>同比</th></tr>")
+             f"<tr><th>{d.cur_year}年</th><th>{d.prev_year}年</th><th>同比</th>"
+             f"<th>{d.cur_year}年</th><th>{d.prev_year}年</th><th>同比</th></tr>")
 
         return (
             f'<div class="alert-banner" style="background:#fff7ed;border-left:4px solid #f59e0b">'
@@ -99,7 +99,7 @@ class YoyPage(BaseRenderer):
             f'<div class="table-wrap no-collapse"><table class="yoy-dept-table"><thead>{h}</thead><tbody>{dept_rows}</tbody></table></div>'
         )
 
-    def _kpi_block(self, ci, pvi, cp, pvp, cy) -> str:
+    def _kpi_block(self, ci, pvi, cp, pvp, cy, py=2024) -> str:
         yoy_inc_pct = ((ci - pvi) / pvi * 100) if pvi else 0
         yoy_pay_pct = ((cp - pvp) / pvp * 100) if pvp else 0
         inc_cls = "up" if yoy_inc_pct > 0 else "down" if yoy_inc_pct < 0 else "flat"
@@ -124,7 +124,7 @@ class YoyPage(BaseRenderer):
       </div>
       <div class="yoy-cmp-item">
         <div class="yoy-cmp-header">
-          <span class="yoy-cmp-label">2024年（同期）</span>
+          <span class="yoy-cmp-label">{py}年（同期）</span>
           <span class="yoy-cmp-val">{fmt_wan(pvi)}<span class="yoy-cmp-unit">万</span></span>
         </div>
         <div class="yoy-cmp-bar"><div class="yoy-cmp-fill prev" style="width:{pvi/max_inc*100:.1f}%"></div></div>
@@ -149,7 +149,7 @@ class YoyPage(BaseRenderer):
       </div>
       <div class="yoy-cmp-item">
         <div class="yoy-cmp-header">
-          <span class="yoy-cmp-label">2024年（同期）</span>
+          <span class="yoy-cmp-label">{py}年（同期）</span>
           <span class="yoy-cmp-val">{fmt_wan(pvp)}<span class="yoy-cmp-unit">万</span></span>
         </div>
         <div class="yoy-cmp-bar"><div class="yoy-cmp-fill prev" style="width:{pvp/max_pay*100:.1f}%"></div></div>
@@ -158,7 +158,7 @@ class YoyPage(BaseRenderer):
   </div>
 </div>"""
 
-    def _dept_table(self, dept_yoy: list[dict], cy) -> str:
+    def _dept_table(self, dept_yoy: list[dict], cy, py=2024) -> str:
         rows = ""
         for d in dept_yoy:
             ci_d, pi_d = d["ci"], d["pi"]
@@ -182,19 +182,23 @@ class YoyPage(BaseRenderer):
         h = ("<tr><th rowspan='2'>事业部</th>"
              "<th colspan='3' class='group-header inc-group'>收入</th>"
              "<th colspan='3' class='group-header pay-group'>回款</th></tr>"
-             f"<tr><th>{cy}年</th><th>2024年</th><th>同比</th><th>{cy}年</th><th>2024年</th><th>同比</th></tr>")
+             f"<tr><th>{cy}年</th><th>{py}年</th><th>同比</th><th>{cy}年</th><th>{py}年</th><th>同比</th></tr>")
 
         return (
             self.section("事业部同比对比（万元）", "sec-purple")
             + f'<div class="table-wrap no-collapse"><table class="yoy-dept-table"><thead>{h}</thead><tbody>{rows}</tbody></table></div>'
         )
 
-    def _cust_matrix(self, cp, pp, top, cy, label, top_n) -> str:
-        """客户同比矩阵 — 纯 HTML 生成"""
-        if not top:
+    def _cust_matrix(self, cp, pp, top, cy, label, top_n, rest=None, tab="inc") -> str:
+        """客户同比矩阵 — 纯 HTML 生成，支持折叠其余客户。tab="inc"/"pay" 区分收入/回款独立 ID。"""
+        if rest is None:
+            rest = []
+        all_top = top + rest
+        if not all_top:
             return ""
+        matrix_id = f"yoy-{tab}-matrix"
+        toggle_id = f"yoy-{tab}-toggle"
 
-        # 顶部合计行标签：取自配置（展示规则.json.年度同比.最大行数）
         if top_n and top_n > 0:
             top_label = f"前 {top_n}"
         else:
@@ -250,6 +254,30 @@ class YoyPage(BaseRenderer):
             pv_t = float(pp.loc[c, "合计"]) if pp is not None and c in pp.index else 0
             cs.append(_mcell(cv_t, pv_t))
             rows += f"<tr class='row-data'>{''.join(cs)}</tr>"
+        # 其余客户折叠
+        rest_rows = ""
+        if rest:
+            for i, c in enumerate(rest, len(top)+1):
+                cs = [f'<td class="td-name"><span class="row-num">{i}</span>{c}</td>']
+                for dpt in DEPARTMENTS:
+                    cv = float(cp.loc[c, dpt]) if c in cp.index and dpt in cp.columns else 0
+                    pv = float(pp.loc[c, dpt]) if pp is not None and c in pp.index and dpt in pp.columns else 0
+                    cs.append(_mcell(cv, pv))
+                cv_t = float(cp.loc[c, "合计"]) if c in cp.index else 0
+                pv_t = float(pp.loc[c, "合计"]) if pp is not None and c in pp.index else 0
+                cs.append(_mcell(cv_t, pv_t))
+                rest_rows += f"<tr class='row-data row-hidden'>{''.join(cs)}</tr>"
+            rest_rows += (
+                f'<tr class="row-toggle"><td colspan="{2*(len(DEPARTMENTS)+1)}" style="text-align:center;padding:8px">'
+                f'<button class="toggle-all-btn" id="{toggle_id}" '
+                f'onclick="var t=document.querySelectorAll(\'#{matrix_id} .row-hidden\');'
+                f'var b=document.getElementById(\'{toggle_id}\');'
+                f'var isCollapsed=b.textContent.indexOf(\'查看\')>=0;'
+                f't.forEach(r=>r.style.display=isCollapsed?\'table-row\':\'none\');'
+                f'b.textContent=isCollapsed?\'收起\':\'查看全部 ({len(rest)}家)\';'
+                f'b.classList.toggle(\'expanded\',isCollapsed)">'
+                f'查看全部 ({len(rest)}家)</button></td></tr>'
+            )
 
         h_row1 = '<tr><th rowspan="2" class="th-name">客户</th>'
         for dpt in DEPARTMENTS:
@@ -262,5 +290,5 @@ class YoyPage(BaseRenderer):
 
         return (
             self.section(f"重要客户{label}同比 · 按事业部分列（万元，{top_label}）", "sec-purple")
-            + f'<div class="table-wrap no-collapse"><table class="yoy-matrix-table"><thead>{h_row1}{h_row2}</thead><tbody>{tr}{rows}</tbody></table></div>'
+            + f'<div class="table-wrap no-collapse" id="{matrix_id}"><table class="yoy-matrix-table"><thead>{h_row1}{h_row2}</thead><tbody>{tr}{rows}{rest_rows}</tbody></table></div>'
         )

@@ -66,10 +66,12 @@ def build_html(data, title: str, frontend_cfg: dict) -> str:
     # 如果没有配置任何页面，使用默认全部
     if not pages:
         pages = [OverviewPage(), AnnualPage(), MonthlyPage(), QuarterlyPage(), SalesPage(), YoyPage()]
-    page_html = "".join(p.render(data) for p in pages)
-    # 默认第一页为 active 状态
-    page_html = page_html.replace('class="page"', 'class="page active"', 1)
-    page_html += '<script>setTimeout(window.__resizeAllCharts, 200);</script>'
+    # 每个页面用 template 包裹（懒加载：浏览器不解析，切换时克隆注入）
+    tpls = "".join(
+        f'<template id="tpl-{p.page_id}">\n{p.render(data)}\n</template>'
+        for p in pages
+    )
+    page_html = tpls + '<script>setTimeout(window.__resizeAllCharts, 200);</script>'
     nav_items = "".join(
         f'<a data-target="{p.page_id}" href="#" class="{"active" if i == 0 else ""}" '
         f'onclick="showPage(\'{p.page_id}\'); return false;">{p.nav_name}</a>'
@@ -134,6 +136,7 @@ document.addEventListener('mozfullscreenchange',_fsUpdate);
 document.addEventListener('MSFullscreenChange',_fsUpdate);
 </script>
 <main>
+<div id="page-host"></div>
 {page_html}
 </main>
 </body>

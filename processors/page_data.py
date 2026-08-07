@@ -10,10 +10,172 @@ from pathlib import Path
 
 import pandas as pd
 
-from .utils import safe_float, get_config_range, extract_date_range
+from .utils import safe_float, get_config_range
 from .config_loader import CustomerFilter
 
+# ── 客户合并：子公司 → 母公司
+_SUB_TO_PARENT: dict[str, str] | None = None  # 懒加载
+
+def _load_sub_to_parent() -> dict[str, str]:
+    """加载 子公司→母公司 映射（跳过1:1：子公司名=母公司名的不映射，随便展示哪个都行）"""
+    import json
+    path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    raw = {}
+    for parent, group in data.get("客户归属", {}).items():
+        subs = list(group.get("子公司", {}).keys())
+        # 只对 N:1（子公司数 > 1）或客户名≠子公司名的关系建立映射
+        for sub in subs:
+            s = sub.strip()
+            if s == parent:
+                continue  # 1:1 自引用，跳过，随便展示哪个都行
+            if s not in raw:
+                raw[s] = parent
+    return raw
+
+
+def _load_children_map() -> dict[str, list[str]]:
+    """加载 母公司 → 子公司列表（弹窗展示用）"""
+    import json
+    path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    children = {}
+    for parent, group in data.get("客户归属", {}).items():
+        for sub in group.get("子公司", {}):
+            s = sub.strip()
+            children.setdefault(parent, []).append(s)
+    return children
+
+def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
+    """将子公司名替换为母公司名（3+子公司时聚合，或客户本身就是母公司）"""
+    global _SUB_TO_PARENT
+    if _SUB_TO_PARENT is None:
+        _SUB_TO_PARENT = _load_sub_to_parent()
+    df = df.copy()
+    SUFFIXES = ('有限公司','科技','股份有限公司','有限责任公司','公司')
+    def _strip(s):
+        n = str(s)
+        changed = True
+        while changed:
+            changed = False
+            for sf in SUFFIXES:
+                if n.endswith(sf) and len(n) > len(sf):
+                    n = n[:-len(sf)]; changed = True
+        return n
+
+    stripped_map = {}
+    for sub, parent in _SUB_TO_PARENT.items():
+        stripped_map.setdefault(_strip(sub), parent)
+
+    def _map(c):
+        c = str(c)
+        if c in _SUB_TO_PARENT:
+            return _SUB_TO_PARENT[c]
+        s = _strip(c)
+        if s in stripped_map:
+            return stripped_map[s]
+        for sub, parent in sorted(_SUB_TO_PARENT.items(), key=lambda x:-len(x[0])):
+            if _strip(sub) in s or s in _strip(sub):
+                return parent
+        return c
+
+    # 先试映射，统计每个母公司下出现了几个子公司
+    all_custs = set(df["客户"].unique())
+    parent_children: dict[str, set[str]] = {}
+    for c in all_custs:
+        p = _map(c)
+        parent_children.setdefault(p, set()).add(c)
+
+    # 只有 3+ 子公司 | 或该客户本身就是母公司名 时才聚合
+    consolidate = set()
+    for p, children in parent_children.items():
+        # p 本身就是一家出现于数据的母公司 OR 3+ 子公司
+        if p in all_custs or len(children) >= 3:
+            consolidate.add(p)
+
+    def _smart_map(c):
+        p = _map(c)
+        if p in consolidate:
+            return p
+        return c
+
+    df["客户"] = df["客户"].map(_smart_map)
+    return df
+
+
+def _consolidate_target(tgt_df: pd.DataFrame) -> pd.DataFrame:
+    """合并目标表：子公司名替换为母公司（复用 _consolidate_customers），然后按 (客户, 销售) 聚合部门指标"""
+    if len(tgt_df) == 0:
+        return tgt_df
+    df = _consolidate_customers(tgt_df.copy())
+    dept_cols = [c for c in DEPARTMENTS if c in df.columns]
+    if dept_cols:
+        df = df.groupby(["客户", "销售"], as_index=False, dropna=False)[dept_cols].sum()
+    return df
+
+
+def _build_subs_with_data(
+    raw_actuals: list[pd.DataFrame],
+    raw_targets: list[pd.DataFrame],
+    children_map: dict[str, list[str]],
+    parents: list[str],
+) -> dict[str, list[str]]:
+    """为每个母公司构建"有数据"的子公司列表（弹窗用）
+
+    过滤规则：
+    - 只保留有实际金额 OR 有目标数据的子公司
+    - 排除自引用（子公司名=母公司名）
+
+    Args:
+        raw_actuals: 实际数据 DataFrame 列表（如 [data.income, data.payment]）
+        raw_targets: 目标数据 DataFrame 列表
+        children_map: 母公司 → 子公司列表
+        parents: 当前表中出现的母公司列表
+    """
+    actual_custs: set[str] = set()
+    for df in raw_actuals:
+        if df is None or len(df) == 0 or "客户" not in df.columns:
+            continue
+        # 只统计金额 > 0 的客户
+        if "金额" in df.columns:
+            g = df.groupby("客户")["金额"].sum()
+            actual_custs.update(str(c).strip() for c in g[g > 0].index)
+        else:
+            actual_custs.update(str(c).strip() for c in df["客户"].unique())
+
+    target_custs: set[str] = set()
+    for df in raw_targets:
+        if df is None or len(df) == 0 or "客户" not in df.columns:
+            continue
+        target_custs.update(str(c).strip() for c in df["客户"].unique())
+
+    sub_data: dict[str, list[str]] = {}
+    for p in parents:
+        all_subs = children_map.get(p, [])
+        # 排除自引用
+        subs = [s for s in all_subs if s != p]
+        # 过滤：只保留有数据的
+        subs = [s for s in subs if s in actual_custs or s in target_custs]
+        if subs:
+            sub_data[p] = subs
+    return sub_data
+
+
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
+
+
+def _get_yearly_year(base_dir: Path) -> int:
+    """从 cleaning_config.json 读取年基线年份"""
+    import json
+    cfg_path = base_dir / "config" / "清洗配置" / "cleaning_config.json"
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        return int(cfg.get("时间范围", {}).get("年基线数据", {}).get("年份", 2024))
+    except Exception:
+        return 2024
 
 
 # ══════════════════════════════════════════════════════════════
@@ -26,8 +188,13 @@ def _add_wan(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _dept_target_sum(targets: pd.DataFrame) -> float:
-    """汇总 4 部门指标合计"""
-    return sum(safe_float(targets[d].sum()) for d in DEPARTMENTS if d in targets.columns)
+    """汇总 4 部门指标合计，兼容 xxx / xxx收入 / xxx回款 三种列命名"""
+    cols = targets.columns
+    return sum(
+        safe_float(targets[c].sum())
+        for d in DEPARTMENTS
+        for c in [d, f"{d}收入", f"{d}回款"] if c in cols
+    )
 
 
 def _yoy_rate(cur: float, prev: float) -> float | None:
@@ -44,6 +211,7 @@ def _parse_month_range(base_dir: Path, range_key: str) -> tuple[int, int]:
             e = int(rng.split("~")[1].strip().split("-")[1])
             return s, e
         except (IndexError, ValueError):
+            # 月份范围解析失败：回退到默认 1~6 月
             pass
     return 1, 6
 
@@ -59,50 +227,150 @@ def _data_max_month(df: pd.DataFrame) -> int:
 
 def _yoy_from_yearly(yearly: pd.DataFrame | None, cur_val: float,
                      start_m: int, end_m: int) -> float | None:
-    """从年基线计算同比"""
+    """从年基线计算同比。
+    
+    两种模式：
+    1. 汇总模式（所有行日期相同，如全部 2025-07-01）→ 用全量总计作为往年基线
+    2. 逐月模式（日期有月份粒度）→ 按 start_m~end_m 筛选
+    """
     if yearly is None or len(yearly) == 0:
         return None
     yi = yearly.copy()
     yi["月"] = pd.to_datetime(yi["日期"], errors="coerce").dt.month
-    prev = float(yi[(yi["月"] >= start_m) & (yi["月"] <= end_m)]["金额"].sum()) / 10000.0
+    if yi["月"].nunique() <= 1:
+        # 汇总模式：所有行同一月份 → 全量总计
+        prev = float(yi["金额"].sum()) / 10000.0
+    else:
+        # 逐月模式
+        prev = float(yi[(yi["月"] >= start_m) & (yi["月"] <= end_m)]["金额"].sum()) / 10000.0
     return _yoy_rate(cur_val, prev)
 
 
 def _customer_pivot(df: pd.DataFrame, tgt: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """客户 × 事业部 pivot（实际+目标），返回 (pivot_df, target_grouped_df)"""
+    """客户 × 事业部 pivot（实际+目标），返回 (pivot_df, target_grouped_df)
+     
+    兼容 xxx / xxx收入 / xxx回款 三种列命名"""
+    cols = tgt.columns
+    # 建立 简称→实际列名 映射（取了第一个匹配项的列总和）
+    av_cols = []
+    dept_map = {}  # 简称→实际列名
+    for d in DEPARTMENTS:
+        for c in [d, f"{d}收入", f"{d}回款"]:
+            if c in cols:
+                av_cols.append(c)
+                dept_map[d] = c
+                break
     piv = df.pivot_table(index="客户", columns="事业部", values="金额_万", aggfunc="sum", fill_value=0)
-    av_cols = [d for d in DEPARTMENTS if d in tgt.columns]
-    tgt_p = tgt.groupby("客户")[av_cols].sum()
-    tgt_p["合计"] = tgt_p.sum(axis=1)
+    if av_cols:
+        tgt_p = tgt.groupby("客户")[av_cols].sum()
+        # 重命名回简短形式（用于统一的 cell_bg 渲染）
+        rename = {v: k for k, v in dept_map.items() if v != k}
+        if rename:
+            tgt_p = tgt_p.rename(columns=rename)
+        tgt_p["合计"] = tgt_p.sum(axis=1)
+    else:
+        tgt_p = pd.DataFrame(columns=DEPARTMENTS + ["合计"])
     piv["合计"] = piv.sum(axis=1)
     return piv, tgt_p
+
+
+def _build_cust_parent_map(base_dir: Path) -> dict[str, str]:
+    """从客户销售归属.json 构建 子公司→母公司 映射
+     
+    返回: {子公司名: 母公司名}，无归属的子公司不在此映射中
+    """
+    import json
+    path = base_dir / "config" / "清洗配置" / "客户销售归属.json"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            ownership = json.load(f)
+    except Exception:
+        return {}
+    parent_map: dict[str, str] = {}
+    for parent, entry in ownership.get("客户归属", {}).items():
+        for sub in entry.get("子公司", {}).keys():
+            parent_map[sub] = parent
+    return parent_map
+
+
+def _group_by_parent(piv: pd.DataFrame, tgt_g: pd.DataFrame, customers: list[str],
+                     base_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """将客户矩阵数据按母公司归拢
+    
+    Args:
+        piv: 客户×事业部 实际金额 pivot（index=客户）
+        tgt_g: 客户×事业部 目标金额 grouped（index=客户）
+        customers: 排序后的客户列表（子公司名）
+        base_dir: 项目根
+        
+    Returns:
+        (聚合后的 piv, 聚合后的 tgt_g, 母公司名列表（按合计降序）)
+    """
+    parent_map = _build_cust_parent_map(base_dir)
+    if not parent_map:
+        return piv, tgt_g, customers
+    
+    # 替换 Index 和列表中的名字为母公司名
+    def _remap(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+        df = df.copy()
+        new_idx = [parent_map.get(c, c) for c in df.index]
+        df.index = new_idx
+        return df.groupby(df.index).sum()
+    
+    piv_out = _remap(piv)
+    tgt_out = _remap(tgt_g)
+    
+    # 客户列表去重、保持排序（原顺序中的首次出现位置决定）
+    seen: set[str] = set()
+    parent_custs: list[str] = []
+    for c in customers:
+        p = parent_map.get(c, c)
+        if p not in seen:
+            seen.add(p)
+            parent_custs.append(p)
+    
+    return piv_out, tgt_out, parent_custs
+
+
+def _resplit_priority(all_custs: list[str], base_dir: Path,
+                      filt: CustomerFilter) -> tuple[list[str], list[str]]:
+    """母公司归拢后重新拆分优先/其余"""
+    if not filt.has_priority():
+        return all_custs, []
+    parent_map = _build_cust_parent_map(base_dir)
+    pri_parents = {parent_map.get(s, s) for s in filt.get_priority_names(base_dir)}
+    return [c for c in all_custs if c in pri_parents], [c for c in all_custs if c not in pri_parents]
 
 
 def _sorted_customers(tgt_p: pd.DataFrame,
                      filt: CustomerFilter | None = None,
                      piv: pd.DataFrame | None = None,
-                     base_dir: Path | None = None) -> list[str]:
-    """按目标合计降序排列，包含：有目标 或 有实际 的客户。可选 apply filter
+                     base_dir: Path | None = None) -> tuple[list[str], list[str]]:
+    """按目标合计降序排列，返回 (优先客户, 其余客户)
 
-    全部控制权归 filt：
-    - filt 有 include → 展开组名 + 白名单匹配 + max_rows 截断
-    - filt 无 include 但有 max_rows → 仅按 max_rows 截断
-    - filt 完全无配置 → 不截断
+    优先逻辑：
+    - filt.priority 有配置 → 优先名单内客户排前面，其余排后面（折叠在"查看全部"下）
+    - filt.priority 为空 → 全部进入优先列表，其余为空
     """
-    # ① 有目标的客户
+    # ① 只保留有目标的客户（排除目标=0的1对1子公司，避免显示0%无意义行）
     cs = [c for c in tgt_p.index if tgt_p.loc[c, "合计"] > 0]
-    # ② 补充：有实际但无目标的客户，避免矩阵合计与 Hero 全公司合计对不上
-    if piv is not None:
-        for c in piv.index:
-            if piv.loc[c, "合计"] > 0 and c not in cs:
-                cs.append(c)
     # ③ 排序：有目标按目标降序；无目标按实际降序排在后面
     cs.sort(key=lambda c: (tgt_p.loc[c, "合计"] if c in tgt_p.index else 0,
                            piv.loc[c, "合计"] if piv is not None and c in piv.index else 0),
             reverse=True)
     if filt and (not filt.is_empty() or filt.max_rows > 0):
         cs = filt.apply(cs, piv, tgt_p, base_dir)
-    return cs
+
+    # ④ 优先展示拆分
+    if filt and filt.has_priority() and base_dir:
+        pri_set = filt.get_priority_names(base_dir)
+        pri: list[str] = [c for c in cs if c in pri_set]
+        rest: list[str] = [c for c in cs if c not in pri_set]
+        # 保持排序：优先在前，其余在后
+        return pri, rest
+    return cs, []
 
 
 # ══════════════════════════════════════════════════════════════
@@ -139,12 +407,12 @@ class OverviewData:
 def prepare_overview_data(data, base_dir: Path) -> OverviewData:
     d = OverviewData()
 
-    df_inc = _add_wan(data.income.copy())
-    df_pay = _add_wan(data.payment.copy())
-    df_si = _add_wan(data.sales_income.copy())
-    df_sp = _add_wan(data.sales_payment.copy())
-    inc_tgt_df = data.annual_income_targets.copy()
-    pay_tgt_df = data.annual_payment_targets.copy()
+    df_inc = _consolidate_customers(_add_wan(data.income.copy()))
+    df_pay = _consolidate_customers(_add_wan(data.payment.copy()))
+    df_si = _consolidate_customers(_add_wan(data.sales_income.copy()))
+    df_sp = _consolidate_customers(_add_wan(data.sales_payment.copy()))
+    inc_tgt_df = _consolidate_target(data.annual_income_targets.copy())
+    pay_tgt_df = _consolidate_target(data.annual_payment_targets.copy())
 
     d.t_inc = float(df_inc["金额_万"].sum())
     d.t_pay = float(df_pay["金额_万"].sum())
@@ -163,7 +431,7 @@ def prepare_overview_data(data, base_dir: Path) -> OverviewData:
     d.yoy_pay = _yoy_from_yearly(data.yearly_payment, d.t_pay, cur_start_m, cur_end_m)
 
     d.annual_range = get_config_range(base_dir, "年度累计") or ""
-    d.date_range = extract_date_range(data.income)
+    d.date_range = d.annual_range
 
     # 部门汇总
     for dpt in DEPARTMENTS:
@@ -209,8 +477,12 @@ class AnnualData:
     pay_piv: pd.DataFrame = field(default_factory=pd.DataFrame)
     pay_tgt_grouped: pd.DataFrame = field(default_factory=pd.DataFrame)
     inc_customers: list[str] = field(default_factory=list)
+    inc_rest: list[str] = field(default_factory=list)
     pay_customers: list[str] = field(default_factory=list)
+    pay_rest: list[str] = field(default_factory=list)
     customers: list[str] = field(default_factory=list)
+    # 弹窗：母公司→有数据的子公司列表
+    subs_with_data: dict = field(default_factory=dict)
     # 部门卡用 DataFrame
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -221,10 +493,10 @@ class AnnualData:
 def prepare_annual_data(data, base_dir: Path) -> AnnualData:
     d = AnnualData()
 
-    df_inc = _add_wan(data.income.copy())
-    df_pay = _add_wan(data.payment.copy())
-    inc_tgt = data.annual_income_targets.copy()
-    pay_tgt = data.annual_payment_targets.copy()
+    df_inc = _consolidate_customers(_add_wan(data.income.copy()))
+    df_pay = _consolidate_customers(_add_wan(data.payment.copy()))
+    inc_tgt = _consolidate_target(data.annual_income_targets.copy())
+    pay_tgt = _consolidate_target(data.annual_payment_targets.copy())
 
     d.t_inc = float(df_inc["金额_万"].sum())
     d.t_pay = float(df_pay["金额_万"].sum())
@@ -237,24 +509,44 @@ def prepare_annual_data(data, base_dir: Path) -> AnnualData:
         inc_dates = pd.to_datetime(df_inc["日期"], errors="coerce").dropna()
         if len(inc_dates):
             cur_year = int(inc_dates.min().year)
-    d.yoy_period = f"{cur_year}年01-{cur_end_m:02d}月 vs 2024年01-{cur_end_m:02d}月"
+    prev_year = _get_yearly_year(base_dir)
+    d.yoy_period = f"{cur_year}年01-{cur_end_m:02d}月 vs {prev_year}年01-{cur_end_m:02d}月"
     d.yoy_inc = _yoy_from_yearly(data.yearly_income, d.t_inc, 1, cur_end_m)
     d.yoy_pay = _yoy_from_yearly(data.yearly_payment, d.t_pay, 1, cur_end_m)
 
     d.annual_range = get_config_range(base_dir, "年度累计") or ""
-    d.date_range = extract_date_range(data.income)
+    d.date_range = d.annual_range
 
     # 客户矩阵：最大行数完全从 配置.年度达成.客户矩阵.最大行数 读取（收入/回款独立筛选）
     d.inc_piv, d.inc_tgt_grouped = _customer_pivot(df_inc, inc_tgt)
     d.pay_piv, d.pay_tgt_grouped = _customer_pivot(df_pay, pay_tgt)
     annual_filter = CustomerFilter.from_config(base_dir, "年度达成", section="客户矩阵")
-    d.inc_customers = _sorted_customers(
+    d.inc_customers, d.inc_rest = _sorted_customers(
         d.inc_tgt_grouped, filt=annual_filter, piv=d.inc_piv, base_dir=base_dir
     )
-    d.pay_customers = _sorted_customers(
+    d.pay_customers, d.pay_rest = _sorted_customers(
         d.pay_tgt_grouped, filt=annual_filter, piv=d.pay_piv, base_dir=base_dir
     )
+
+    # 母公司归拢（合并 + 分组 + 重新拆分优先/其余）
+    d.inc_piv, d.inc_tgt_grouped, all_inc = _group_by_parent(
+        d.inc_piv, d.inc_tgt_grouped, d.inc_customers + d.inc_rest, base_dir
+    )
+    d.pay_piv, d.pay_tgt_grouped, all_pay = _group_by_parent(
+        d.pay_piv, d.pay_tgt_grouped, d.pay_customers + d.pay_rest, base_dir
+    )
+    d.inc_customers, d.inc_rest = _resplit_priority(all_inc, base_dir, annual_filter)
+    d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, annual_filter)
     d.customers = d.inc_customers
+
+    # 弹窗：构建"有数据"的子公司列表（去重合并 inc/pay 客户表）
+    children_map = _load_children_map()
+    all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
+    d.subs_with_data = _build_subs_with_data(
+        [data.income, data.payment],
+        [data.annual_income_targets, data.annual_payment_targets],
+        children_map, all_parents,
+    )
 
     d.df_inc = df_inc; d.df_pay = df_pay
     d.inc_tgt_df = inc_tgt; d.pay_tgt_df = pay_tgt
@@ -282,8 +574,12 @@ class MonthlyData:
     pay_piv: pd.DataFrame = field(default_factory=pd.DataFrame)
     pay_tgt_grouped: pd.DataFrame = field(default_factory=pd.DataFrame)
     inc_customers: list[str] = field(default_factory=list)
+    inc_rest: list[str] = field(default_factory=list)
     pay_customers: list[str] = field(default_factory=list)
+    pay_rest: list[str] = field(default_factory=list)
     customers: list[str] = field(default_factory=list)
+    # 弹窗：母公司→有数据的子公司列表
+    subs_with_data: dict = field(default_factory=dict)
     # 部门卡
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -294,22 +590,35 @@ class MonthlyData:
 def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
     d = MonthlyData()
 
-    df_inc = _add_wan(data.income.copy())
-    df_pay = _add_wan(data.payment.copy())
-    inc_tgt = data.monthly_income_targets.copy()
-    pay_tgt = data.monthly_payment_targets.copy()
+    # ── 月明细数据（清洗引擎已按月度配置时间窗口过滤好） ──
+    raw_inc = data.monthly_income_detail
+    raw_pay = data.monthly_payment_detail
 
-    df_inc["月份"] = pd.to_datetime(df_inc["日期"], errors="coerce").dt.to_period("M").astype(str)
-    df_pay["月份"] = pd.to_datetime(df_pay["日期"], errors="coerce").dt.to_period("M").astype(str)
+    # 月明细为空 → 当月无源数据（财务端未更新），显示空表
+    if raw_inc is None:
+        raw_inc = pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
+    if raw_pay is None:
+        raw_pay = pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
 
-    months = sorted(set(df_inc["月份"].dropna().tolist() + df_pay["月份"].dropna().tolist()))
-    d.latest_month = months[-1] if months else "—"
+    df_inc = _consolidate_customers(_add_wan(raw_inc.copy()))
+    df_pay = _consolidate_customers(_add_wan(raw_pay.copy()))
+    inc_tgt = _consolidate_target(data.monthly_income_targets.copy())
+    pay_tgt = _consolidate_target(data.monthly_payment_targets.copy())
 
-    # 月度达成页全页统一为最新单月口径（Hero + 部门卡 + 客户矩阵）
-    df_inc = df_inc[df_inc["月份"] == d.latest_month].copy()
-    df_pay = df_pay[df_pay["月份"] == d.latest_month].copy()
+    # 月明细已按配置窗口过滤 → 直接汇总即为当月数据
     d.latest_inc = float(df_inc["金额_万"].sum())
     d.latest_pay = float(df_pay["金额_万"].sum())
+    d.latest_month = "—"
+
+    # 从月明细推断实际月份（用于同比标签）
+    if len(df_inc):
+        dates = pd.to_datetime(df_inc["日期"], errors="coerce").dropna()
+        if len(dates):
+            d.latest_month = f"{dates.min().year}-{int(dates.min().month):02d}"
+    elif len(df_pay):
+        dates = pd.to_datetime(df_pay["日期"], errors="coerce").dropna()
+        if len(dates):
+            d.latest_month = f"{dates.min().year}-{int(dates.min().month):02d}"
 
     d.inc_tgt = _dept_target_sum(inc_tgt)
     d.pay_tgt = _dept_target_sum(pay_tgt)
@@ -317,38 +626,60 @@ def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
     # 同比
     cur_year = int(d.latest_month.split('-')[0]) if d.latest_month and "-" in d.latest_month else 2026
     cur_month = int(d.latest_month.split('-')[1]) if d.latest_month and "-" in d.latest_month else 1
-    d.yoy_period = f"{cur_year}年{cur_month:02d}月 vs 2024年{cur_month:02d}月"
+    prev_year = _get_yearly_year(base_dir)
+    d.yoy_period = f"{cur_year}年{cur_month:02d}月 vs {prev_year}年{cur_month:02d}月"
 
     if data.yearly_income is not None and len(data.yearly_income):
         yi = data.yearly_income.copy()
         yi["月份"] = pd.to_datetime(yi["日期"], errors="coerce").dt.to_period("M").astype(str)
-        latest_year = yi["月份"].str[:4].astype(int).max()
-        target_key = f"{latest_year}-{d.latest_month.split('-')[1]}" if d.latest_month and "-" in d.latest_month else ""
-        prev_inc = float(yi[yi["月份"] == target_key]["金额"].sum()) / 10000.0 if target_key else 0
-        d.yoy_inc = _yoy_rate(d.latest_inc, prev_inc)
+        if yi["月份"].nunique() > 1:
+            latest_year = yi["月份"].str[:4].astype(int).max()
+            target_key = f"{latest_year}-{d.latest_month.split('-')[1]}" if d.latest_month and "-" in d.latest_month else ""
+            prev_inc = float(yi[yi["月份"] == target_key]["金额"].sum()) / 10000.0 if target_key else 0
+            d.yoy_inc = _yoy_rate(d.latest_inc, prev_inc)
 
     if data.yearly_payment is not None and len(data.yearly_payment):
         yp = data.yearly_payment.copy()
         yp["月份"] = pd.to_datetime(yp["日期"], errors="coerce").dt.to_period("M").astype(str)
-        latest_year = yp["月份"].str[:4].astype(int).max()
-        target_key = f"{latest_year}-{d.latest_month.split('-')[1]}" if d.latest_month and "-" in d.latest_month else ""
-        prev_pay = float(yp[yp["月份"] == target_key]["金额"].sum()) / 10000.0 if target_key else 0
-        d.yoy_pay = _yoy_rate(d.latest_pay, prev_pay)
+        if yp["月份"].nunique() > 1:
+            latest_year = yp["月份"].str[:4].astype(int).max()
+            target_key = f"{latest_year}-{d.latest_month.split('-')[1]}" if d.latest_month and "-" in d.latest_month else ""
+            prev_pay = float(yp[yp["月份"] == target_key]["金额"].sum()) / 10000.0 if target_key else 0
+            d.yoy_pay = _yoy_rate(d.latest_pay, prev_pay)
 
     d.month_range = get_config_range(base_dir, "月度数据") or ""
-    d.date_range = extract_date_range(data.income)
+    d.date_range = d.month_range or "—"
 
     # 客户矩阵（收入/回款独立筛选）
     d.inc_piv, d.inc_tgt_grouped = _customer_pivot(df_inc, inc_tgt)
     d.pay_piv, d.pay_tgt_grouped = _customer_pivot(df_pay, pay_tgt)
     monthly_filter = CustomerFilter.from_config(base_dir, "月度达成", section="客户矩阵")
-    d.inc_customers = _sorted_customers(
+    d.inc_customers, d.inc_rest = _sorted_customers(
         d.inc_tgt_grouped, filt=monthly_filter, piv=d.inc_piv, base_dir=base_dir
     )
-    d.pay_customers = _sorted_customers(
+    d.pay_customers, d.pay_rest = _sorted_customers(
         d.pay_tgt_grouped, filt=monthly_filter, piv=d.pay_piv, base_dir=base_dir
     )
+
+    # 母公司归拢
+    d.inc_piv, d.inc_tgt_grouped, all_inc = _group_by_parent(
+        d.inc_piv, d.inc_tgt_grouped, d.inc_customers + d.inc_rest, base_dir
+    )
+    d.pay_piv, d.pay_tgt_grouped, all_pay = _group_by_parent(
+        d.pay_piv, d.pay_tgt_grouped, d.pay_customers + d.pay_rest, base_dir
+    )
+    d.inc_customers, d.inc_rest = _resplit_priority(all_inc, base_dir, monthly_filter)
+    d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, monthly_filter)
     d.customers = d.inc_customers
+
+    # 弹窗：构建"有数据"的子公司列表
+    children_map = _load_children_map()
+    all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
+    d.subs_with_data = _build_subs_with_data(
+        [raw_inc, raw_pay],
+        [data.monthly_income_targets, data.monthly_payment_targets],
+        children_map, all_parents,
+    )
 
     d.df_inc = df_inc; d.df_pay = df_pay
     d.inc_tgt_df = inc_tgt; d.pay_tgt_df = pay_tgt
@@ -378,8 +709,12 @@ class QuarterlyData:
     pay_piv: pd.DataFrame = field(default_factory=pd.DataFrame)
     pay_tgt_grouped: pd.DataFrame = field(default_factory=pd.DataFrame)
     inc_customers: list[str] = field(default_factory=list)
+    inc_rest: list[str] = field(default_factory=list)
     pay_customers: list[str] = field(default_factory=list)
+    pay_rest: list[str] = field(default_factory=list)
     customers: list[str] = field(default_factory=list)
+    # 弹窗：母公司→有数据的子公司列表
+    subs_with_data: dict = field(default_factory=dict)
     # 部门卡
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -396,14 +731,14 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
         q_inc = data.income.copy()
         q_pay = data.payment.copy()
 
-    q_inc = _add_wan(q_inc.copy())
-    q_pay = _add_wan(q_pay.copy())
+    q_inc = _consolidate_customers(_add_wan(q_inc.copy()))
+    q_pay = _consolidate_customers(_add_wan(q_pay.copy()))
 
     latest_date = pd.to_datetime(q_inc["日期"].max(), errors="coerce")
     d.quarter = int(latest_date.quarter) if pd.notna(latest_date) else 2
 
-    inc_tgt = data.quarterly_income_targets.copy()
-    pay_tgt = data.quarterly_payment_targets.copy()
+    inc_tgt = _consolidate_target(data.quarterly_income_targets.copy())
+    pay_tgt = _consolidate_target(data.quarterly_payment_targets.copy())
 
     d.q_start, d.q_end = _parse_month_range(base_dir, "季度累计筛选")
     if (d.q_start, d.q_end) == (1, 6):  # 未读到配置，推算
@@ -416,14 +751,15 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d.pay_tgt_total = _dept_target_sum(pay_tgt)
 
     cur_year = 2026
-    d.yoy_period = f"{cur_year}年{d.q_start:02d}-{d.q_end:02d}月 vs 2024年{d.q_start:02d}-{d.q_end:02d}月"
+    prev_year = _get_yearly_year(base_dir)
+    d.yoy_period = f"{cur_year}年{d.q_start:02d}-{d.q_end:02d}月 vs {prev_year}年{d.q_start:02d}-{d.q_end:02d}月"
     d.yoy_inc = _yoy_from_yearly(data.yearly_income, d.total_inc, d.q_start, d.q_end)
     d.yoy_pay = _yoy_from_yearly(data.yearly_payment, d.total_pay, d.q_start, d.q_end)
 
     d.qtr_range = get_config_range(base_dir, "季度累计筛选") or ""
-    d.date_range = extract_date_range(data.quarterly_income)
+    d.date_range = d.qtr_range
 
-    # 客户矩阵
+    # 客户矩阵 — 指标值+客户列表均用季度目标
     inc_tgt_grouped = inc_tgt.groupby("客户")[
         [c for c in DEPARTMENTS if c in inc_tgt.columns]
     ].sum()
@@ -436,14 +772,34 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d.inc_tgt_grouped = inc_tgt_grouped
     d.pay_piv, d.pay_tgt_grouped = _customer_pivot(q_pay, pay_tgt)
     d.pay_tgt_grouped = pay_tgt_grouped
+
     quarterly_filter = CustomerFilter.from_config(base_dir, "季度达成", section="客户矩阵")
-    d.inc_customers = _sorted_customers(
+    d.inc_customers, d.inc_rest = _sorted_customers(
         inc_tgt_grouped, filt=quarterly_filter, piv=d.inc_piv, base_dir=base_dir
     )
-    d.pay_customers = _sorted_customers(
+    d.pay_customers, d.pay_rest = _sorted_customers(
         pay_tgt_grouped, filt=quarterly_filter, piv=d.pay_piv, base_dir=base_dir
     )
+
+    # 母公司归拢
+    d.inc_piv, d.inc_tgt_grouped, all_inc = _group_by_parent(
+        d.inc_piv, d.inc_tgt_grouped, d.inc_customers + d.inc_rest, base_dir
+    )
+    d.pay_piv, d.pay_tgt_grouped, all_pay = _group_by_parent(
+        d.pay_piv, d.pay_tgt_grouped, d.pay_customers + d.pay_rest, base_dir
+    )
+    d.inc_customers, d.inc_rest = _resplit_priority(all_inc, base_dir, quarterly_filter)
+    d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, quarterly_filter)
     d.customers = d.inc_customers
+
+    # 弹窗：构建"有数据"的子公司列表
+    children_map = _load_children_map()
+    all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
+    d.subs_with_data = _build_subs_with_data(
+        [q_inc, q_pay],
+        [data.quarterly_income_targets, data.quarterly_payment_targets],
+        children_map, all_parents,
+    )
 
     d.df_inc = q_inc; d.df_pay = q_pay
     d.inc_tgt_df = inc_tgt; d.pay_tgt_df = pay_tgt
@@ -476,9 +832,14 @@ class SalesData:
     inc_by_sd: dict[str, dict[str, float]] = field(default_factory=dict)
     pay_by_sd: dict[str, dict[str, float]] = field(default_factory=dict)
     sales_list: list[str] = field(default_factory=list)
+    pay_sales_list: list[str] = field(default_factory=list)
     # card3 销售×客户 明细
     sc3_data: dict = field(default_factory=dict)   # {sales: {cust: {inc: {dept:val,...}}}}
     sc3_tgts: dict = field(default_factory=dict)   # {cust: {inc: {dept:val,...}}}
+    # card3 母公司聚合
+    sub_to_parent: dict[str, str] = field(default_factory=dict)   # 子公司→母公司
+    sc3_by_parent: dict = field(default_factory=dict)    # {sales: {parent: {sub: {inc/pay: {dept:val}}}}}
+    sc3_tgts_by_parent: dict = field(default_factory=dict)   # {parent: {inc/pay: {dept:val}}}
     # 待确认
     pending_count: int = 0
     pending_total_inc: float = 0
@@ -501,10 +862,10 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
     d = SalesData()
 
     d.sales_range = get_config_range(base_dir, "年度累计") or ""
-    df_si = _add_wan(data.sales_income.copy())
-    df_sp = _add_wan(data.sales_payment.copy())
-    inc_tgt = data.annual_income_targets.copy()
-    pay_tgt = data.annual_payment_targets.copy()
+    df_si = _consolidate_customers(_add_wan(data.sales_income.copy()))
+    df_sp = _consolidate_customers(_add_wan(data.sales_payment.copy()))
+    inc_tgt = _consolidate_target(data.annual_income_targets.copy())
+    pay_tgt = _consolidate_target(data.annual_payment_targets.copy())
 
     # 去待确认
     si_ok = df_si[df_si["销售"] != "待确认"].copy()
@@ -548,7 +909,11 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
 
     d.sales_list = sorted(
         [s for s in d.sales_inc if s != "待确认"],
-        key=lambda x: d.sales_inc.get(x, 0), reverse=True
+        key=lambda x: d.sales_targets.get(x, 0), reverse=True
+    )
+    d.pay_sales_list = sorted(
+        [s for s in d.sales_pay if s != "待确认"],
+        key=lambda x: d.sales_targets.get(x, 0), reverse=True
     )
 
     # card3: 销售×客户×事业部 明细
@@ -585,6 +950,40 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
             if mt in d.sc3_tgts[c]:
                 d.sc3_tgts[c][mt]["total"] = sum(d.sc3_tgts[c][mt].get(dpt, 0) for dpt in DEPARTMENTS)
 
+    # card3 母公司聚合：子公司→母公司 + 按母公司汇总实际/目标
+    import json as _json
+    attr_path = base_dir / "config" / "清洗配置" / "客户销售归属.json"
+    if attr_path.exists():
+        with open(attr_path, "r", encoding="utf-8") as _f:
+            _attr = _json.load(_f)
+        for parent, group in _attr.get("客户归属", {}).items():
+            for sub in group.get("子公司", {}):
+                d.sub_to_parent[sub.strip()] = parent
+
+    # 按母公司聚合客户级别实际数据
+    for s_name, custs in d.sc3_data.items():
+        parent_groups: dict = {}
+        for cust_name, cust_data in custs.items():
+            parent = d.sub_to_parent.get(cust_name, cust_name)
+            parent_groups.setdefault(parent, {})[cust_name] = cust_data
+        d.sc3_by_parent[s_name] = parent_groups
+
+    # 按母公司汇总目标（不含 total，后面统一补）
+    for cust, cust_data in d.sc3_tgts.items():
+        parent = d.sub_to_parent.get(cust, cust)
+        p_data = d.sc3_tgts_by_parent.setdefault(parent, {})
+        for mt in ("inc", "pay"):
+            if mt not in cust_data:
+                continue
+            p_mt = p_data.setdefault(mt, {})
+            for dpt, val in cust_data[mt].items():
+                if dpt != "total":
+                    p_mt[dpt] = p_mt.get(dpt, 0) + val
+    for p_data in d.sc3_tgts_by_parent.values():
+        for mt in ("inc", "pay"):
+            if mt in p_data:
+                p_data[mt]["total"] = sum(p_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
+
     # 同比
     df_inc_annual = _add_wan(data.income.copy())
     cur_end_m = min(6, _data_max_month(df_inc_annual))
@@ -593,8 +992,10 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
     d.yoy_inc = _yoy_from_yearly(data.yearly_income, t_inc_annual, 1, cur_end_m)
     d.yoy_pay = _yoy_from_yearly(data.yearly_payment, t_pay_annual, 1, cur_end_m)
     cur_year = pd.Timestamp.now().year
-    d.yoy_period = f"{cur_year}年01-{cur_end_m:02d}月 vs 2024年01-{cur_end_m:02d}月"
-    d.date_range = extract_date_range(data.income)
+    prev_year = _get_yearly_year(base_dir)
+    d.yoy_period = f"{cur_year}年01-{cur_end_m:02d}月 vs {prev_year}年01-{cur_end_m:02d}月"
+    d.annual_range = get_config_range(base_dir, "年度累计") or ""
+    d.date_range = d.annual_range
 
     # 待确认
     pending_inc = df_si[df_si["销售"] == "待确认"].groupby(["客户", "事业部"])["金额_万"].sum().reset_index()
@@ -620,6 +1021,7 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
 class YoyData:
     has_baseline: bool = True    # 是否有年基线，无则走降级方案
     cur_year: int = 2026
+    prev_year: int = 2024        # 配置中的往年基准年份
     period: str = ""
     annual_range: str = ""
     date_range: str = ""
@@ -636,6 +1038,7 @@ class YoyData:
     pay_cust_piv: pd.DataFrame = field(default_factory=pd.DataFrame)
     pay_prev_piv: pd.DataFrame | None = None
     top_customers: list[str] = field(default_factory=list)
+    top_rest: list[str] = field(default_factory=list)
     top_n: int = 0  # 配置中的 max_rows，供视图层显示用
     # 降级用
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -644,10 +1047,11 @@ class YoyData:
 
 def prepare_yoy_data(data, base_dir: Path) -> YoyData:
     d = YoyData()
+    d.prev_year = _get_yearly_year(base_dir)
 
     d.annual_range = get_config_range(base_dir, "年度累计") or ""
-    df_inc = _add_wan(data.income.copy())
-    df_pay = _add_wan(data.payment.copy())
+    df_inc = _consolidate_customers(_add_wan(data.income.copy()))
+    df_pay = _consolidate_customers(_add_wan(data.payment.copy()))
 
     d.df_inc = df_inc; d.df_pay = df_pay
 
@@ -655,7 +1059,7 @@ def prepare_yoy_data(data, base_dir: Path) -> YoyData:
         d.has_baseline = False
         d.ci = float(df_inc["金额_万"].sum())
         d.cp = float(df_pay["金额_万"].sum())
-        d.date_range = extract_date_range(data.income)
+        d.date_range = d.annual_range
         if len(df_inc):
             cur_dates = pd.to_datetime(df_inc["日期"], errors="coerce").dropna()
             if len(cur_dates):
@@ -671,19 +1075,20 @@ def prepare_yoy_data(data, base_dir: Path) -> YoyData:
     d.cur_year = int(cur_dates.min().year) if len(cur_dates) else pd.Timestamp.now().year
 
     month_label = f"{cur_start_m}-{cur_end_m}月" if cur_start_m != cur_end_m else f"{cur_start_m}月"
-    d.period = f"{d.cur_year}年{month_label} vs 2024年{month_label}"
-    d.date_range = extract_date_range(data.income)
-
+    prev_year = _get_yearly_year(base_dir)
+    d.period = f"{d.cur_year}年{month_label} vs {prev_year}年{month_label}"
+    d.date_range = d.annual_range
     cur_months = set(range(cur_start_m, cur_end_m + 1))
 
     pi = data.yearly_income.copy()
     pp = data.yearly_payment.copy()
-    if cur_months and "日期" in pi.columns:
-        pd_dates = pd.to_datetime(pi["日期"], errors="coerce")
-        pi = pi[[pd.notna(x) and x.month in cur_months for x in pd_dates]].copy()
-    if cur_months and "日期" in pp.columns:
-        pd_dates = pd.to_datetime(pp["日期"], errors="coerce")
-        pp = pp[[pd.notna(x) and x.month in cur_months for x in pd_dates]].copy()
+    # 往年数据筛选：汇总模式（所有行同一月份）→ 直接全量；逐月模式 → 按 cur_months 筛选
+    _yi_months = pd.to_datetime(pi["日期"], errors="coerce").dt.month if "日期" in pi.columns else pd.Series(dtype=float)
+    _yp_months = pd.to_datetime(pp["日期"], errors="coerce").dt.month if "日期" in pp.columns else pd.Series(dtype=float)
+    if cur_months and "日期" in pi.columns and _yi_months.nunique() > 1:
+        pi = pi[[pd.notna(x) and x.month in cur_months for x in pd.to_datetime(pi["日期"], errors="coerce")]].copy()
+    if cur_months and "日期" in pp.columns and _yp_months.nunique() > 1:
+        pp = pp[[pd.notna(x) and x.month in cur_months for x in pd.to_datetime(pp["日期"], errors="coerce")]].copy()
 
     _add_wan(pi); _add_wan(pp)
 
@@ -714,17 +1119,34 @@ def prepare_yoy_data(data, base_dir: Path) -> YoyData:
                                         aggfunc="sum", fill_value=0)
         d.pay_prev_piv["合计"] = d.pay_prev_piv.sum(axis=1)
 
-    # Top 客户：从配置.年度同比.最大行数 读取（默认 15，0 = 不限）
+    # Top 客户：从年度收入指标获取客户列表（与季度页一致）
     yoy_filter = CustomerFilter.from_config(base_dir, "年度同比")
     d.top_n = yoy_filter.max_rows if yoy_filter.max_rows > 0 else 15  # 默认 15
-    sort_piv = d.inc_cust_piv.copy()
-    if yoy_filter.sort_by == "达成率降序":
-        # 同比页无目标概念（实际 vs 实际），达成率降序退化为实际金额降序
-        sort_piv = sort_piv.sort_values("合计", ascending=False)
-    else:
-        sort_piv = sort_piv.sort_values("合计", ascending=False)
-    d.top_customers = sort_piv.head(d.top_n if d.top_n > 0 else len(sort_piv)).index.tolist()
-    # 应用同比页客户筛选规则（筛选优先级 > 排序）
-    if not yoy_filter.is_empty():
-        d.top_customers = yoy_filter.apply(d.top_customers, d.inc_cust_piv, None, base_dir)
+    annual_tgt = _consolidate_target(data.annual_income_targets.copy())
+    annual_tgt_g = annual_tgt.groupby("客户")[
+        [c for c in DEPARTMENTS if c in annual_tgt.columns]
+    ].sum()
+    annual_tgt_g["合计"] = annual_tgt_g.sum(axis=1)
+    d.top_customers, d.top_rest = _sorted_customers(
+        annual_tgt_g, filt=yoy_filter, piv=d.inc_cust_piv, base_dir=base_dir
+    )
+
+    # 母公司归拢（同比页 pivot 变量名不同）
+    if d.top_customers or d.top_rest:
+        all_top = d.top_customers + d.top_rest
+        d.inc_cust_piv, _, all_top = _group_by_parent(
+            d.inc_cust_piv, pd.DataFrame(), all_top, base_dir
+        )
+        d.top_customers, d.top_rest = _resplit_priority(all_top, base_dir, yoy_filter)
+        if d.inc_prev_piv is not None:
+            d.inc_prev_piv, _, _ = _group_by_parent(
+                d.inc_prev_piv, pd.DataFrame(), [], base_dir
+            )
+        d.pay_cust_piv, _, _ = _group_by_parent(
+            d.pay_cust_piv, pd.DataFrame(), [], base_dir
+        )
+        if d.pay_prev_piv is not None:
+            d.pay_prev_piv, _, _ = _group_by_parent(
+                d.pay_prev_piv, pd.DataFrame(), [], base_dir
+            )
     return d

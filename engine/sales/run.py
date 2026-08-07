@@ -17,6 +17,58 @@ from ..core.utils import log_step
 # 4 大事业部
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 
+# 比亚迪汽车工业有限公司 下属需按法人主体区分销售的子公司
+# 规则：仅当某子公司同时存在 "广东汽车检测中心" 法人主体（→黄浩浩）与
+#       非 "广东汽车检测中心" 法人主体（→周涵林）时，才做此区分；
+#       单边存在时保持原拆分结果不动。
+BYD_SUB_COMPANIES = [
+    "汕尾比亚迪实业有限公司",
+    "长沙市比亚迪汽车有限公司",
+    "衡阳比亚迪实业有限公司",
+    "韶关比亚迪实业有限公司",
+    "西安比亚迪汽车零部件有限公司",
+    "合肥比亚迪汽车有限公司",
+    "深圳比亚迪汽车实业有限公司",
+    "常州比亚迪汽车有限公司",
+    "抚州比亚迪实业有限公司",
+    "济南比亚迪汽车有限公司",
+    "郑州比亚迪汽车有限公司",
+]
+BYD_GD_LEGAL = "广东汽车检测中心有限公司"   # 广东主体 → 黄浩浩
+BYD_GD_SALES = "黄浩浩"
+BYD_OTHER_SALES = "周涵林"                 # 非广东主体 → 周涵林
+
+
+def _apply_byd_sales_override(split_df: pd.DataFrame) -> pd.DataFrame:
+    """比亚迪子公司：当原始配置中同一子公司在不同父级下同时归属于
+    黄浩浩和周涵林（重名冲突）时，按法人主体重新分配——
+    广东检测中心法人主体→黄浩浩，非广东→周涵林。
+    """
+    if "客户" not in split_df.columns or "法人主体" not in split_df.columns:
+        return split_df
+
+    overlap = _load_byd_overlap()
+    if not overlap:
+        return split_df
+
+    cust_col = split_df["客户"].astype(str).str.strip()
+    legal_col = split_df["法人主体"].astype(str).str.strip()
+
+    affected = 0
+    for cust in overlap:
+        mask = cust_col == cust
+        if not mask.any():
+            continue
+        is_gd = legal_col[mask] == BYD_GD_LEGAL
+        split_df.loc[mask & is_gd, "销售"] = BYD_GD_SALES
+        split_df.loc[mask & ~is_gd, "销售"] = BYD_OTHER_SALES
+        affected += int(mask.sum())
+
+    if affected > 0:
+        log_step("销售引擎", f"比亚迪子公司按法人主体区分销售: 调整{affected}行 "
+                             f"（广东主体→{BYD_GD_SALES}, 非广东→{BYD_OTHER_SALES}）", "OK")
+    return split_df
+
 
 def _load_excluded_companies() -> list[str]:
     """加载内部交易排除名单（与清洗层一致）"""
@@ -51,6 +103,33 @@ def _load_attribution() -> dict[str, dict]:
 
     log_step("销售引擎", f"加载 {len(flat)} 条客户→销售映射")
     return flat
+
+
+def _load_byd_overlap() -> set[str]:
+    """扫描原始 JSON，找出 BYD_SUB_COMPANIES 列表中隶属黄浩浩的子公司。
+    只要黄浩浩负责，就触发法人区分：广东汽车检测中心→黄浩浩，其他→周涵林。"""
+    path = BASE_DIR / "config" / "清洗配置" / "客户销售归属.json"
+    if not path.exists():
+        return set()
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    sales_by_cust: dict[str, set[str]] = {}
+    for parent, group in data.get("客户归属", {}).items():
+        for sub_name, sub_data in group.get("子公司", {}).items():
+            key = sub_name.strip()
+            if key not in BYD_SUB_COMPANIES:
+                continue
+            all_s = sales_by_cust.setdefault(key, set())
+            for metric in ("收入", "回款"):
+                for dept, rats in sub_data.get(metric, {}).items():
+                    all_s.update(rats.keys())
+
+    overlap: set[str] = set()
+    for cust, sales_set in sales_by_cust.items():
+        if BYD_GD_SALES in sales_set:
+            overlap.add(cust)
+    return overlap
 
 
 def run_split(file_type, config=None):
@@ -138,6 +217,10 @@ def run_split(file_type, config=None):
         matched += 1
 
     split_df = pd.DataFrame(results)
+
+    # 比亚迪子公司按法人主体区分销售（黄浩浩/周涵林，仅配置重名时处理）
+    split_df = _apply_byd_sales_override(split_df)
+
     split_total = split_df["金额"].sum()
 
     # 统计

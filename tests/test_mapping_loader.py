@@ -13,8 +13,8 @@ def test_load_department_mapper():
     assert isinstance(mapper, DepartmentMapper)
     # 收入版映射 4 条
     assert len(mapper.income_map) == 4
-    # 回款版映射应 > 10 条
-    assert len(mapper.payment_map) > 10
+    # 回款版映射 4 条（成本中心只有 4 个事业部，1:1 映射）
+    assert len(mapper.payment_map) == 4
 
 
 def test_income_dept_mapping():
@@ -29,8 +29,11 @@ def test_income_dept_mapping():
 def test_payment_dept_mapping():
     config = load_config()
     mapper = load_department_mapper(config)
-    # 回款版：风洞中心 -> 检测
-    assert mapper.map_payment_dept("风洞中心") == "检测"
+    # 回款版：成本中心 4 个值 1:1 映射到事业部简称
+    assert mapper.map_payment_dept("检测工程事业部") == "检测"
+    assert mapper.map_payment_dept("能源动力事业部") == "能源"
+    assert mapper.map_payment_dept("信息智能事业部") == "信息"
+    assert mapper.map_payment_dept("海外事业部") == "海外"
 
 
 def test_payment_dept_unknown():

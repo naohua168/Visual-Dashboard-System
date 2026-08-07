@@ -1,4 +1,4 @@
-# Visual Dashboard System — Python 依赖
+# Visual Dashboard System — 核心依赖
 # 安装: pip install -r requirements.txt
 
 # 数据处理
@@ -6,13 +6,5 @@ pandas>=1.5.0
 openpyxl>=3.1.0          # 读取 .xlsx
 xlrd>=2.0.0               # 读取 .xls
 
-# HTML 渲染
-jinja2>=3.1.0             # 模板引擎
-
-# 测试（开发依赖）
+# 测试
 pytest>=7.0.0
-
-# 可视化分析（可选）
-plotly>=6.0.0
-matplotlib>=3.8.0
-seaborn>=0.13.0
