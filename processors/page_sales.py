@@ -287,17 +287,18 @@ function __sc3Build(parents) {{
 }}
 
 function __sc3Cell(act, tgt, isTotal) {{
-    const _fmt = v => v ? Number(v).toLocaleString("zh-CN", {{maximumFractionDigits: 0}}) : "—";
-    if (act === 0 && tgt === 0) return '<td class="td-empty">—</td>';
-    const rate = tgt > 0 ? act / tgt : 0;
-    const pct = Math.min(rate * 100, 100);
-    const pctLab = Math.round(rate * 100) + "%";
+    const _fmt = v => Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}});
+    const rate = tgt > 0 ? act / tgt : (act > 0 ? Infinity : 0);
+    const pct = tgt > 0 ? Math.min(rate * 100, 100) : 0;
+    const pctLab = act === 0 && tgt === 0 ? "0%"
+        : tgt > 0 ? Math.round(rate * 100) + "%"
+        : "—";
     let fc = "fy", pctCls = "";
-    if (rate >= 1) {{ fc = "fg"; pctCls = " achieved"; }}
+    if (!isFinite(rate) || rate >= 1) {{ fc = "fg"; pctCls = " achieved"; }}
     else if (rate >= 0.5) {{ fc = "fo"; }}
     else if (rate > 0) {{ fc = "fl"; pctCls = " low"; }}
     const totalCls = isTotal ? " is-total" : "";
-    const emptyCls = rate === 0 ? " is-empty" : "";
+    const emptyCls = (act === 0 && tgt === 0) ? " is-empty" : "";
     return `<td class="cb${{emptyCls}}${{totalCls}} ${{fc}}" style="--pct:${{pct}}%">`
         + `<div class="ct"><span class="cp${{pctCls}}">${{pctLab}}</span>`
         + `<div class="cm"><span class="cc"><span class="ca">${{_fmt(act)}}</span>`

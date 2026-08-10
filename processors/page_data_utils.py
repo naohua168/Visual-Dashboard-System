@@ -173,7 +173,6 @@ def _build_subs_detail(
       }
     }
     """
-    # 实际数据：客户 × 事业部 → 金额_万
     actual: dict[str, dict[str, float]] = {}
     if raw_actual is not None and len(raw_actual):
         df = _add_wan(raw_actual.copy())
@@ -185,7 +184,6 @@ def _build_subs_detail(
                 if c and dpt:
                     actual.setdefault(c, {})[dpt] = safe_float(row["金额_万"])
 
-    # 目标数据：客户 → 部门指标（同一客户多行 → 累加）
     target: dict[str, dict[str, float]] = {}
     if raw_target is not None and len(raw_target) and "客户" in raw_target.columns:
         dept_cols = [c for c in DEPARTMENTS if c in raw_target.columns]
