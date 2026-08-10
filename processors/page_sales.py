@@ -412,7 +412,12 @@ def _sales_modal_css() -> str:
 .sales-modal-tab.pay.active { color: #22c55e; border-bottom-color: #22c55e; }
 
 /* 抽屉内容区 */
-.sales-modal-body { flex: 1 1 auto; padding: 12px 0; min-height: 0; overflow-y: auto; overflow-x: auto; }
+.sales-modal-body { flex: 1 1 auto; padding: 12px 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.sales-modal-body .ann-matrix { table-layout: fixed; }
+.sales-modal-body .ann-matrix thead th:nth-child(1),
+.sales-modal-body .ann-matrix tbody td:nth-child(1) { width: 30%; }
+.sales-modal-body .ann-matrix thead th:nth-child(n+2),
+.sales-modal-body .ann-matrix tbody td:nth-child(n+2) { width: 14%; }
 
 /* 弹窗 KPI */
 .modal-kpi {
@@ -599,13 +604,8 @@ def _sales_modal_html() -> str:
         }}
 
         const totalRate = totalTgt > 0 ? totalAct / totalTgt : 0;
-        const html = '<div class="modal-kpi">'
-            + '<span>客户数 <b>' + parentKeys.length + '家母公司 / ' + totalSubs + '家子公司</b></span>'
-            + '<span>实际 <b>' + totalAct.toLocaleString("zh-CN", {{maximumFractionDigits:0}}) + '万</b></span>'
-            + '<span>目标 <b>' + totalTgt.toLocaleString("zh-CN", {{maximumFractionDigits:0}}) + '万</b></span>'
-            + '<span>完成度 <b>' + Math.round(totalRate * 100) + '%</b></span>'
-            + '</div>'
-            + '<div class="table-wrap ann-matrix-wrap"><table class="ann-matrix">' + h + '<tbody>' + body + '</tbody></table></div>';
+        const html = '<div class="table-wrap ann-matrix-wrap">'
+            + '<table class="ann-matrix">' + h + '<tbody>' + body + '</tbody></table></div>';
         document.getElementById('salesModalBody').innerHTML = html;
     }}
 
