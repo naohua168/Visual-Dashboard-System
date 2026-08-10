@@ -242,35 +242,40 @@ function __sc3Build(parents) {{
         let pRow = [`<td class="td-name parent-name" colspan="${{deps.length + 2}}" style="text-align:left;font-weight:800;color:#0f172a;background:#f1f5f9;padding:6px 8px;font-size:13px">${{p}} (${{subKeys.length}}家子公司)</td>`];
         body += '<tr class="row-parent">' + pRow.join("") + '</tr>';
 
-        // 子公司行
+        // 第一遍：累加母公司合计数据
         let parentTotalAct = 0, parentTotalTgt = 0;
         let parentDepsAct = deps.map(() => 0);
         let parentDepsTgt = deps.map(() => 0);
-
+        let subRowData = [];
         subKeys.forEach((c, i) => {{
-            let row = [`<td class="td-name"><span class="row-num" style="color:#94a3b8">${{i + 1}}</span>${{c}}</td>`];
-            let rTotal = 0, rTgt = 0;
+            let rAct = 0, rTgt = 0;
+            let cells = [];
             deps.forEach((d, di) => {{
                 const v = subs[c] && subs[c][metric] ? (subs[c][metric][d] || 0) : 0;
                 const t = __SC3ST[c] && __SC3ST[c][metric] ? (__SC3ST[c][metric][d] || 0) : 0;
-                row.push(__sc3Cell(v, t, false));
-                rTotal += v; rTgt += t;
+                cells.push(__sc3Cell(v, t, false));
+                rAct += v; rTgt += t;
                 parentDepsAct[di] += v;
                 parentDepsTgt[di] += t;
             }});
-            row.push(__sc3Cell(rTotal, rTgt, true));
-            parentTotalAct += rTotal;
+            cells.push(__sc3Cell(rAct, rTgt, true));
+            subRowData.push({{ name: c, cells: cells }});
+            parentTotalAct += rAct;
             parentTotalTgt += rTgt;
-            body += '<tr class="row-data">' + row.join("") + '</tr>';
         }});
 
-        // 母公司合计行
-        let pSubRow = [`<td class="td-name" style="font-weight:700;background:#f8fafc">└ 母公司合计</td>`];
+        // 母公司合计行（先于子公司行展示，作为母公司汇总）
+        let pSumRow = [`<td class="td-name" style="font-weight:800;color:#0f172a">▸ 母公司合计</td>`];
         deps.forEach((d, di) => {{
-            pSubRow.push(__sc3Cell(parentDepsAct[di], parentDepsTgt[di], false));
+            pSumRow.push(__sc3Cell(parentDepsAct[di], parentDepsTgt[di], false));
         }});
-        pSubRow.push(__sc3Cell(parentTotalAct, parentTotalTgt, true));
-        body += '<tr class="row-data row-parent-total" style="background:#f8fafc">' + pSubRow.join("") + '</tr>';
+        pSumRow.push(__sc3Cell(parentTotalAct, parentTotalTgt, true));
+        body += '<tr class="row-data row-parent-total" style="background:#eef2ff;font-weight:700">' + pSumRow.join("") + '</tr>';
+
+        // 子公司明细行（在母公司合计之下缩进显示）
+        subRowData.forEach((sr, i) => {{
+            body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">' + (i + 1) + '</span>' + sr.name + '</td>' + sr.cells.join("") + '</tr>';
+        }});
     }});
 
     if (!body) {{
