@@ -439,9 +439,10 @@ def _sales_modal_css() -> str:
     padding: 8px 6px; font-size: 11px; color: #64748b; white-space: nowrap;
 }
 .sales-modal-body .ann-matrix td { padding: 4px 6px; white-space: nowrap; }
-.sales-modal-body .ann-matrix .td-name { white-space: normal; }
+.sales-modal-body .ann-matrix .td-name { white-space: normal; font-size: 14px; line-height: 1.4; font-weight: 600; color: #1e293b; }
+.sales-modal-body .ann-matrix .row-sub .td-name { font-size: 13px; font-weight: 500; color: #475569; padding-left: 16px; }
 .sales-modal-body .ann-matrix .parent-name {
-    font-weight: 800; font-size: 12px; color: #0f172a;
+    font-weight: 800; font-size: 14px; color: #0f172a;
     background: #f1f5f9; padding: 6px 8px;
 }
 .sales-modal-body .row-parent-total td { background: #f8fafc; font-weight: 600; }
