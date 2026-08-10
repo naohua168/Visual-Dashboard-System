@@ -288,15 +288,22 @@ function __sc3Build(parents) {{
 
 function __sc3Cell(act, tgt, isTotal) {{
     const _fmt = v => Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}});
-    const rate = tgt > 0 ? act / tgt : (act > 0 ? Infinity : 0);
-    const pct = tgt > 0 ? Math.min(rate * 100, 100) : 0;
-    const pctLab = act === 0 && tgt === 0 ? "0%"
-        : tgt > 0 ? Math.round(rate * 100) + "%"
-        : "—";
-    let fc = "fy", pctCls = "";
-    if (!isFinite(rate) || rate >= 1) {{ fc = "fg"; pctCls = " achieved"; }}
-    else if (rate >= 0.5) {{ fc = "fo"; }}
-    else if (rate > 0) {{ fc = "fl"; pctCls = " low"; }}
+    // 无目标子公司：act=0 且 tgt=0 视为已默认达成（100%）；act>0 且 tgt=0 视为超额
+    let rate, pctLab;
+    if (tgt === 0) {{
+        rate = act === 0 ? 1 : Infinity;
+        pctLab = "100%";
+    }} else {{
+        rate = act / tgt;
+        pctLab = Math.round(rate * 100) + "%";
+    }}
+    const pct = isFinite(rate) ? Math.min(rate * 100, 100) : 100;
+    let fc = "fg", pctCls = " achieved";
+    if (isFinite(rate)) {{
+        if (rate < 1) {{ fc = "fl"; pctCls = " low"; }}
+        else if (rate < 0.5) {{ fc = "fy"; pctCls = ""; }}
+        else {{ fc = "fo"; pctCls = ""; }}
+    }}
     const totalCls = isTotal ? " is-total" : "";
     const emptyCls = (act === 0 && tgt === 0) ? " is-empty" : "";
     return `<td class="cb${{emptyCls}}${{totalCls}} ${{fc}}" style="--pct:${{pct}}%">`
