@@ -594,9 +594,13 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
         key=lambda x: d.sales_targets.get(x, 0), reverse=True
     )
 
-    # card3: 销售×客户×事业部 明细
-    sc_inc = si_ok.groupby(["销售", "客户", "事业部"])["金额_万"].sum()
-    sc_pay = sp_ok.groupby(["销售", "客户", "事业部"])["金额_万"].sum()
+    # card3: 销售×客户×事业部 明细（用未consolidate的原始数据，保留子公司独立行）
+    si_raw = _add_wan(data.sales_income.copy())
+    sp_raw = _add_wan(data.sales_payment.copy())
+    si_raw_ok = si_raw[si_raw["销售"] != "待确认"].copy()
+    sp_raw_ok = sp_raw[sp_raw["销售"] != "待确认"].copy()
+    sc_inc = si_raw_ok.groupby(["销售", "客户", "事业部"])["金额_万"].sum()
+    sc_pay = sp_raw_ok.groupby(["销售", "客户", "事业部"])["金额_万"].sum()
     for (s, c, dpt), v in sc_inc.items():
         d.sc3_data.setdefault(s, {}).setdefault(c, {}).setdefault("inc", {})[dpt] = int(round(v))
     for (s, c, dpt), v in sc_pay.items():
