@@ -616,17 +616,25 @@ def _sales_modal_html() -> str:
     }}
 
     function _modalCell(act, tgt, isTotal) {{
-        const _f = v => v ? Number(v).toLocaleString("zh-CN", {{maximumFractionDigits:0}}) : "—";
-        if (act === 0 && tgt === 0) return '<td class="td-empty">—</td>';
-        const rate = tgt > 0 ? act / tgt : 0;
-        const pct = Math.min(rate * 100, 100);
-        const pctLab = Math.round(rate * 100) + "%";
-        let fc = "fy", pctCls = "";
-        if (rate >= 1) {{ fc = "fg"; pctCls = " achieved"; }}
-        else if (rate >= 0.5) {{ fc = "fo"; }}
-        else if (rate > 0) {{ fc = "fl"; pctCls = " low"; }}
+        const _f = v => Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}});
+        // 无目标: act=0且tgt=0视为100%默认达成; act>0且tgt=0视为超额100%
+        let rate, pctLab;
+        if (tgt === 0) {{
+            rate = act === 0 ? 1 : Infinity;
+            pctLab = "100%";
+        }} else {{
+            rate = act / tgt;
+            pctLab = Math.round(rate * 100) + "%";
+        }}
+        const pct = isFinite(rate) ? Math.min(rate * 100, 100) : 100;
+        let fc = "fg", pctCls = " achieved";
+        if (isFinite(rate)) {{
+            if (rate < 1) {{ fc = "fl"; pctCls = " low"; }}
+            else if (rate < 0.5) {{ fc = "fy"; pctCls = ""; }}
+            else {{ fc = "fo"; pctCls = ""; }}
+        }}
         const tc = isTotal ? " is-total" : "";
-        const ec = rate === 0 ? " is-empty" : "";
+        const ec = (act === 0 && tgt === 0) ? " is-empty" : "";
         return `<td class="cb${{ec}}${{tc}} ${{fc}}" style="--pct:${{pct}}%">`
             + `<div class="ct"><span class="cp${{pctCls}}">${{pctLab}}</span>`
             + `<div class="cm"><span class="cc"><span class="ca">${{_f(act)}}</span>`
