@@ -215,24 +215,20 @@ def _build_subs_detail(
             row["合计"] = {"act": total_act, "tgt": total_tgt}
             sub_detail[f"{p}（本部）"] = row
 
-        # 2) 子公司明细
+        # 2) 子公司明细（全部显示，含无数据子公司，体现完整包含关系）
         all_subs = children_map.get(p, [])
         subs = [s for s in all_subs if s != p]
         for s in subs:
             row = {}
             total_act = total_tgt = 0.0
-            has_data = False
             for dpt in DEPARTMENTS:
                 act = actual.get(s, {}).get(dpt, 0.0)
                 tgt = target.get(s, {}).get(dpt, 0.0)
                 row[dpt] = {"act": act, "tgt": tgt}
                 total_act += act
                 total_tgt += tgt
-                if act or tgt:
-                    has_data = True
             row["合计"] = {"act": total_act, "tgt": total_tgt}
-            if has_data:
-                sub_detail[s] = row
+            sub_detail[s] = row
 
         if sub_detail:
             result[p] = sub_detail
