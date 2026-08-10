@@ -288,11 +288,11 @@ function __sc3Build(parents) {{
 
 function __sc3Cell(act, tgt, isTotal) {{
     const _fmt = v => Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}});
-    // 无目标子公司：act=0 且 tgt=0 视为已默认达成（100%）；act>0 且 tgt=0 视为超额
+    // 0/0 → 显示"—"（无数据）；act>0 且 tgt=0 → 超额100%
+    if (act === 0 && tgt === 0) return '<td class="cb is-empty"><div class="ct"><span class="cp">—</span><div class="cm"><span class="cc"><span class="ca">—</span><span class="s">/</span><span class="ctv">—</span></span></div></div></td>';
     let rate, pctLab;
     if (tgt === 0) {{
-        rate = act === 0 ? 1 : Infinity;
-        pctLab = "100%";
+        rate = Infinity; pctLab = "100%";
     }} else {{
         rate = act / tgt;
         pctLab = Math.round(rate * 100) + "%";
@@ -305,8 +305,7 @@ function __sc3Cell(act, tgt, isTotal) {{
         else {{ fc = "fo"; pctCls = ""; }}
     }}
     const totalCls = isTotal ? " is-total" : "";
-    const emptyCls = (act === 0 && tgt === 0) ? " is-empty" : "";
-    return `<td class="cb${{emptyCls}}${{totalCls}} ${{fc}}" style="--pct:${{pct}}%">`
+    return `<td class="cb${{totalCls}} ${{fc}}" style="--pct:${{pct}}%">`
         + `<div class="ct"><span class="cp${{pctCls}}">${{pctLab}}</span>`
         + `<div class="cm"><span class="cc"><span class="ca">${{_fmt(act)}}</span>`
         + `<span class="s">/</span><span class="ctv">${{_fmt(tgt)}}</span></span></div></div></td>`;
@@ -573,33 +572,40 @@ def _sales_modal_html() -> str:
 
             body += `<tr class="row-parent"><td class="parent-name" colspan="${{_DEPS.length + 2}}">${{p}} (${{subKeys.length}}家子公司)</td></tr>`;
 
+            // 第一遍：累加母公司合计数据
+            let depActs = _DEPS.map(() => 0);
+            let depTgts = _DEPS.map(() => 0);
+            let subRowData = [];
             let pActAll = 0, pTgtAll = 0;
-            subKeys.forEach(c => {{
-                let row = [`<td class="td-name">${{c}}</td>`];
+            subKeys.forEach((c, i) => {{
                 let rAct = 0, rTgt = 0;
-                _DEPS.forEach(d => {{
+                let cells = [`<td class="td-name">${{c}}</td>`];
+                _DEPS.forEach((d, di) => {{
                     const v = subs[c] && subs[c][_curMetric] ? (subs[c][_curMetric][d] || 0) : 0;
                     const t = window.__SC3ST[c] && window.__SC3ST[c][_curMetric] ? (window.__SC3ST[c][_curMetric][d] || 0) : 0;
-                    row.push(_modalCell(v, t));
+                    cells.push(_modalCell(v, t));
                     rAct += v; rTgt += t;
+                    depActs[di] += v;
+                    depTgts[di] += t;
                 }});
-                row.push(_modalCell(rAct, rTgt, true));
-                pActAll += rAct; pTgtAll += rTgt;
-                body += '<tr class="row-data">' + row.join('') + '</tr>';
+                cells.push(_modalCell(rAct, rTgt, true));
+                subRowData.push({{ name: c, cells: cells }});
+                pActAll += rAct;
+                pTgtAll += rTgt;
             }});
 
-            // 母公司合计行
-            let pSumRow = [`<td class="td-name" style="font-weight:700;background:#f8fafc">母公司合计</td>`];
-            _DEPS.forEach(d => {{
-                let dAct = 0, dTgt = 0;
-                subKeys.forEach(c => {{
-                    dAct += subs[c] && subs[c][_curMetric] ? (subs[c][_curMetric][d] || 0) : 0;
-                    dTgt += window.__SC3ST[c] && window.__SC3ST[c][_curMetric] ? (window.__SC3ST[c][_curMetric][d] || 0) : 0;
-                }});
-                pSumRow.push(_modalCell(dAct, dTgt));
+            // 母公司合计行（先于子公司行展示，作为母公司汇总）
+            let pSumRow = [`<td class="td-name" style="font-weight:700;background:#eef2ff">▸ 母公司合计</td>`];
+            _DEPS.forEach((d, di) => {{
+                pSumRow.push(_modalCell(depActs[di], depTgts[di]));
             }});
             pSumRow.push(_modalCell(pActAll, pTgtAll, true));
-            body += '<tr class="row-data row-parent-total">' + pSumRow.join('') + '</tr>';
+            body += '<tr class="row-data row-parent-total" style="background:#eef2ff;font-weight:700">' + pSumRow.join('') + '</tr>';
+
+            // 子公司明细行（后于母公司合计）
+            subRowData.forEach((sr, i) => {{
+                body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:16px">' + sr.name + '</td>' + sr.cells.join('') + '</tr>';
+            }});
 
             totalAct += pActAll; totalTgt += pTgtAll;
             totalSubs += subKeys.length;
@@ -617,11 +623,11 @@ def _sales_modal_html() -> str:
 
     function _modalCell(act, tgt, isTotal) {{
         const _f = v => Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}});
-        // 无目标: act=0且tgt=0视为100%默认达成; act>0且tgt=0视为超额100%
+        // 0/0 → "—"，act>0 且 tgt=0 → 超额100%
+        if (act === 0 && tgt === 0) return '<td class="cb is-empty"><div class="ct"><span class="cp">—</span><div class="cm"><span class="cc"><span class="ca">—</span><span class="s">/</span><span class="ctv">—</span></span></div></div></td>';
         let rate, pctLab;
         if (tgt === 0) {{
-            rate = act === 0 ? 1 : Infinity;
-            pctLab = "100%";
+            rate = Infinity; pctLab = "100%";
         }} else {{
             rate = act / tgt;
             pctLab = Math.round(rate * 100) + "%";
@@ -634,8 +640,7 @@ def _sales_modal_html() -> str:
             else {{ fc = "fo"; pctCls = ""; }}
         }}
         const tc = isTotal ? " is-total" : "";
-        const ec = (act === 0 && tgt === 0) ? " is-empty" : "";
-        return `<td class="cb${{ec}}${{tc}} ${{fc}}" style="--pct:${{pct}}%">`
+        return `<td class="cb${{tc}} ${{fc}}" style="--pct:${{pct}}%">`
             + `<div class="ct"><span class="cp${{pctCls}}">${{pctLab}}</span>`
             + `<div class="cm"><span class="cc"><span class="ca">${{_f(act)}}</span>`
             + `<span class="s">/</span><span class="ctv">${{_f(tgt)}}</span></span></div></div></td>`;
