@@ -133,7 +133,7 @@ class SalesPage(BaseRenderer):
             if not rows:
                 return '<p style="color:var(--text-muted);padding:20px;text-align:center">无销售目标数据</p>'
             return (
-                f'<div class="table-wrap ann-matrix-wrap no-collapse" style="overflow-x:auto">'
+                f'<div class="table-wrap ann-matrix-wrap no-collapse">'
                 f'<table class="ann-matrix"><thead>{h}</thead><tbody>{rows}</tbody></table></div>'
             )
 
@@ -176,9 +176,9 @@ class SalesPage(BaseRenderer):
             + '<span class="cust-tab pay" onclick="switchSc3Metric(\'pay\');document.getElementById(\'sc3-inc-matrix\').classList.add(\'hidden\');document.getElementById(\'sc3-pay-matrix\').classList.remove(\'hidden\');this.parentElement.querySelectorAll(\'.cust-tab\').forEach(t=>t.classList.remove(\'active\'));this.classList.add(\'active\')">回款</span>'
             + '</div>'
             + f'</div>'
-            f'<div id="sc3-inc-matrix"><div class="table-wrap ann-matrix-wrap no-collapse" style="overflow-x:auto">'
+            f'<div id="sc3-inc-matrix"><div class="table-wrap ann-matrix-wrap no-collapse">'
             f'<table class="ann-matrix" id="sc3IncTable"></table></div></div>'
-            f'<div id="sc3-pay-matrix" class="hidden"><div class="table-wrap ann-matrix-wrap no-collapse" style="overflow-x:auto">'
+            f'<div id="sc3-pay-matrix" class="hidden"><div class="table-wrap ann-matrix-wrap no-collapse">'
             f'<table class="ann-matrix" id="sc3PayTable"></table></div></div>'
             f'</div>'
             + js_script
@@ -325,6 +325,25 @@ document.addEventListener("DOMContentLoaded", () => {{
 # ═══════════════════════════════════════════════════════════════
 def _sales_modal_css() -> str:
     return '''<style>
+/* 卡片3 矩阵 — 全宽自适应，无溢出 */
+#sc3-inc-matrix .ann-matrix,
+#sc3-pay-matrix .ann-matrix { table-layout: fixed; width: 100%; }
+#sc3-inc-matrix .ann-matrix thead th:nth-child(1),
+#sc3-pay-matrix .ann-matrix thead th:nth-child(1),
+#sc3-inc-matrix .ann-matrix tbody td:nth-child(1),
+#sc3-pay-matrix .ann-matrix tbody td:nth-child(1) { width: 30%; }
+#sc3-inc-matrix .ann-matrix thead th:nth-child(n+2),
+#sc3-pay-matrix .ann-matrix thead th:nth-child(n+2),
+#sc3-inc-matrix .ann-matrix tbody td:nth-child(n+2),
+#sc3-pay-matrix .ann-matrix tbody td:nth-child(n+2) { width: 14%; }
+#sc3-inc-matrix .ann-matrix td, #sc3-inc-matrix .ann-matrix th,
+#sc3-pay-matrix .ann-matrix td, #sc3-pay-matrix .ann-matrix th { font-size: 11px; padding: 4px 4px; }
+#sc3-inc-matrix .td-name, #sc3-pay-matrix .td-name { font-size: 12px; line-height: 1.3; }
+#sc3-inc-matrix .cb, #sc3-pay-matrix .cb { padding: 3px 2px; }
+#sc3-inc-matrix .cp, #sc3-pay-matrix .cp { font-size: 11px; }
+#sc3-inc-matrix .ca, #sc3-pay-matrix .ca,
+#sc3-inc-matrix .ctv, #sc3-pay-matrix .ctv { font-size: 10px; }
+
 /* 卡片1 布局 */
 .card1-flex{display:flex;gap:24px;padding:12px 16px} .card1-col{flex:1;min-width:0}
 .card1-col-title{font-weight:700;font-size:13px;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--border);color:var(--text)}
