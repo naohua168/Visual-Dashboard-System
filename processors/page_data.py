@@ -646,6 +646,29 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
             parent_groups.setdefault(parent, {})[cust_name] = cust_data
         d.sc3_by_parent[s_name] = parent_groups
 
+    # 补齐配置中所有子公司但无实际数据的条目（卡片3全量展示母子包含关系）
+    _full_children: dict[str, list[str]] = {}
+    if attr_path.exists():
+        for parent, group in _attr.get("客户归属", {}).items():
+            _full_children[parent] = [s.strip() for s in group.get("子公司", {}) if s.strip() != parent]
+    # 补充完整子类
+    for s_name, parent_groups in d.sc3_by_parent.items():
+        for p in list(parent_groups.keys()):
+            if p in _full_children:
+                for full_sub in _full_children[p]:
+                    if full_sub not in parent_groups[p]:
+                        parent_groups[p][full_sub] = {}  # 空占位，JS 侧识别无数据
+    # 补充完整目标（无目标子公司填0）
+    for p, full_subs in _full_children.items():
+        for full_sub in full_subs:
+            if full_sub not in d.sc3_tgts:
+                d.sc3_tgts[full_sub] = {"inc": {}, "pay": {}}
+                for dpt in DEPARTMENTS:
+                    d.sc3_tgts[full_sub]["inc"][dpt] = 0
+                    d.sc3_tgts[full_sub]["pay"][dpt] = 0
+                d.sc3_tgts[full_sub]["inc"]["total"] = 0
+                d.sc3_tgts[full_sub]["pay"]["total"] = 0
+
     # 按母公司汇总目标（不含 total，后面统一补）
     for cust, cust_data in d.sc3_tgts.items():
         parent = d.sub_to_parent.get(cust, cust)
