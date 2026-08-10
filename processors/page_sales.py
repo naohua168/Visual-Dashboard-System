@@ -374,7 +374,7 @@ def _sales_modal_css() -> str:
 /* 抽屉面板 — 右侧滑入 */
 .sales-modal {
     position: fixed; right: 0; top: 0;
-    width: min(96vw, 900px); height: 100vh;
+    width: 67vw; min-width: 900px; height: 100vh;
     transform: translateX(100%);
     z-index: 20001;
     background: #fff; border-radius: 14px 0 0 14px;
@@ -413,11 +413,16 @@ def _sales_modal_css() -> str:
 
 /* 抽屉内容区 */
 .sales-modal-body { flex: 1 1 auto; padding: 12px 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
-.sales-modal-body .ann-matrix { table-layout: fixed; }
+.sales-modal-body .ann-matrix { table-layout: fixed; width: 100%; }
 .sales-modal-body .ann-matrix thead th:nth-child(1),
-.sales-modal-body .ann-matrix tbody td:nth-child(1) { width: 30%; }
+.sales-modal-body .ann-matrix tbody td:nth-child(1) { width: 25%; }
 .sales-modal-body .ann-matrix thead th:nth-child(n+2),
-.sales-modal-body .ann-matrix tbody td:nth-child(n+2) { width: 14%; }
+.sales-modal-body .ann-matrix tbody td:nth-child(n+2) { width: 15%; }
+.sales-modal-body .ann-matrix th, .sales-modal-body .ann-matrix td { font-size: 12px; padding: 4px 6px; }
+.sales-modal-body .ann-matrix .cb { padding: 4px 3px; }
+.sales-modal-body .ann-matrix .cp { font-size: 12px; }
+.sales-modal-body .ann-matrix .ca,
+.sales-modal-body .ann-matrix .ctv { font-size: 11px; }
 
 /* 弹窗 KPI */
 .modal-kpi {
