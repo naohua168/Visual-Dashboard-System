@@ -133,7 +133,7 @@ class SalesPage(BaseRenderer):
             if not rows:
                 return '<p style="color:var(--text-muted);padding:20px;text-align:center">无销售目标数据</p>'
             return (
-                f'<div class="table-wrap ann-matrix-wrap no-collapse">'
+                f'<div class="table-wrap ann-matrix-wrap no-collapse" style="overflow-x:auto">'
                 f'<table class="ann-matrix"><thead>{h}</thead><tbody>{rows}</tbody></table></div>'
             )
 
@@ -176,9 +176,9 @@ class SalesPage(BaseRenderer):
             + '<span class="cust-tab pay" onclick="switchSc3Metric(\'pay\');document.getElementById(\'sc3-inc-matrix\').classList.add(\'hidden\');document.getElementById(\'sc3-pay-matrix\').classList.remove(\'hidden\');this.parentElement.querySelectorAll(\'.cust-tab\').forEach(t=>t.classList.remove(\'active\'));this.classList.add(\'active\')">回款</span>'
             + '</div>'
             + f'</div>'
-            f'<div id="sc3-inc-matrix"><div class="table-wrap ann-matrix-wrap no-collapse">'
+            f'<div id="sc3-inc-matrix"><div class="table-wrap ann-matrix-wrap no-collapse" style="overflow-x:auto">'
             f'<table class="ann-matrix" id="sc3IncTable"></table></div></div>'
-            f'<div id="sc3-pay-matrix" class="hidden"><div class="table-wrap ann-matrix-wrap no-collapse">'
+            f'<div id="sc3-pay-matrix" class="hidden"><div class="table-wrap ann-matrix-wrap no-collapse" style="overflow-x:auto">'
             f'<table class="ann-matrix" id="sc3PayTable"></table></div></div>'
             f'</div>'
             + js_script
