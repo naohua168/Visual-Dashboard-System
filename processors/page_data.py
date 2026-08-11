@@ -518,6 +518,7 @@ class SalesData:
     sub_to_parent: dict[str, str] = field(default_factory=dict)   # 子公司→母公司
     sc3_by_parent: dict = field(default_factory=dict)    # {sales: {parent: {sub: {inc/pay: {dept:val}}}}}
     sc3_tgts_by_parent: dict = field(default_factory=dict)   # {parent: {inc/pay: {dept:val}}}
+    sc3_parent_cfg_total: dict = field(default_factory=dict)  # {parent: 配置子公司总数}
     # 待确认
     pending_count: int = 0
     pending_total_inc: float = 0
@@ -641,6 +642,8 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
         for parent, group in _attr.get("客户归属", {}).items():
             for sub in group.get("子公司", {}):
                 d.sub_to_parent[sub.strip()] = parent
+            # 母公司配置的子公司总数（含母公司自身，若配置列出）
+            d.sc3_parent_cfg_total[parent] = len(group.get("子公司", {}))
 
     # 按母公司聚合客户级别实际数据（只保留该销售实际负责的客户，不再补齐配置中全部子公司）
     for s_name, custs in d.sc3_data.items():

@@ -152,6 +152,7 @@ class SalesPage(BaseRenderer):
         parent_json = json.dumps(d.sc3_by_parent, ensure_ascii=False)
         sub_tgt_json = json.dumps(d.sc3_tgts, ensure_ascii=False)
         parent_tgt_json = json.dumps(d.sc3_tgts_by_parent, ensure_ascii=False)
+        parent_cfg_total_json = json.dumps(d.sc3_parent_cfg_total, ensure_ascii=False)
 
         kpi_html = (
             f'<div class="card3-kpi">'
@@ -161,7 +162,7 @@ class SalesPage(BaseRenderer):
             f'<span>回款目标 <b>{fmt_wan(d.total_target)}</b>万</span></div>'
         )
 
-        js_script = _card3_js_script(parent_json, sub_tgt_json, parent_tgt_json)
+        js_script = _card3_js_script(parent_json, sub_tgt_json, parent_tgt_json, parent_cfg_total_json)
 
         return (
             f'<div class="section-title sec-green">销售客户达成 · 母公司→子公司 矩阵（子公司合计 = 母公司合计）</div>'
@@ -189,12 +190,13 @@ class SalesPage(BaseRenderer):
 # ═══════════════════════════════════════════════════════════════
 # 卡片 3 JS 生成器（母公司→子公司聚合视图）
 # ═══════════════════════════════════════════════════════════════
-def _card3_js_script(parent_json: str, sub_tgt_json: str, parent_tgt_json: str) -> str:
+def _card3_js_script(parent_json: str, sub_tgt_json: str, parent_tgt_json: str, parent_cfg_total_json: str) -> str:
     depts = json.dumps(DEPARTMENTS)
     return f'''<script>
 window.__SC3P = {parent_json};   // 升级为全局变量，弹窗复用
 window.__SC3ST = {sub_tgt_json};
 window.__SC3PT = {parent_tgt_json};
+window.__SC3PCT = {parent_cfg_total_json};
 const __SC3_DEPS = {depts};
 let __sc3Metric = "inc";
 
@@ -265,8 +267,10 @@ function __sc3Build(parents) {{
         // 该母公司下无任何有数据子公司 → 整块跳过
         if (subRowData.length === 0) return;
 
-        // 母公司标题行
-        let pRow = [`<td class="td-name parent-name" colspan="${{deps.length + 2}}" style="text-align:left;font-weight:800;color:#0f172a;background:#f1f5f9;padding:6px 8px;font-size:13px">${{p}} (${{subRowData.length}}家子公司)</td>`];
+        // 母公司标题行（有数据数 / 该销售拥有数 / 母公司配置总数）
+        let _owned = Object.keys(subs).length;
+        let _cfgTotal = (window.__SC3PCT && window.__SC3PCT[p]) || _owned;
+        let pRow = [`<td class="td-name parent-name" colspan="${{deps.length + 2}}" style="text-align:left;font-weight:800;color:#0f172a;background:#f1f5f9;padding:6px 8px;font-size:13px">${{p}}（${{subRowData.length}}/${{_owned}}/${{_cfgTotal}}家）</td>`];
         body += '<tr class="row-parent">' + pRow.join("") + '</tr>';
 
         // 母公司合计行（先于子公司行展示，作为母公司汇总）
@@ -617,7 +621,9 @@ def _sales_modal_html() -> str:
             // 该母公司下无任何有数据子公司 → 整块跳过
             if (subRowData.length === 0) return;
 
-            body += `<tr class="row-parent"><td class="parent-name" colspan="${{_DEPS.length + 2}}">${{p}} (${{subRowData.length}}家子公司)</td></tr>`;
+            let _owned = Object.keys(subs).length;
+            let _cfgTotal = (window.__SC3PCT && window.__SC3PCT[p]) || _owned;
+            body += `<tr class="row-parent"><td class="parent-name" colspan="${{_DEPS.length + 2}}">${{p}}（${{subRowData.length}}/${{_owned}}/${{_cfgTotal}}家）</td></tr>`;
 
             // 母公司合计行（先于子公司行展示，作为母公司汇总）
             let pSumRow = [`<td class="td-name" style="font-weight:700;background:#eef2ff">▸ 母公司合计</td>`];
@@ -659,12 +665,14 @@ def _sales_modal_html() -> str:
             }});
             // 该母公司无任何有数据子公司 → 圆环跳过
             if (nSubs === 0) return;
+            let _owned = Object.keys(subs).length;
+            let _cfgTotal = (window.__SC3PCT && window.__SC3PCT[p]) || _owned;
             const rate = pT > 0 ? Math.min(pA / pT, 1) : (pA > 0 ? 1 : 0);
             const rateTxt = pT > 0 ? Math.round(pA / pT * 100) + '%' : (pA > 0 ? '100%' : '—');
             const color = pT > 0 ? (pA >= pT ? '#16a34a' : pA/pT >= 0.5 ? '#f59e0b' : '#ef4444') : (pA > 0 ? '#16a34a' : '#cbd5e1');
             const dash = rate * _circ;
             ringsHtml += '<div class="parent-ring-item">'
-                + '<div class="ring-name" title="' + p + '">' + p + '（' + nSubs + '家）</div>'
+                + '<div class="ring-name" title="' + p + '">' + p + '（' + nSubs + '/' + _owned + '/' + _cfgTotal + '家）</div>'
                 + '<div class="ring-wrap">'
                 + '<svg viewBox="0 0 40 40" class="ring-svg">'
                 + '<circle cx="20" cy="20" r="' + _r + '" fill="none" stroke="#f1f5f9" stroke-width="3"/>'
