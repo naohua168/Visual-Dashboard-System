@@ -452,6 +452,17 @@ def _sales_modal_css() -> str:
 .sales-modal-body .row-parent-total td { background: #f8fafc; font-weight: 600; }
 .sales-modal-body .highlight-row td { background: rgba(59,130,246,0.04) !important; }
 .sales-modal-empty { text-align: center; padding: 40px; color: #94a3b8; font-size: 13px; }
+
+/* 母公司完成度圆环行 */
+.parent-rings { display: flex; gap: 14px; padding: 14px 16px; overflow-x: auto; border-bottom: 1px solid #e2e8f0; background: #f8fafc; flex-wrap: wrap; }
+.parent-rings::-webkit-scrollbar { height: 6px; }
+.parent-rings::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.parent-ring-item { flex: 0 0 130px; text-align: center; }
+.parent-ring-item .ring-name { font-size: 11px; color: #475569; font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.parent-ring-item .ring-wrap { position: relative; width: 52px; height: 52px; margin: 0 auto; }
+.parent-ring-item .ring-svg { width: 100%; height: 100%; }
+.parent-ring-item .ring-pct { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 800; font-size: 12px; }
+.parent-ring-item .ring-detail { font-size: 10px; color: #94a3b8; margin-top: 4px; font-family: "JetBrains Mono", monospace; }
 </style>'''
 
 
@@ -567,7 +578,7 @@ def _sales_modal_html() -> str:
         }}
 
         let totalAct = 0, totalTgt = 0, totalSubs = 0;
-        let h = '<thead><tr><th class="th-name">母公司</th>' + _DEPS.map(d => `<th>${{d}}</th>`).join('') + '<th class="th-name th-total">合计</th></tr></thead>';
+        let h = '<thead><tr><th class="th-name">客户</th>' + _DEPS.map(d => `<th>${{d}}</th>`).join('') + '<th class="th-name th-total">合计</th></tr></thead>';
         let body = '';
 
         parentKeys.forEach(p => {{
@@ -621,9 +632,35 @@ def _sales_modal_html() -> str:
         }}
 
         const totalRate = totalTgt > 0 ? totalAct / totalTgt : 0;
+
+        // 母公司完成度圆环行
+        const _r = 18, _circ = 2 * Math.PI * _r;
+        let ringsHtml = '<div class="parent-rings">';
+        parentKeys.forEach(p => {{
+            const [pA, pT] = _parentTotals(parents, p);
+            const subs = parents[p];
+            const nSubs = Object.keys(subs).length;
+            const rate = pT > 0 ? Math.min(pA / pT, 1) : (pA > 0 ? 1 : 0);
+            const rateTxt = pT > 0 ? Math.round(pA / pT * 100) + '%' : (pA > 0 ? '100%' : '—');
+            const color = pT > 0 ? (pA >= pT ? '#16a34a' : pA/pT >= 0.5 ? '#f59e0b' : '#ef4444') : (pA > 0 ? '#16a34a' : '#cbd5e1');
+            const dash = rate * _circ;
+            ringsHtml += '<div class="parent-ring-item">'
+                + '<div class="ring-name" title="' + p + '">' + p + '（' + nSubs + '家）</div>'
+                + '<div class="ring-wrap">'
+                + '<svg viewBox="0 0 40 40" class="ring-svg">'
+                + '<circle cx="20" cy="20" r="' + _r + '" fill="none" stroke="#f1f5f9" stroke-width="3"/>'
+                + '<circle cx="20" cy="20" r="' + _r + '" fill="none" stroke="' + color + '" stroke-width="3" stroke-dasharray="' + dash + ' ' + _circ + '" stroke-linecap="round" transform="rotate(-90 20 20)"/>'
+                + '</svg>'
+                + '<div class="ring-pct" style="color:' + color + '">' + rateTxt + '</div>'
+                + '</div>'
+                + '<div class="ring-detail">' + pA.toLocaleString("zh-CN", {{maximumFractionDigits: 0}}) + ' / ' + pT.toLocaleString("zh-CN", {{maximumFractionDigits: 0}}) + '</div>'
+                + '</div>';
+        }});
+        ringsHtml += '</div>';
+
         const html = '<div class="table-wrap ann-matrix-wrap">'
             + '<table class="ann-matrix">' + h + '<tbody>' + body + '</tbody></table></div>';
-        document.getElementById('salesModalBody').innerHTML = html;
+        document.getElementById('salesModalBody').innerHTML = ringsHtml + html;
     }}
 
     function _modalCell(act, tgt, isTotal) {{
