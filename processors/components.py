@@ -221,7 +221,7 @@ def children_modal_js(uid: str, sub_detail_json: str) -> str:
         f'var b="";var total={{}};{uid}_DEPS.forEach(d=>total[d]={{act:0,tgt:0}});'
         f'# 先用全部 subs 累加 total（含 1:1 自引用），再用过滤后 subs 输出行'
         f'subs.forEach(s=>{{var row=data[s];{uid}_DEPS.forEach(d=>{{var cell=row[d]||{{act:0,tgt:0}};total[d].act+=cell.act;total[d].tgt+=cell.tgt;}});}});'
-        f'subs.filter(s=>s!==name).forEach(s=>{{'   # 过滤 1:1 自引用（子公司名 === 母公司名）'
+        f'subs.filter(s=>!s.endsWith("（本部）")).forEach(s=>{{'   # 过滤"（本部）"行，保留 1:1 子公司行'
         f'var row=data[s];b+="<tr>";'
         f'b+="<td class=\\"td-sub-name\\">"+s+"</td>";'
         f'{uid}_DEPS.forEach(d=>{{'
