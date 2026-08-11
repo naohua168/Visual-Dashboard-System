@@ -519,6 +519,7 @@ class SalesData:
     sc3_by_parent: dict = field(default_factory=dict)    # {sales: {parent: {sub: {inc/pay: {dept:val}}}}}
     sc3_tgts_by_parent: dict = field(default_factory=dict)   # {parent: {inc/pay: {dept:val}}}
     sc3_parent_cfg_total: dict = field(default_factory=dict)  # {parent: 配置子公司总数}
+    sales_owned_subs: dict = field(default_factory=dict)  # {销售: {母公司: 该销售在配置中拥有的子公司数}}
     # 待确认
     pending_count: int = 0
     pending_total_inc: float = 0
@@ -640,10 +641,21 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
         with open(attr_path, "r", encoding="utf-8") as _f:
             _attr = _json.load(_f)
         for parent, group in _attr.get("客户归属", {}).items():
-            for sub in group.get("子公司", {}):
-                d.sub_to_parent[sub.strip()] = parent
             # 母公司配置的子公司总数（含母公司自身，若配置列出）
             d.sc3_parent_cfg_total[parent] = len(group.get("子公司", {}))
+            for sub, sub_cfg in group.get("子公司", {}).items():
+                d.sub_to_parent[sub.strip()] = parent
+                # 该子公司归属哪些销售（从配置的部门销售分配读取）
+                sales_set: set[str] = set()
+                if isinstance(sub_cfg, dict):
+                    for metric_cfg in sub_cfg.values():
+                        if isinstance(metric_cfg, dict):
+                            for dept_cfg in metric_cfg.values():
+                                if isinstance(dept_cfg, dict):
+                                    sales_set.update(str(s).strip() for s in dept_cfg.keys())
+                for s_name in sales_set:
+                    d.sales_owned_subs.setdefault(s_name, {}).setdefault(parent, 0)
+                    d.sales_owned_subs[s_name][parent] += 1
 
     # 按母公司聚合客户级别实际数据（只保留该销售实际负责的客户，不再补齐配置中全部子公司）
     for s_name, custs in d.sc3_data.items():
