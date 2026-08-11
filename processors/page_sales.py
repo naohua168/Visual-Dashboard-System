@@ -238,12 +238,7 @@ function __sc3Build(parents) {{
         }});
         if (subKeys.length === 0) return;
 
-        // 母公司标题行
-        let pTarget = (__SC3PT[p] && __SC3PT[p][metric] && __SC3PT[p][metric].total) || 0;
-        let pRow = [`<td class="td-name parent-name" colspan="${{deps.length + 2}}" style="text-align:left;font-weight:800;color:#0f172a;background:#f1f5f9;padding:6px 8px;font-size:13px">${{p}} (${{subKeys.length}}家子公司)</td>`];
-        body += '<tr class="row-parent">' + pRow.join("") + '</tr>';
-
-        // 第一遍：累加母公司合计数据
+        // 第一遍：累加母公司合计数据（过滤 4部门全0 的子公司）
         let parentTotalAct = 0, parentTotalTgt = 0;
         let parentDepsAct = deps.map(() => 0);
         let parentDepsTgt = deps.map(() => 0);
@@ -260,10 +255,19 @@ function __sc3Build(parents) {{
                 parentDepsTgt[di] += t;
             }});
             cells.push(__sc3Cell(rAct, rTgt, true));
+            // 4部门实际+目标全为0的子公司不展示
+            if (rAct === 0 && rTgt === 0) return;
             subRowData.push({{ name: c, cells: cells }});
             parentTotalAct += rAct;
             parentTotalTgt += rTgt;
         }});
+
+        // 该母公司下无任何有数据子公司 → 整块跳过
+        if (subRowData.length === 0) return;
+
+        // 母公司标题行
+        let pRow = [`<td class="td-name parent-name" colspan="${{deps.length + 2}}" style="text-align:left;font-weight:800;color:#0f172a;background:#f1f5f9;padding:6px 8px;font-size:13px">${{p}} (${{subRowData.length}}家子公司)</td>`];
+        body += '<tr class="row-parent">' + pRow.join("") + '</tr>';
 
         // 母公司合计行（先于子公司行展示，作为母公司汇总）
         let pSumRow = [`<td class="td-name" style="font-weight:800;color:#0f172a">▸ 母公司合计</td>`];
@@ -586,9 +590,7 @@ def _sales_modal_html() -> str:
             const subKeys = Object.keys(subs);
             if (subKeys.length === 0) return;
 
-            body += `<tr class="row-parent"><td class="parent-name" colspan="${{_DEPS.length + 2}}">${{p}} (${{subKeys.length}}家子公司)</td></tr>`;
-
-            // 第一遍：累加母公司合计数据
+            // 第一遍：累加母公司合计数据（过滤 4部门全0 的子公司）
             let depActs = _DEPS.map(() => 0);
             let depTgts = _DEPS.map(() => 0);
             let subRowData = [];
@@ -605,10 +607,17 @@ def _sales_modal_html() -> str:
                     depTgts[di] += t;
                 }});
                 cells.push(_modalCell(rAct, rTgt, true));
+                // 4部门实际+目标全为0的子公司不展示
+                if (rAct === 0 && rTgt === 0) return;
                 subRowData.push({{ name: c, cells: cells }});
                 pActAll += rAct;
                 pTgtAll += rTgt;
             }});
+
+            // 该母公司下无任何有数据子公司 → 整块跳过
+            if (subRowData.length === 0) return;
+
+            body += `<tr class="row-parent"><td class="parent-name" colspan="${{_DEPS.length + 2}}">${{p}} (${{subRowData.length}}家子公司)</td></tr>`;
 
             // 母公司合计行（先于子公司行展示，作为母公司汇总）
             let pSumRow = [`<td class="td-name" style="font-weight:700;background:#eef2ff">▸ 母公司合计</td>`];
@@ -624,7 +633,7 @@ def _sales_modal_html() -> str:
             }});
 
             totalAct += pActAll; totalTgt += pTgtAll;
-            totalSubs += subKeys.length;
+            totalSubs += subRowData.length;
         }});
 
         if (!body) {{
@@ -639,7 +648,17 @@ def _sales_modal_html() -> str:
         parentKeys.forEach(p => {{
             const [pA, pT] = _parentTotals(parents, p);
             const subs = parents[p];
-            const nSubs = Object.keys(subs).length;
+            let nSubs = 0;
+            Object.keys(subs).forEach(c => {{
+                let sA = 0, sT = 0;
+                _DEPS.forEach(d => {{
+                    sA += subs[c] && subs[c][_curMetric] ? (subs[c][_curMetric][d] || 0) : 0;
+                    sT += window.__SC3ST[c] && window.__SC3ST[c][_curMetric] ? (window.__SC3ST[c][_curMetric][d] || 0) : 0;
+                }});
+                if (sA > 0 || sT > 0) nSubs++;
+            }});
+            // 该母公司无任何有数据子公司 → 圆环跳过
+            if (nSubs === 0) return;
             const rate = pT > 0 ? Math.min(pA / pT, 1) : (pA > 0 ? 1 : 0);
             const rateTxt = pT > 0 ? Math.round(pA / pT * 100) + '%' : (pA > 0 ? '100%' : '—');
             const color = pT > 0 ? (pA >= pT ? '#16a34a' : pA/pT >= 0.5 ? '#f59e0b' : '#ef4444') : (pA > 0 ? '#16a34a' : '#cbd5e1');
