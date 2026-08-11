@@ -596,23 +596,42 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
         key=lambda x: d.sales_targets.get(x, 0), reverse=True
     )
 
-    # card3: 销售×客户×事业部 明细（用未consolidate的原始数据，保留子公司独立行）
+    # card3: 销售×母公司×客户×事业部 明细（用未consolidate的原始数据，保留子公司独立行）
+    # "母公司"列由拆分引擎写入（重叠子公司按法人主体选择父组）
     si_raw = _add_wan(data.sales_income.copy())
     sp_raw = _add_wan(data.sales_payment.copy())
     si_raw_ok = si_raw[si_raw["销售"] != "待确认"].copy()
     sp_raw_ok = sp_raw[sp_raw["销售"] != "待确认"].copy()
-    sc_inc = si_raw_ok.groupby(["销售", "客户", "事业部"])["金额_万"].sum()
-    sc_pay = sp_raw_ok.groupby(["销售", "客户", "事业部"])["金额_万"].sum()
-    for (s, c, dpt), v in sc_inc.items():
-        d.sc3_data.setdefault(s, {}).setdefault(c, {}).setdefault("inc", {})[dpt] = int(round(v))
-    for (s, c, dpt), v in sc_pay.items():
-        d.sc3_data.setdefault(s, {}).setdefault(c, {}).setdefault("pay", {})[dpt] = int(round(v))
+
+    def _grp_key(df):
+        keys = ["销售", "客户", "事业部"]
+        if "母公司" in df.columns:
+            keys.insert(1, "母公司")
+        return keys
+
+    sc_inc = si_raw_ok.groupby(_grp_key(si_raw_ok))["金额_万"].sum()
+    sc_pay = sp_raw_ok.groupby(_grp_key(sp_raw_ok))["金额_万"].sum()
+    for idx, v in sc_inc.items():
+        if "母公司" in si_raw_ok.columns:
+            s, parent, c, dpt = idx
+        else:
+            s, c, dpt = idx
+            parent = d.sub_to_parent.get(c, c)
+        d.sc3_by_parent.setdefault(s, {}).setdefault(parent, {}).setdefault(c, {}).setdefault("inc", {})[dpt] = int(round(v))
+    for idx, v in sc_pay.items():
+        if "母公司" in sp_raw_ok.columns:
+            s, parent, c, dpt = idx
+        else:
+            s, c, dpt = idx
+            parent = d.sub_to_parent.get(c, c)
+        d.sc3_by_parent.setdefault(s, {}).setdefault(parent, {}).setdefault(c, {}).setdefault("pay", {})[dpt] = int(round(v))
     # 补充 total
-    for s_data in d.sc3_data.values():
-        for c_data in s_data.values():
-            for mt in ("inc", "pay"):
-                if mt in c_data:
-                    c_data[mt]["total"] = sum(c_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
+    for s_data in d.sc3_by_parent.values():
+        for p_data in s_data.values():
+            for c_data in p_data.values():
+                for mt in ("inc", "pay"):
+                    if mt in c_data:
+                        c_data[mt]["total"] = sum(c_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
 
     # card3 客户目标
     for _, row in inc_tgt.iterrows():
@@ -656,14 +675,6 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
                 for s_name in sales_set:
                     d.sales_owned_subs.setdefault(s_name, {}).setdefault(parent, 0)
                     d.sales_owned_subs[s_name][parent] += 1
-
-    # 按母公司聚合客户级别实际数据（只保留该销售实际负责的客户，不再补齐配置中全部子公司）
-    for s_name, custs in d.sc3_data.items():
-        parent_groups: dict = {}
-        for cust_name, cust_data in custs.items():
-            parent = d.sub_to_parent.get(cust_name, cust_name)
-            parent_groups.setdefault(parent, {})[cust_name] = cust_data
-        d.sc3_by_parent[s_name] = parent_groups
 
     # 按母公司汇总目标（不含 total，后面统一补）
     for cust, cust_data in d.sc3_tgts.items():

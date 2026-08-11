@@ -115,20 +115,24 @@ GD_LEGAL_ENTITY = "广东汽车检测中心有限公司"
 GD_PARENT_GROUP = "广东自有客户"
 
 
-def _select_parent_group(cust_groups: dict[str, dict], legal_entity: str) -> dict:
+def _select_parent_group(cust_groups: dict[str, dict], legal_entity: str) -> tuple[str, dict]:
     """同一客户出现在多个父组时，按法人主体选择父组配置。
+
+    返回 (父组名, 配置)。父组名会写入拆分结果的"母公司"列，供前端按此分组。
 
     - 法人主体 == 广东汽车检测中心有限公司 → 取"广东自有客户"组
     - 其他 → 优先取"零部件客户"组；若无则取第一个组
     """
     if len(cust_groups) == 1:
-        return next(iter(cust_groups.values()))
+        only = next(iter(cust_groups.items()))
+        return only[0], only[1]
 
     if legal_entity == GD_LEGAL_ENTITY and GD_PARENT_GROUP in cust_groups:
-        return cust_groups[GD_PARENT_GROUP]
+        return GD_PARENT_GROUP, cust_groups[GD_PARENT_GROUP]
     if "零部件客户" in cust_groups:
-        return cust_groups["零部件客户"]
-    return next(iter(cust_groups.values()))
+        return "零部件客户", cust_groups["零部件客户"]
+    first = next(iter(cust_groups.items()))
+    return first[0], first[1]
 
 
 def _load_byd_overlap() -> set[str]:
@@ -216,13 +220,14 @@ def run_split(file_type, config=None):
             # 未匹配 → 保留原始行，销售为空
             row_dict = row.to_dict()
             row_dict["销售"] = ""
+            row_dict["母公司"] = ""
             results.append(row_dict)
             unmatched += 1
             continue
 
         # 同一客户在多个父组（如 广东自有/零部件 重叠）时按法人主体选组
         legal_entity = str(row.get("法人主体", "")).strip()
-        cust_data = _select_parent_group(cust_groups, legal_entity)
+        parent_name, cust_data = _select_parent_group(cust_groups, legal_entity)
 
         # 取收入/回款的部门比例
         metric_ratios = cust_data.get(metric_key, {})
@@ -232,6 +237,7 @@ def run_split(file_type, config=None):
             # 该部门无比例 → 保留原始行
             row_dict = row.to_dict()
             row_dict["销售"] = ""
+            row_dict["母公司"] = parent_name
             results.append(row_dict)
             unmatched += 1
             continue
@@ -241,6 +247,7 @@ def run_split(file_type, config=None):
             allocated = amount * float(ratio)
             r = row.to_dict()
             r["销售"] = sales_name
+            r["母公司"] = parent_name
             r["金额"] = allocated
             results.append(r)
 
