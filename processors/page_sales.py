@@ -274,8 +274,8 @@ function __sc3Build(parents) {{
         // 母公司标题行（有数据数 / 该销售配置拥有数 / 母公司配置总数）
         let _owned = (window.__SC3OWNED && window.__SC3OWNED[__sc3CurSales] && window.__SC3OWNED[__sc3CurSales][p]) || Object.keys(subs).length;
         let _cfgTotal = (window.__SC3PCT && window.__SC3PCT[p]) || _owned;
-        let _tooltip = p + '\\n当前展示 ' + subRowData.length + ' 家\\n销售拥有 ' + _owned + ' 家\\n子公司总数 ' + _cfgTotal + ' 家';
-        let pRow = [`<td class="td-name parent-name" colspan="${{deps.length + 2}}" style="text-align:left;font-weight:800;color:#0f172a;background:#f1f5f9;padding:6px 8px;font-size:13px" title="${{_tooltip}}">${{p}}（${{subRowData.length}}/${{_owned}}/${{_cfgTotal}}家）</td>`];
+        let _tooltip = p + '\\n当前展示 ' + subRowData.length + '\\n销售拥有 ' + _owned + '\\n子公司总数 ' + _cfgTotal;
+        let pRow = [`<td class="td-name parent-name" colspan="${{deps.length + 2}}" style="text-align:left;font-weight:800;color:#0f172a;background:#f1f5f9;padding:6px 8px;font-size:13px" title="${{_tooltip}}">${{p}}（${{subRowData.length}}/${{_owned}}/${{_cfgTotal}}）</td>`];
         body += '<tr class="row-parent">' + pRow.join("") + '</tr>';
 
         // 母公司合计行（先于子公司行展示，作为母公司汇总）
@@ -628,8 +628,8 @@ def _sales_modal_html() -> str:
 
             let _owned = (window.__SC3OWNED && window.__SC3OWNED[_curSales] && window.__SC3OWNED[_curSales][p]) || Object.keys(subs).length;
             let _cfgTotal = (window.__SC3PCT && window.__SC3PCT[p]) || _owned;
-            let _tooltip = p + '\\n当前展示 ' + subRowData.length + ' 家\\n销售拥有 ' + _owned + ' 家\\n子公司总数 ' + _cfgTotal + ' 家';
-            body += `<tr class="row-parent"><td class="parent-name" colspan="${{_DEPS.length + 2}}" title="${{_tooltip}}">${{p}}（${{subRowData.length}}/${{_owned}}/${{_cfgTotal}}家）</td></tr>`;
+            let _tooltip = p + '\\n当前展示 ' + subRowData.length + '\\n销售拥有 ' + _owned + '\\n子公司总数 ' + _cfgTotal;
+            body += `<tr class="row-parent"><td class="parent-name" colspan="${{_DEPS.length + 2}}" title="${{_tooltip}}">${{p}}（${{subRowData.length}}/${{_owned}}/${{_cfgTotal}}）</td></tr>`;
 
             // 母公司合计行（先于子公司行展示，作为母公司汇总）
             let pSumRow = [`<td class="td-name" style="font-weight:700;background:#eef2ff">▸ 母公司合计</td>`];
@@ -678,7 +678,7 @@ def _sales_modal_html() -> str:
             const color = pT > 0 ? (pA >= pT ? '#16a34a' : pA/pT >= 0.5 ? '#f59e0b' : '#ef4444') : (pA > 0 ? '#16a34a' : '#cbd5e1');
             const dash = rate * _circ;
             ringsHtml += '<div class="parent-ring-item">'
-                + '<div class="ring-name" title="' + p + '\\n当前展示 ' + nSubs + ' 家\\n销售拥有 ' + _owned + ' 家\\n子公司总数 ' + _cfgTotal + ' 家">' + p + '（' + nSubs + '/' + _owned + '/' + _cfgTotal + '家）</div>'
+                + '<div class="ring-name" title="' + p + '\\n当前展示 ' + nSubs + '\\n销售拥有 ' + _owned + '\\n子公司总数 ' + _cfgTotal + '">' + p + '（' + nSubs + '/' + _owned + '/' + _cfgTotal + '）</div>'
                 + '<div class="ring-wrap">'
                 + '<svg viewBox="0 0 40 40" class="ring-svg">'
                 + '<circle cx="20" cy="20" r="' + _r + '" fill="none" stroke="#f1f5f9" stroke-width="3"/>'
