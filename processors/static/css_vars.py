@@ -1197,7 +1197,6 @@ td.cb.fl::before{background:#fdba74;}
 td.cb.fy::before{background:#f1f5f9;}
 /* 0%不显示填充 */
 td.cb.is-empty::before{display:none;}
-td.cb.is-total::before{display:none;}
 /* 表格整体网格 */
 table.ann-matrix{border-collapse:collapse;border:1px solid #cbd5e1;}
 table.ann-matrix thead th{border:1px solid #1e293b;}
