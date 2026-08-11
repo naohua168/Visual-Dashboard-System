@@ -639,10 +639,12 @@ def _sales_modal_html() -> str:
             pSumRow.push(_modalCell(pActAll, pTgtAll, true));
             body += '<tr class="row-data row-parent-total" style="background:#eef2ff;font-weight:700">' + pSumRow.join('') + '</tr>';
 
-            // 子公司明细行（后于母公司合计）
-            subRowData.forEach((sr, i) => {{
-                body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:16px">' + sr.name + '</td>' + sr.cells.join('') + '</tr>';
-            }});
+            // 子公司明细行（后于母公司合计；1:1 自引用时跳过——母公司标题已显示公司名）
+            if (!(subRowData.length === 1 && subRowData[0].name === p)) {{
+                subRowData.forEach((sr, i) => {{
+                    body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:16px">' + sr.name + '</td>' + sr.cells.join('') + '</tr>';
+                }});
+            }}
 
             totalAct += pActAll; totalTgt += pTgtAll;
             totalSubs += subRowData.length;
