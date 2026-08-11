@@ -199,9 +199,12 @@ def _build_subs_detail(
         sub_detail: dict[str, dict[str, dict[str, float]]] = {}
 
         # 1) 母公司本部（原始数据中直接挂在母公司名下、未拆分给任何子公司的金额）
+        # 过滤：4部门全为0且无目标数据时不展示
         parent_act_data = actual.get(p, {})
         parent_tgt_data = target.get(p, {})
-        if parent_act_data or parent_tgt_data:
+        parent_act_total = sum(parent_act_data.get(d, 0.0) for d in DEPARTMENTS)
+        parent_tgt_total = sum(parent_tgt_data.get(d, 0.0) for d in DEPARTMENTS)
+        if parent_act_total > 0 or parent_tgt_total > 0:
             row: dict[str, dict[str, float]] = {}
             total_act = total_tgt = 0.0
             for dpt in DEPARTMENTS:
@@ -213,7 +216,7 @@ def _build_subs_detail(
             row["合计"] = {"act": total_act, "tgt": total_tgt}
             sub_detail[f"{p}（本部）"] = row
 
-        # 2) 子公司明细（全部显示，含无数据子公司，体现完整包含关系）
+        # 2) 子公司明细（过滤：4部门act全为0的子公司不展示，仅当年累计有数据的）
         all_subs = children_map.get(p, [])
         subs = [s for s in all_subs if s != p]
         for s in subs:
@@ -226,7 +229,9 @@ def _build_subs_detail(
                 total_act += act
                 total_tgt += tgt
             row["合计"] = {"act": total_act, "tgt": total_tgt}
-            sub_detail[s] = row
+            # 仅展示有实际金额（4部门不全为0）或当年累计有目标的子公司
+            if total_act > 0 or total_tgt > 0:
+                sub_detail[s] = row
 
         if sub_detail:
             result[p] = sub_detail
