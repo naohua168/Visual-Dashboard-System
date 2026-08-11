@@ -567,7 +567,7 @@ def _sales_modal_html() -> str:
         }}
 
         let totalAct = 0, totalTgt = 0, totalSubs = 0;
-        let h = '<thead><tr><th class="th-name">客户</th>' + _DEPS.map(d => `<th>${{d}}</th>`).join('') + '<th class="th-name th-total">合计</th></tr></thead>';
+        let h = '<thead><tr><th class="th-name">母公司</th>' + _DEPS.map(d => `<th>${{d}}</th>`).join('') + '<th class="th-name th-total">合计</th></tr></thead>';
         let body = '';
 
         parentKeys.forEach(p => {{
