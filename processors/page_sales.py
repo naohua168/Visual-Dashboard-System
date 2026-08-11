@@ -168,7 +168,8 @@ class SalesPage(BaseRenderer):
             f'<div class="card">{kpi_html}'
             f'<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px">'
             f'<label style="font-size:12px;color:var(--text-muted)">选择销售：</label>'
-            f'<select id="sc3SalesSel" onchange="switchSc3Sales()">'
+            f'<select id="sc3SalesSel" onchange="switchSc3Sales()" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;color:#1e293b">'
+            + f'<option value="" disabled selected>-- 请选择销售 --</option>'
             + "".join(f'<option value="{s}">{s}</option>' for s in sorted(all_sales))
             + f'</select>'
             + '<div class="cust-tabs">'
@@ -312,8 +313,12 @@ function __sc3Cell(act, tgt, isTotal) {{
 }}
 
 document.addEventListener("DOMContentLoaded", () => {{
-    if (document.getElementById("sc3SalesSel") && document.getElementById("sc3SalesSel").value) {{
-        switchSc3Sales();
+    // 默认不渲染 — 等用户主动选择销售后通过 onchange 触发
+    const sel = document.getElementById("sc3SalesSel");
+    if (sel) {{
+        // 初始时显示"待选"占位内容
+        document.getElementById("sc3-inc-matrix").innerHTML = '<div class="sales-modal-empty" style="padding:60px 20px;text-align:center;color:#94a3b8;font-size:14px">📋 请从上方选择销售查看客户达成详情</div>';
+        document.getElementById("sc3-pay-matrix").innerHTML = '<div class="sales-modal-empty" style="padding:60px 20px;text-align:center;color:#94a3b8;font-size:14px">📋 请从上方选择销售查看客户达成详情</div>';
     }}
 }});
 </script>'''
