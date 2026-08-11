@@ -263,9 +263,11 @@ function __sc3Build(parents) {{
             cells.push(__sc3Cell(rAct, rTgt, true));
             // 4部门实际+目标全为0的子公司不展示
             if (rAct === 0 && rTgt === 0) return;
-            subRowData.push({{ name: c, cells: cells }});
+            // 1:1自引用的母公司（母公司名=子公司名）不显示数据行（避免重复）
             parentTotalAct += rAct;
             parentTotalTgt += rTgt;
+            if (c === p) return;
+            subRowData.push({{ name: c, cells: cells }});
         }});
 
         // 该母公司下无任何有数据子公司 → 整块跳过
@@ -618,9 +620,11 @@ def _sales_modal_html() -> str:
                 cells.push(_modalCell(rAct, rTgt, true));
                 // 4部门实际+目标全为0的子公司不展示
                 if (rAct === 0 && rTgt === 0) return;
-                subRowData.push({{ name: c, cells: cells }});
+                // 1:1自引用的母公司（母公司名=子公司名）不显示数据行（避免重复）
                 pActAll += rAct;
                 pTgtAll += rTgt;
+                if (c === p) return;
+                subRowData.push({{ name: c, cells: cells }});
             }});
 
             // 该母公司下无任何有数据子公司 → 整块跳过
