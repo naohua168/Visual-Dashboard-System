@@ -82,7 +82,9 @@ class MonthlyPage(BaseRenderer):
         def _r(cust_list, start_idx, cls="row-data"):
             out = ""
             for i, c in enumerate(cust_list):
-                subs_in_table = subs_with_data.get(c, [])
+                # 提示数 = 当前 tab 弹窗实际展示的子公司数（不含本部行、不含自引用行），保证与弹窗一致
+                subs_in_table = [s for s in subs_detail.get(c, {})
+                                 if not s.endswith("（本部）") and s != c]
                 if subs_in_table:
                     cust_html = (
                         f'<td class="td-name td-name-clickable" '

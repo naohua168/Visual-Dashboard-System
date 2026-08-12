@@ -52,15 +52,16 @@ def test_config_output_paths():
 def test_mappings_exist():
     """映射和规则 JSON 文件均存在且有效（2份在 data/mappings/ + 2份在 config/清洗配置/）"""
     # data/mappings/ 下的清洗映射
-    for folder, filename in [
-        ("部门事业部映射", "部门事业部映射.json"),
-        ("客户名单", "客户名单.json"),
+    # 部门事业部映射: dict；客户名单: 客户名白名单数组（list）
+    for folder, filename, allowed in [
+        ("部门事业部映射", "部门事业部映射.json", (dict,)),
+        ("客户名单", "客户名单.json", (list, dict)),
     ]:
         path = BASE_DIR / "data" / "mappings" / folder / filename
         assert path.exists(), f"映射文件不存在: {path}"
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        assert isinstance(data, dict)
+        assert isinstance(data, allowed), f"{filename} 结构应为 {allowed}"
 
 
 def test_dept_mapping_structure():

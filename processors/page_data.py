@@ -397,14 +397,15 @@ class QuarterlyData:
 def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d = QuarterlyData()
 
-    q_inc = data.quarterly_income
-    q_pay = data.quarterly_payment
-    if q_inc is None or q_inc.empty or q_pay is None or q_pay.empty:
-        q_inc = data.income.copy()
-        q_pay = data.payment.copy()
+    # 保留原始数据（未 consolidate）供子公司弹窗使用
+    q_inc_raw = data.quarterly_income
+    q_pay_raw = data.quarterly_payment
+    if q_inc_raw is None or q_inc_raw.empty or q_pay_raw is None or q_pay_raw.empty:
+        q_inc_raw = data.income.copy()
+        q_pay_raw = data.payment.copy()
 
-    q_inc = _consolidate_customers(_add_wan(q_inc.copy()))
-    q_pay = _consolidate_customers(_add_wan(q_pay.copy()))
+    q_inc = _consolidate_customers(_add_wan(q_inc_raw.copy()))
+    q_pay = _consolidate_customers(_add_wan(q_pay_raw.copy()))
 
     latest_date = pd.to_datetime(q_inc["日期"].max(), errors="coerce")
     d.quarter = int(latest_date.quarter) if pd.notna(latest_date) else 2
@@ -464,19 +465,19 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, quarterly_filter)
     d.customers = d.inc_customers
 
-    # 弹窗：构建"有数据"的子公司列表
+    # 弹窗：构建"有数据"的子公司列表（用原始未 consolidate 数据，保留子公司独立行）
     children_map = _load_children_map()
     all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
     d.subs_with_data = _build_subs_with_data(
-        [q_inc, q_pay],
+        [q_inc_raw, q_pay_raw],
         [data.quarterly_income_targets, data.quarterly_payment_targets],
         children_map, all_parents,
     )
     d.subs_detail_inc = _build_subs_detail(
-        q_inc, data.quarterly_income_targets, children_map, all_parents
+        q_inc_raw, data.quarterly_income_targets, children_map, all_parents
     )
     d.subs_detail_pay = _build_subs_detail(
-        q_pay, data.quarterly_payment_targets, children_map, all_parents
+        q_pay_raw, data.quarterly_payment_targets, children_map, all_parents
     )
 
     d.df_inc = q_inc; d.df_pay = q_pay
@@ -513,11 +514,15 @@ class SalesData:
     pay_sales_list: list[str] = field(default_factory=list)
     # card3 销售×客户 明细
     sc3_data: dict = field(default_factory=dict)   # {sales: {cust: {inc: {dept:val,...}}}}
-    sc3_tgts: dict = field(default_factory=dict)   # {cust: {inc: {dept:val,...}}}
+    sc3_tgts: dict = field(default_factory=dict)   # {cust: {inc: {dept:val,...}}}（全销售聚合，兼容）
+    # 按销售拆分的客户目标（销售详情弹窗/矩阵用）
+    sc3_tgts_by_sales: dict = field(default_factory=dict)  # {sales: {cust: {inc/pay: {dept:val,total}}}}
     # card3 母公司聚合
     sub_to_parent: dict[str, str] = field(default_factory=dict)   # 子公司→母公司
     sc3_by_parent: dict = field(default_factory=dict)    # {sales: {parent: {sub: {inc/pay: {dept:val}}}}}
-    sc3_tgts_by_parent: dict = field(default_factory=dict)   # {parent: {inc/pay: {dept:val}}}
+    sc3_tgts_by_parent: dict = field(default_factory=dict)   # {parent: {inc/pay: {dept:val}}}（全销售聚合，兼容）
+    # 按销售拆分的母公司目标（销售详情弹窗/矩阵用）
+    sc3_tgts_by_parent_by_sales: dict = field(default_factory=dict)  # {sales: {parent: {inc/pay: {dept:val,total}}}}
     sc3_parent_cfg_total: dict = field(default_factory=dict)  # {parent: 配置子公司总数}
     sales_owned_subs: dict = field(default_factory=dict)  # {销售: {母公司: 该销售在配置中拥有的子公司数}}
     # 待确认
@@ -633,25 +638,48 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
                     if mt in c_data:
                         c_data[mt]["total"] = sum(c_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
 
-    # card3 客户目标
+    # card3 客户目标（全销售聚合 + 按销售拆分两版本）
     for _, row in inc_tgt.iterrows():
         cust = str(row.get("客户", "")).strip()
+        sales = str(row.get("销售", "")).strip()
         if not cust:
             continue
         d.sc3_tgts.setdefault(cust, {}).setdefault("inc", {})
-        for dpt in DEPARTMENTS:
-            d.sc3_tgts[cust]["inc"][dpt] = d.sc3_tgts[cust]["inc"].get(dpt, 0) + int(round(safe_float(row.get(dpt, 0))))
+        # 按销售拆分：目标归属到销售名下（销售个人目标 = 该客户该部门的个人指标）
+        if sales and sales not in ("待确认", "", "nan"):
+            s_tgt = d.sc3_tgts_by_sales.setdefault(sales, {}).setdefault(cust, {}).setdefault("inc", {})
+            for dpt in DEPARTMENTS:
+                v = int(round(safe_float(row.get(dpt, 0))))
+                d.sc3_tgts[cust]["inc"][dpt] = d.sc3_tgts[cust]["inc"].get(dpt, 0) + v
+                s_tgt[dpt] = s_tgt.get(dpt, 0) + v
+        else:
+            for dpt in DEPARTMENTS:
+                d.sc3_tgts[cust]["inc"][dpt] = d.sc3_tgts[cust]["inc"].get(dpt, 0) + int(round(safe_float(row.get(dpt, 0))))
     for _, row in pay_tgt.iterrows():
         cust = str(row.get("客户", "")).strip()
+        sales = str(row.get("销售", "")).strip()
         if not cust:
             continue
         d.sc3_tgts.setdefault(cust, {}).setdefault("pay", {})
-        for dpt in DEPARTMENTS:
-            d.sc3_tgts[cust]["pay"][dpt] = d.sc3_tgts[cust]["pay"].get(dpt, 0) + int(round(safe_float(row.get(dpt, 0))))
+        if sales and sales not in ("待确认", "", "nan"):
+            s_tgt = d.sc3_tgts_by_sales.setdefault(sales, {}).setdefault(cust, {}).setdefault("pay", {})
+            for dpt in DEPARTMENTS:
+                v = int(round(safe_float(row.get(dpt, 0))))
+                d.sc3_tgts[cust]["pay"][dpt] = d.sc3_tgts[cust]["pay"].get(dpt, 0) + v
+                s_tgt[dpt] = s_tgt.get(dpt, 0) + v
+        else:
+            for dpt in DEPARTMENTS:
+                d.sc3_tgts[cust]["pay"][dpt] = d.sc3_tgts[cust]["pay"].get(dpt, 0) + int(round(safe_float(row.get(dpt, 0))))
     for c in d.sc3_tgts:
         for mt in ("inc", "pay"):
             if mt in d.sc3_tgts[c]:
                 d.sc3_tgts[c][mt]["total"] = sum(d.sc3_tgts[c][mt].get(dpt, 0) for dpt in DEPARTMENTS)
+    # 按销售版本补 total
+    for s_data in d.sc3_tgts_by_sales.values():
+        for cust_data in s_data.values():
+            for mt in ("inc", "pay"):
+                if mt in cust_data:
+                    cust_data[mt]["total"] = sum(cust_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
 
     # card3 母公司聚合：子公司→母公司 + 按母公司汇总实际/目标
     import json as _json
@@ -676,7 +704,7 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
                     d.sales_owned_subs.setdefault(s_name, {}).setdefault(parent, 0)
                     d.sales_owned_subs[s_name][parent] += 1
 
-    # 按母公司汇总目标（不含 total，后面统一补）
+    # 按母公司汇总目标（全销售聚合版本，不含 total，后面统一补）
     for cust, cust_data in d.sc3_tgts.items():
         parent = d.sub_to_parent.get(cust, cust)
         p_data = d.sc3_tgts_by_parent.setdefault(parent, {})
@@ -691,6 +719,24 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
         for mt in ("inc", "pay"):
             if mt in p_data:
                 p_data[mt]["total"] = sum(p_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
+
+    # 按销售拆分版本：母公司目标聚合（{销售: {母公司: {inc/pay: {dept}}}}）
+    for sales, s_data in d.sc3_tgts_by_sales.items():
+        for cust, cust_data in s_data.items():
+            parent = d.sub_to_parent.get(cust, cust)
+            p_data = d.sc3_tgts_by_parent_by_sales.setdefault(sales, {}).setdefault(parent, {})
+            for mt in ("inc", "pay"):
+                if mt not in cust_data:
+                    continue
+                p_mt = p_data.setdefault(mt, {})
+                for dpt, val in cust_data[mt].items():
+                    if dpt != "total":
+                        p_mt[dpt] = p_mt.get(dpt, 0) + val
+    for s_data in d.sc3_tgts_by_parent_by_sales.values():
+        for p_data in s_data.values():
+            for mt in ("inc", "pay"):
+                if mt in p_data:
+                    p_data[mt]["total"] = sum(p_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
 
     # 同比
     df_inc_annual = _add_wan(data.income.copy())

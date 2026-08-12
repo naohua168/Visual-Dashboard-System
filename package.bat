@@ -44,6 +44,9 @@ copy /y "requirements.txt" "%PKG_DIR%\requirements.txt" >nul
 copy /y "pytest.ini" "%PKG_DIR%\pytest.ini" >nul
 copy /y "README.md" "%PKG_DIR%\README.md" >nul
 
+REM 脚本工具（看板验证等）
+if exist "scripts" xcopy /e /i /q /y "scripts" "%PKG_DIR%\scripts" >nul
+
 REM 测试
 if exist "tests" xcopy /e /i /q /y "tests" "%PKG_DIR%\tests" >nul
 
@@ -64,11 +67,12 @@ mkdir "%PKG_DIR%\data\raw\客户名单"
 REM mappings 只打包部门映射（不含客户名单敏感数据）
 mkdir "%PKG_DIR%\data\mappings"
 mkdir "%PKG_DIR%\data\mappings\部门事业部映射"
+mkdir "%PKG_DIR%\data\mappings\客户名单"
 if exist "data\mappings\部门事业部映射\部门事业部映射.json" (
     copy /y "data\mappings\部门事业部映射\部门事业部映射.json" "%PKG_DIR%\data\mappings\部门事业部映射\" >nul
 )
 
-REM 手动维护指标表目录
+REM 手动维护指标表目录（用户手工维护，需自行准备）
 mkdir "%PKG_DIR%\data\sheets"
 mkdir "%PKG_DIR%\data\sheets\手动维护"
 mkdir "%PKG_DIR%\data\sheets\手动维护\年度收入总指标"
@@ -77,6 +81,19 @@ mkdir "%PKG_DIR%\data\sheets\手动维护\季度收入指标"
 mkdir "%PKG_DIR%\data\sheets\手动维护\季度回款指标"
 mkdir "%PKG_DIR%\data\sheets\手动维护\月度收入指标"
 mkdir "%PKG_DIR%\data\sheets\手动维护\月度回款指标"
+
+REM 系统数据清理目录（清洗引擎自动写入，无需预置文件）
+mkdir "%PKG_DIR%\data\sheets\系统数据清理"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\当年累计收入"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\当年累计回款"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\季度累计收入"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\季度累计回款"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\月收入"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\月回款"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\销售收入"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\销售回款"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\往年收入"
+mkdir "%PKG_DIR%\data\sheets\系统数据清理\往年回款"
 
 REM 输出目录
 mkdir "%PKG_DIR%\output"
@@ -101,12 +118,14 @@ echo ╠════════════════════════
 echo ║  📦 %PKG_NAME%.zip (!ZMB! MB)  ║
 echo ╠══════════════════════════════════════════════════════╣
 echo ║  包含:                                              ║
-echo ║  ▪ engine/      清洗引擎 (16 模块)                  ║
-echo ║  ▪ processors/  渲染层 (21 模块)                    ║
+echo ║  ▪ engine/      清洗引擎 (17 模块)                  ║
+echo ║  ▪ processors/  渲染层 (38 模块)                    ║
+echo ║  ▪ scripts/     工具脚本 (看板验证等)                ║
 echo ║  ▪ config/      配置文件                            ║
 echo ║  ▪ tests/       测试用例                            ║
 echo ║  ▪ main.py      调度器入口                          ║
 echo ║  ▪ run_all.bat  双击运行                            ║
+echo ║  ▪ docs/        部署指南 + 设计文档                  ║
 echo ╠══════════════════════════════════════════════════════╣
 echo ║  不包含（需自行准备）:                              ║
 echo ║  ▪ data/raw/    原始 Excel（财务端/运营端/往年/客户名单）║

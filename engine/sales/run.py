@@ -217,9 +217,9 @@ def run_split(file_type, config=None):
         # 查客户映射（可能多个父组）
         cust_groups = attribution.get(customer)
         if not cust_groups:
-            # 未匹配 → 保留原始行，销售为空
+            # 未匹配 → 标记为"待确认"（销售达成页可查看待确认客户明细）
             row_dict = row.to_dict()
-            row_dict["销售"] = ""
+            row_dict["销售"] = "待确认"
             row_dict["母公司"] = ""
             results.append(row_dict)
             unmatched += 1
@@ -234,9 +234,9 @@ def run_split(file_type, config=None):
         dept_ratios = metric_ratios.get(department, {})
 
         if not dept_ratios:
-            # 该部门无比例 → 保留原始行
+            # 该部门无比例 → 标记为"待确认"
             row_dict = row.to_dict()
-            row_dict["销售"] = ""
+            row_dict["销售"] = "待确认"
             row_dict["母公司"] = parent_name
             results.append(row_dict)
             unmatched += 1
@@ -260,8 +260,8 @@ def run_split(file_type, config=None):
 
     split_total = split_df["金额"].sum()
 
-    # 统计
-    unique_sales = split_df.loc[split_df["销售"] != "", "销售"].unique()
+    # 统计（排除待确认）
+    unique_sales = split_df.loc[~split_df["销售"].isin(["", "待确认"]), "销售"].unique()
     log_step(f"销售{file_type}", f"拆分后: {len(split_df)}行 (匹配{matched}行, 未匹配{unmatched}行)")
     log_step(f"销售{file_type}", f"销售人数: {len(unique_sales)}人")
     log_step(f"销售{file_type}", f"金额合计: {split_total:,.2f}")

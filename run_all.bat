@@ -43,7 +43,13 @@ echo ═══ 预检 ═══
 %PYTHON% main.py --dry-run
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo [错误] 预检失败，请检查 data/raw/ 和 config/ 配置。
+    echo [错误] 预检失败，请检查以下项目：
+    echo   ▪ data\raw\财务端数据\   原始 Excel（收入/回款）
+    echo   ▪ data\raw\运营端数据\   原始 Excel（收入/回款）
+    echo   ▪ data\raw\往年收入数据\ 往年收入基线 Excel
+    echo   ▪ data\raw\往年回款数据\ 往年回款基线 Excel
+    echo   ▪ data\mappings\         部门事业部映射 / 客户名单
+    echo   ▪ config\清洗配置\       cleaning_config.json
     pause
     exit /b %ERRORLEVEL%
 )
@@ -83,6 +89,18 @@ if %ERRORLEVEL% neq 0 (
     pause
     exit /b %ERRORLEVEL%
 )
+
+REM ============================================
+echo ═══ Phase 5: 看板质量验证 ═══
+if exist "scripts\verify_dashboard.py" (
+    %PYTHON% scripts\verify_dashboard.py
+    if %ERRORLEVEL% neq 0 (
+        echo [警告] 看板验证发现问题，请检查 JS 语法或函数绑定！
+    )
+) else (
+    echo [跳过] scripts\verify_dashboard.py 不存在
+)
+echo.
 
 REM ============================================
 echo.

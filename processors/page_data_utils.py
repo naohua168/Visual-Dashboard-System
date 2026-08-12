@@ -138,11 +138,16 @@ def _build_subs_with_data(
         else:
             actual_custs.update(str(c).strip() for c in df["客户"].unique())
 
+    # 指标客户：任一部门指标 > 0 才算有数据（目标表可能有该客户但全为 0）
+    dept_cols = [c for c in DEPARTMENTS if any(
+        c in df.columns for df in raw_targets if df is not None)]
     target_custs: set[str] = set()
     for df in raw_targets:
         if df is None or len(df) == 0 or "客户" not in df.columns:
             continue
-        target_custs.update(str(c).strip() for c in df["客户"].unique())
+        for c, grp in df.groupby(df["客户"].astype(str).str.strip()):
+            if any(safe_float(grp[d].sum()) > 0 for d in dept_cols if d in df.columns):
+                target_custs.add(str(c))
 
     sub_data: dict[str, list[str]] = {}
     for p in parents:

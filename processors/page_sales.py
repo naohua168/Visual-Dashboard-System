@@ -28,6 +28,17 @@ class SalesPage(BaseRenderer):
 
         parts = [range_banner_html(d.sales_range) + hero]
 
+        # 待确认客户触发按钮（打开右侧滑入面板）
+        if d.pending_count > 0:
+            parts.append(
+                f'<div style="display:flex;justify-content:flex-end;margin:10px 0 4px">'
+                f'<button class="pending-trigger-btn" onclick="openPendingModal()">'
+                f'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>'
+                f'待确认客户 <b>{d.pending_count}</b> 家 · {fmt_wan(d.pending_total_inc + d.pending_total_pay)} 万</button>'
+                f'</div>'
+                f'<style>.pending-trigger-btn{{display:inline-flex;align-items:center;padding:7px 16px;font-size:13px;font-weight:600;color:#fff;background:linear-gradient(135deg,#fbbf24,#f59e0b);border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 8px rgba(245,158,11,.35);transition:all .15s}}.pending-trigger-btn:hover{{transform:translateY(-1px);box-shadow:0 4px 14px rgba(245,158,11,.45)}}.pending-trigger-btn b{{font-size:15px;margin:0 2px}}</style>'
+            )
+
         # 卡片 1
         parts.append(self._card1(d))
         # 卡片 2
@@ -152,6 +163,9 @@ class SalesPage(BaseRenderer):
         parent_json = json.dumps(d.sc3_by_parent, ensure_ascii=False)
         sub_tgt_json = json.dumps(d.sc3_tgts, ensure_ascii=False)
         parent_tgt_json = json.dumps(d.sc3_tgts_by_parent, ensure_ascii=False)
+        # 按销售拆分的目标（销售个人比例口径）
+        sub_tgt_by_sales_json = json.dumps(d.sc3_tgts_by_sales, ensure_ascii=False)
+        parent_tgt_by_sales_json = json.dumps(d.sc3_tgts_by_parent_by_sales, ensure_ascii=False)
         parent_cfg_total_json = json.dumps(d.sc3_parent_cfg_total, ensure_ascii=False)
         sales_owned_json = json.dumps(d.sales_owned_subs, ensure_ascii=False)
 
@@ -163,7 +177,7 @@ class SalesPage(BaseRenderer):
             f'<span>回款目标 <b>{fmt_wan(d.total_target)}</b>万</span></div>'
         )
 
-        js_script = _card3_js_script(parent_json, sub_tgt_json, parent_tgt_json, parent_cfg_total_json, sales_owned_json)
+        js_script = _card3_js_script(parent_json, sub_tgt_json, parent_tgt_json, sub_tgt_by_sales_json, parent_tgt_by_sales_json, parent_cfg_total_json, sales_owned_json)
 
         return (
             f'<div class="section-title sec-green">销售客户达成 · 母公司→子公司 矩阵（子公司合计 = 母公司合计）</div>'
@@ -191,17 +205,32 @@ class SalesPage(BaseRenderer):
 # ═══════════════════════════════════════════════════════════════
 # 卡片 3 JS 生成器（母公司→子公司聚合视图）
 # ═══════════════════════════════════════════════════════════════
-def _card3_js_script(parent_json: str, sub_tgt_json: str, parent_tgt_json: str, parent_cfg_total_json: str, sales_owned_json: str) -> str:
+def _card3_js_script(parent_json: str, sub_tgt_json: str, parent_tgt_json: str,
+                      sub_tgt_by_sales_json: str, parent_tgt_by_sales_json: str,
+                      parent_cfg_total_json: str, sales_owned_json: str) -> str:
     depts = json.dumps(DEPARTMENTS)
     return f'''<script>
 window.__SC3P = {parent_json};   // 升级为全局变量，弹窗复用
 window.__SC3ST = {sub_tgt_json};
 window.__SC3PT = {parent_tgt_json};
+// 按销售拆分的目标（销售个人比例口径）
+window.__SC3ST_S = {sub_tgt_by_sales_json};
+window.__SC3PT_S = {parent_tgt_by_sales_json};
 window.__SC3PCT = {parent_cfg_total_json};
 window.__SC3OWNED = {sales_owned_json};
 const __SC3_DEPS = {depts};
 let __sc3Metric = "inc";
 let __sc3CurSales = "";
+
+// 当前销售的目标读取（客户级 + 母公司级）
+function __sc3CustTgt(cust, metric) {{
+    const sd = (window.__SC3ST_S && window.__SC3ST_S[__sc3CurSales]) || {{}};
+    return (sd[cust] && sd[cust][metric]) || null;
+}}
+function __sc3ParentTgt(parent, metric) {{
+    const pd = (window.__SC3PT_S && window.__SC3PT_S[__sc3CurSales]) || {{}};
+    return (pd[parent] && pd[parent][metric]) || null;
+}}
 
 function switchSc3Sales() {{
     const sel = document.getElementById("sc3SalesSel");
@@ -220,10 +249,10 @@ function switchSc3Metric(metric) {{
 
 function __sc3Build(parents) {{
     const metric = __sc3Metric, deps = __SC3_DEPS;
-    // 母公司按目标降序排列
+    // 母公司按当前销售的目标降序排列（无个人目标则用全销售目标兜底）
     const parentKeys = Object.keys(parents).sort((a, b) => {{
-        const ta = (__SC3PT[a] && __SC3PT[a][metric] && __SC3PT[a][metric].total) || 0;
-        const tb = (__SC3PT[b] && __SC3PT[b][metric] && __SC3PT[b][metric].total) || 0;
+        const ta = (__sc3ParentTgt(a, metric) && __sc3ParentTgt(a, metric).total) || (__SC3PT[a] && __SC3PT[a][metric] && __SC3PT[a][metric].total) || 0;
+        const tb = (__sc3ParentTgt(b, metric) && __sc3ParentTgt(b, metric).total) || (__SC3PT[b] && __SC3PT[b][metric] && __SC3PT[b][metric].total) || 0;
         return tb - ta;
     }});
 
@@ -238,8 +267,8 @@ function __sc3Build(parents) {{
     parentKeys.forEach(p => {{
         const subs = parents[p];
         const subKeys = Object.keys(subs).sort((a, b) => {{
-            const ta = (__SC3ST[a] && __SC3ST[a][metric] && __SC3ST[a][metric].total) || 0;
-            const tb = (__SC3ST[b] && __SC3ST[b][metric] && __SC3ST[b][metric].total) || 0;
+            const ta = (__sc3CustTgt(a, metric) && __sc3CustTgt(a, metric).total) || (__SC3ST[a] && __SC3ST[a][metric] && __SC3ST[a][metric].total) || 0;
+            const tb = (__sc3CustTgt(b, metric) && __sc3CustTgt(b, metric).total) || (__SC3ST[b] && __SC3ST[b][metric] && __SC3ST[b][metric].total) || 0;
             return tb - ta;
         }});
         if (subKeys.length === 0) return;
@@ -254,7 +283,8 @@ function __sc3Build(parents) {{
             let cells = [];
             deps.forEach((d, di) => {{
                 const v = subs[c] && subs[c][metric] ? (subs[c][metric][d] || 0) : 0;
-                const t = __SC3ST[c] && __SC3ST[c][metric] ? (__SC3ST[c][metric][d] || 0) : 0;
+                const cT = __sc3CustTgt(c, metric);
+                const t = (cT && cT[d]) || 0;
                 cells.push(__sc3Cell(v, t, false));
                 rAct += v; rTgt += t;
                 parentDepsAct[di] += v;
@@ -271,25 +301,30 @@ function __sc3Build(parents) {{
         // 该母公司下无任何有数据子公司 → 整块跳过
         if (subRowData.length === 0) return;
 
-        // 母公司标题行（有数据数 / 该销售配置拥有数 / 母公司配置总数）
         let _owned = (window.__SC3OWNED && window.__SC3OWNED[__sc3CurSales] && window.__SC3OWNED[__sc3CurSales][p]) || Object.keys(subs).length;
         let _cfgTotal = (window.__SC3PCT && window.__SC3PCT[p]) || _owned;
         let _tooltip = p + '\\n当前展示 ' + subRowData.length + '\\n销售拥有 ' + _owned + '\\n子公司总数 ' + _cfgTotal;
-        let pRow = [`<td class="td-name parent-name" colspan="${{deps.length + 2}}" style="text-align:left;font-weight:800;color:#0f172a;background:#f1f5f9;padding:6px 8px;font-size:13px" title="${{_tooltip}}">${{p}}（${{subRowData.length}}/${{_owned}}/${{_cfgTotal}}）</td>`];
-        body += '<tr class="row-parent">' + pRow.join("") + '</tr>';
 
-        // 母公司合计行（先于子公司行展示，作为母公司汇总）
-        let pSumRow = [`<td class="td-name" style="font-weight:800;color:#0f172a">▸ 母公司合计</td>`];
-        deps.forEach((d, di) => {{
-            pSumRow.push(__sc3Cell(parentDepsAct[di], parentDepsTgt[di], false));
-        }});
-        pSumRow.push(__sc3Cell(parentTotalAct, parentTotalTgt, true));
-        body += '<tr class="row-data row-parent-total" style="background:#eef2ff;font-weight:700">' + pSumRow.join("") + '</tr>';
+        if (subRowData.length === 1) {{
+            // 母子公司 1:1 — 只显示子公司行（四部门详情），不显示母公司行
+            const sr = subRowData[0];
+            body += '<tr class="row-data row-sub" style="color:#475569" title="' + _tooltip + '"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">1</span>' + sr.name + '</td>' + sr.cells.join("") + '</tr>';
+        }} else {{
+            // 母子公司 1:N — 母公司合计行（母公司名 合计 + 四部门详情）
+            let pSumRow = [`<td class="td-name" style="font-weight:800;color:#0f172a;background:#eef2ff" title="${{_tooltip}}">${{p}} 合计</td>`];
+            deps.forEach((d, di) => {{
+                pSumRow.push(__sc3Cell(parentDepsAct[di], parentDepsTgt[di], false));
+            }});
+            pSumRow.push(__sc3Cell(parentTotalAct, parentTotalTgt, true));
+            body += '<tr class="row-data row-parent-total" style="background:#eef2ff;font-weight:700">' + pSumRow.join("") + '</tr>';
 
-        // 子公司明细行（在母公司合计之下缩进显示）
-        subRowData.forEach((sr, i) => {{
-            body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">' + (i + 1) + '</span>' + sr.name + '</td>' + sr.cells.join("") + '</tr>';
-        }});
+            // 子公司明细行（在母公司合计之下缩进显示）
+            subRowData.forEach((sr, i) => {{
+                body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">' + (i + 1) + '</span>' + sr.name + '</td>' + sr.cells.join("") + '</tr>';
+            }});
+        }}
+        // 每个母公司块结束后插入空行作为视觉分隔
+        body += '<tr class="row-sep"><td colspan="' + (deps.length + 2) + '" style="height:28px !important;padding:0 !important;background:#bfdbfe !important;border-top:2px solid #60a5fa !important;border-bottom:2px solid #3b82f6 !important;box-shadow:inset 0 6px 0 #bfdbfe,inset 0 -6px 0 #bfdbfe"></td></tr>';
     }});
 
     if (!body) {{
@@ -560,14 +595,25 @@ def _sales_modal_html() -> str:
         _renderModal();
     }}
 
-    // ── 计算某母公司的总实际/总目标 ──
+    // 当前销售的目标读取（客户级 + 母公司级）
+    function _custTgt(cust, metric) {{
+        const sd = (window.__SC3ST_S && window.__SC3ST_S[_curSales]) || {{}};
+        return (sd[cust] && sd[cust][metric]) || null;
+    }}
+    function _parentTgt(parent, metric) {{
+        const pd = (window.__SC3PT_S && window.__SC3PT_S[_curSales]) || {{}};
+        return (pd[parent] && pd[parent][metric]) || null;
+    }}
+
+    // ── 计算某母公司的总实际/总目标（按当前销售个人目标）──
     function _parentTotals(parents, p) {{
         let act = 0, tgt = 0;
         const subs = parents[p] || {{}};
         Object.keys(subs).forEach(c => {{
+            const cT = _custTgt(c, _curMetric);
             _DEPS.forEach(d => {{
                 act += subs[c] && subs[c][_curMetric] ? (subs[c][_curMetric][d] || 0) : 0;
-                tgt += window.__SC3ST[c] && window.__SC3ST[c][_curMetric] ? (window.__SC3ST[c][_curMetric][d] || 0) : 0;
+                tgt += (cT && cT[d]) || 0;
             }});
         }});
         return [act, tgt];
@@ -606,10 +652,11 @@ def _sales_modal_html() -> str:
             let pActAll = 0, pTgtAll = 0;
             subKeys.forEach((c, i) => {{
                 let rAct = 0, rTgt = 0;
-                let cells = [`<td class="td-name">${{c}}</td>`];
+                let cells = [];
+                const cT = _custTgt(c, _curMetric);
                 _DEPS.forEach((d, di) => {{
                     const v = subs[c] && subs[c][_curMetric] ? (subs[c][_curMetric][d] || 0) : 0;
-                    const t = window.__SC3ST[c] && window.__SC3ST[c][_curMetric] ? (window.__SC3ST[c][_curMetric][d] || 0) : 0;
+                    const t = (cT && cT[d]) || 0;
                     cells.push(_modalCell(v, t));
                     rAct += v; rTgt += t;
                     depActs[di] += v;
@@ -629,18 +676,21 @@ def _sales_modal_html() -> str:
             let _owned = (window.__SC3OWNED && window.__SC3OWNED[_curSales] && window.__SC3OWNED[_curSales][p]) || Object.keys(subs).length;
             let _cfgTotal = (window.__SC3PCT && window.__SC3PCT[p]) || _owned;
             let _tooltip = p + '\\n当前展示 ' + subRowData.length + '\\n销售拥有 ' + _owned + '\\n子公司总数 ' + _cfgTotal;
-            body += `<tr class="row-parent"><td class="parent-name" colspan="${{_DEPS.length + 2}}" title="${{_tooltip}}">${{p}}（${{subRowData.length}}/${{_owned}}/${{_cfgTotal}}）</td></tr>`;
 
-            // 母公司合计行（先于子公司行展示，作为母公司汇总）
-            let pSumRow = [`<td class="td-name" style="font-weight:700;background:#eef2ff">▸ 母公司合计</td>`];
-            _DEPS.forEach((d, di) => {{
-                pSumRow.push(_modalCell(depActs[di], depTgts[di]));
-            }});
-            pSumRow.push(_modalCell(pActAll, pTgtAll, true));
-            body += '<tr class="row-data row-parent-total" style="background:#eef2ff;font-weight:700">' + pSumRow.join('') + '</tr>';
+            if (subRowData.length === 1) {{
+                // 母子公司 1:1 — 只显示子公司行（四部门详情），不显示母公司行
+                const sr = subRowData[0];
+                body += '<tr class="row-data row-sub" style="color:#475569" title="' + _tooltip + '"><td class="td-name" style="padding-left:16px">' + sr.name + '</td>' + sr.cells.join('') + '</tr>';
+            }} else {{
+                // 母子公司 1:N — 母公司合计行（母公司名 合计 + 四部门详情）
+                let pSumRow = [`<td class="td-name" style="font-weight:700;background:#eef2ff" title="${{_tooltip}}">${{p}} 合计</td>`];
+                _DEPS.forEach((d, di) => {{
+                    pSumRow.push(_modalCell(depActs[di], depTgts[di]));
+                }});
+                pSumRow.push(_modalCell(pActAll, pTgtAll, true));
+                body += '<tr class="row-data row-parent-total" style="background:#eef2ff;font-weight:700">' + pSumRow.join('') + '</tr>';
 
-            // 子公司明细行（后于母公司合计；1:1 自引用时跳过——母公司标题已显示公司名）
-            if (!(subRowData.length === 1 && subRowData[0].name === p)) {{
+                // 子公司明细行
                 subRowData.forEach((sr, i) => {{
                     body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:16px">' + sr.name + '</td>' + sr.cells.join('') + '</tr>';
                 }});
@@ -648,6 +698,9 @@ def _sales_modal_html() -> str:
 
             totalAct += pActAll; totalTgt += pTgtAll;
             totalSubs += subRowData.length;
+
+            // 每个母公司块结束后插入空行作为视觉分隔
+            body += '<tr class="row-sep"><td colspan="' + (_DEPS.length + 2) + '" style="height:28px !important;padding:0 !important;background:#bfdbfe !important;border-top:2px solid #60a5fa !important;border-bottom:2px solid #3b82f6 !important;box-shadow:inset 0 6px 0 #bfdbfe,inset 0 -6px 0 #bfdbfe"></td></tr>';
         }});
 
         if (!body) {{
@@ -665,9 +718,10 @@ def _sales_modal_html() -> str:
             let nSubs = 0;
             Object.keys(subs).forEach(c => {{
                 let sA = 0, sT = 0;
+                const cT = _custTgt(c, _curMetric);
                 _DEPS.forEach(d => {{
                     sA += subs[c] && subs[c][_curMetric] ? (subs[c][_curMetric][d] || 0) : 0;
-                    sT += window.__SC3ST[c] && window.__SC3ST[c][_curMetric] ? (window.__SC3ST[c][_curMetric][d] || 0) : 0;
+                    sT += (cT && cT[d]) || 0;
                 }});
                 if (sA > 0 || sT > 0) nSubs++;
             }});
