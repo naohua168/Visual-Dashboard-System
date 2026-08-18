@@ -137,6 +137,8 @@ class AnnualData:
     # 弹窗：母公司→子公司×4部门实际/目标明细
     subs_detail_inc: dict = field(default_factory=dict)
     subs_detail_pay: dict = field(default_factory=dict)
+    # 左侧列表：母公司→全量子公司名列表（来自 children_map）
+    subs_all: dict = field(default_factory=dict)
     # 部门卡用 DataFrame
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -196,6 +198,7 @@ def prepare_annual_data(data, base_dir: Path) -> AnnualData:
     # 弹窗：构建"有数据"的子公司列表（去重合并 inc/pay 客户表）
     children_map = _load_children_map()
     all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
+    d.subs_all = children_map  # 左侧列表：全量子公司名（配置来源）
     d.subs_with_data = _build_subs_with_data(
         [data.income, data.payment],
         [data.annual_income_targets, data.annual_payment_targets],
@@ -243,6 +246,8 @@ class MonthlyData:
     # 弹窗：母公司→子公司×4部门实际/目标明细
     subs_detail_inc: dict = field(default_factory=dict)
     subs_detail_pay: dict = field(default_factory=dict)
+    # 左侧列表：母公司→全量子公司名列表（来自 children_map）
+    subs_all: dict = field(default_factory=dict)
     # 部门卡
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -338,6 +343,7 @@ def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
     # 弹窗：构建"有数据"的子公司列表
     children_map = _load_children_map()
     all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
+    d.subs_all = children_map  # 左侧列表：全量子公司名（配置来源）
     d.subs_with_data = _build_subs_with_data(
         [raw_inc, raw_pay],
         [data.monthly_income_targets, data.monthly_payment_targets],
@@ -387,6 +393,8 @@ class QuarterlyData:
     # 弹窗：母公司→子公司×4部门实际/目标明细
     subs_detail_inc: dict = field(default_factory=dict)
     subs_detail_pay: dict = field(default_factory=dict)
+    # 左侧列表：母公司→全量子公司名列表（来自 children_map）
+    subs_all: dict = field(default_factory=dict)
     # 部门卡
     df_inc: pd.DataFrame = field(default_factory=pd.DataFrame)
     df_pay: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -468,6 +476,7 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     # 弹窗：构建"有数据"的子公司列表（用原始未 consolidate 数据，保留子公司独立行）
     children_map = _load_children_map()
     all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
+    d.subs_all = children_map  # 左侧列表：全量子公司名（配置来源）
     d.subs_with_data = _build_subs_with_data(
         [q_inc_raw, q_pay_raw],
         [data.quarterly_income_targets, data.quarterly_payment_targets],

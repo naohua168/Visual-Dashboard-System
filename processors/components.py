@@ -142,13 +142,27 @@ def cust_tab_bar(inc_div_id: str, pay_div_id: str) -> str:
 
 
 def children_modal_html(uid: str) -> str:
-    """点击母公司查看子公司详情的右侧滑入抽屉（统一ID避免多页冲突）
+    """点击母公司查看子公司详情的左右联动抽屉（同一图层，同时出现/消失）
 
-    行为：点击遮罩层/×/ESC = 关闭；抽屉内部可滚动。
+    结构（一个 modal 容器内）：
+    - backdrop（半透明遮罩，点击关闭）
+    - .children-left-panel  子公司名列表（左侧 slide-in）
+    - .children-modal-panel 子公司×4部门详情（右侧 slide-in）
+    左右 panel 共用同一个开关函数，同一图层显示/隐藏。
     """
     return (
         f'<div id="{uid}_modal" class="children-modal hidden">'
+        # 单一遮罩（覆盖中间空白区，点击关闭）
         f'<div class="children-modal-backdrop" onclick="{uid}_close()"></div>'
+        # 左侧 panel：子公司名列表
+        f'<div id="{uid}_left_panel" class="children-left-panel">'
+        f'<div class="children-left-header">'
+        f'<span id="{uid}_left_title">子公司列表</span>'
+        f'<button onclick="{uid}_close()" title="关闭">×</button>'
+        f'</div>'
+        f'<div id="{uid}_left_body" class="children-left-body"></div>'
+        f'</div>'
+        # 右侧 panel：子公司×4部门详情
         f'<div id="{uid}_panel" class="children-modal-panel">'
         f'<div class="children-modal-header">'
         f'<div style="display:flex;flex-direction:column;gap:4px;min-width:0">'
@@ -168,12 +182,25 @@ def children_modal_html(uid: str) -> str:
         f'box-shadow:-10px 0 40px rgba(0,0,0,0.18);display:flex;flex-direction:column;'
         f'transform:translateX(100%);transition:transform 0.3s cubic-bezier(0.16,1,0.3,1)}} '
         f'.children-modal-panel.show{{transform:translateX(0)}} '
+        f'.children-left-panel{{position:fixed;left:0;top:0;width:min(70vw,360px);height:100vh;background:#fff;'
+        f'box-shadow:10px 0 40px rgba(0,0,0,0.18);display:flex;flex-direction:column;'
+        f'transform:translateX(-100%);transition:transform 0.3s cubic-bezier(0.16,1,0.3,1)}} '
+        f'.children-left-panel.show{{transform:translateX(0)}} '
         f'.children-modal-header{{padding:16px 20px;background:#1e293b;color:#fff;display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0}} '
         f'.children-modal-header span{{font-size:16px;font-weight:700}} '
         f'.children-modal-header button{{background:transparent;color:#fff;border:none;font-size:22px;cursor:pointer;padding:0 4px;line-height:1}} '
+        f'.children-left-header{{padding:16px 20px;background:#1e293b;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}} '
+        f'.children-left-header span{{font-size:15px;font-weight:700}} '
+        f'.children-left-header button{{background:transparent;color:#fff;border:none;font-size:22px;cursor:pointer;padding:0 4px;line-height:1}} '
         f'.children-modal-kpi{{font-size:12px;color:#cbd5e1;margin-top:6px}} '
         f'.children-modal-kpi b{{color:#fff;font-weight:600}} '
         f'.children-modal-body{{flex:1;min-height:0;padding:16px 20px;overflow-y:auto;overflow-x:auto}} '
+        f'.children-left-body{{flex:1;min-height:0;padding:10px 12px;overflow-y:auto}} '
+        f'.children-left-item{{padding:8px 10px;border-radius:6px;font-size:13px;color:#1e293b;cursor:pointer;'
+        f'border-bottom:1px solid #f1f5f9;transition:background 0.12s}} '
+        f'.children-left-item:hover{{background:#eef2ff}} '
+        f'.children-left-item .li-idx{{color:#94a3b8;font-weight:400;margin-right:8px;font-size:11px}} '
+        f'.children-left-empty{{text-align:center;color:#94a3b8;padding:40px 10px;font-size:13px}} '
         f'.children-modal-table{{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}} '
         f'.children-modal-table th{{position:sticky;top:0;background:#f8fafc;padding:10px 8px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0;text-align:center}} '
         f'.children-modal-table td{{padding:8px;border-bottom:1px solid #f1f5f9;text-align:center}} '
@@ -190,17 +217,20 @@ def children_modal_html(uid: str) -> str:
         f'.children-modal-table .row-head-office .td-sub-name{{color:#92400e}} '
         f'.children-modal-table .td-sub-name .sub-idx{{color:#94a3b8;font-weight:400;margin-right:6px}} '
         f'.children-modal-table .td-sub-name .sub-dot{{color:#c7d2fe;margin:0 4px}} '
+        f'.children-modal-table tr.sub-highlight td{{background:rgba(59,130,246,0.18)!important}} '
+        f'.children-modal-table tr.sub-highlight .td-sub-name{{color:#1e3a8a;font-weight:700}} '
         f'.td-name-clickable{{user-select:none;cursor:pointer;color:var(--accent)}} '
         f'.td-name-clickable:hover{{background:rgba(59,130,246,0.08)}} '
         f'.expand-hint{{font-size:10px;color:var(--accent);margin-left:4px;font-weight:600}}</style>'
     )
 
 
-def children_modal_js(uid: str, sub_detail_json: str) -> str:
-    """抽屉 JS：使用指定 uid 避免多页冲突。渲染子公司×4部门+合计的实际/目标/完成度表格。"""
+def children_modal_js(uid: str, sub_detail_json: str, left_data_json: str = "[]") -> str:
+    """抽屉 JS：使用指定 uid 避免多页冲突。渲染子公司×4部门+合计的实际/目标/完成度表格 + 左侧子公司名列表。"""
     return (
         f'<script>'
         f'window["{uid}_DATA"]={sub_detail_json};'
+        f'window["{uid}_LEFT"]={left_data_json};'
         f'const {uid}_DEPS=["检测","信息","能源","海外","合计"];'
         f'function {uid}_fmt(v){{return Number(v||0).toLocaleString("zh-CN",{{maximumFractionDigits:0}});}}'
         f'function {uid}_cell(act,tgt){{'
@@ -254,9 +284,9 @@ def children_modal_js(uid: str, sub_detail_json: str) -> str:
         f'{uid}_DEPS.forEach(function(d){{var cell=hrow[d]||{{act:0,tgt:0}};b+={uid}_cell(cell.act,cell.tgt);}});'
         f'b+="</tr>";'
         f'}}'
-        # ③ 子公司明细行（带序号）
+        # ③ 子公司明细行（带序号 + data-sub 供左侧列表联动定位）
         f'subList.forEach(function(s,i){{'
-        f'var row=data[s];b+="<tr><td class=\\"td-sub-name\\"><span class=\\"sub-idx\\">"+(i+1)+".</span>"+s+"</td>";'
+        f'var row=data[s];b+="<tr data-sub=\\""+s+"\\"><td class=\\"td-sub-name\\"><span class=\\"sub-idx\\">"+(i+1)+".</span>"+s+"</td>";'
         f'{uid}_DEPS.forEach(function(d){{var cell=row[d]||{{act:0,tgt:0}};b+={uid}_cell(cell.act,cell.tgt);}});'
         f'b+="</tr>";'
         f'}});'
@@ -266,19 +296,61 @@ def children_modal_js(uid: str, sub_detail_json: str) -> str:
         f'}}'
         f'document.getElementById("{uid}_body").innerHTML="<table class=\\"children-modal-table\\">"+h+"<tbody>"+b+"</tbody></table>";'
         f'document.getElementById("{uid}_title").textContent=name+" · 子公司 ("+subList.length+"家)";'
+        f'var leftSubs=window["{uid}_LEFT"]&&window["{uid}_LEFT"][name]||[];'
+        f'document.getElementById("{uid}_left_title").textContent=name+" · 子公司列表 ("+leftSubs.length+"家)";'
+        f'var lb="";'
+        f'if(!leftSubs.length){{'
+        f'lb=\'<div class="children-left-empty">该母公司暂无配置子公司</div>\';'
+        f'}}else{{'
+        f'leftSubs.forEach(function(s,i){{'
+        f'var isHO=(s.indexOf("（本部）")>=0);'
+        f'lb+=\'<div class="children-left-item" onclick="{uid}_left_pick(\\\'\'+s.replace(/\'/g,"\\\\\'")+\'\\\')" '
+        f'title="点击右侧查看详情">\''
+        f'+\'<span class="li-idx">\'+(isHO?"※":(i+1))+\'.</span>\'+s+\'</div>\';'
+        f'}});'
         f'}}'
-        # 打开抽屉并锁定背景滚动
+        f'document.getElementById("{uid}_left_body").innerHTML=lb;'
+        f'}}'
+        # 打开抽屉并锁定背景滚动：左右 panel 同步出现（同一图层）
         f'setTimeout(function(){{'
         f'document.getElementById("{uid}_modal").classList.remove("hidden");'
         f'document.getElementById("{uid}_panel").classList.add("show");'
+        f'var lp=document.getElementById("{uid}_left_panel");if(lp)lp.classList.add("show");'
         f'document.body.style.overflow="hidden";'
+        # 打开时清除上一次高亮
+        f'if(window["{uid}_cur_hl_clear"]){{{uid}_cur_hl_clear();}}'
         f'}},150);'
         f'}}'
         f'function {uid}_close(){{'
         f'document.getElementById("{uid}_panel").classList.remove("show");'
+        f'var lp=document.getElementById("{uid}_left_panel");if(lp)lp.classList.remove("show");'
         f'setTimeout(function(){{document.getElementById("{uid}_modal").classList.add("hidden");document.body.style.overflow="";}},250);'
         f'}}'
-        f'document.addEventListener("keydown",function(e){{if(e.key==="Escape"){uid}_close()}});'
+        # 左侧列表联动：滚动右侧抽屉到指定子公司行并高亮
+        f'function {uid}_scroll_to_sub(subName){{'
+        f'var rows=document.querySelectorAll("#{uid}_body tr[data-sub]");'
+        f'for(var i=0;i<rows.length;i++){{'
+        f'var r=rows[i];'
+        f'if(r.getAttribute("data-sub")===subName){{'
+        f'r.scrollIntoView({{block:"center",behavior:"smooth"}});'
+        f'window["{uid}_CUR_HL"]={uid}_cur_hl_clear();'
+        f'r.classList.add("sub-highlight");'
+        f'window["{uid}_CUR_HL"]=r;'
+        f'return;'
+        f'}}}}'
+        f'}}'
+        # 清除上一个高亮行
+        f'function {uid}_cur_hl_clear(){{'
+        f'var p=window["{uid}_CUR_HL"];'
+        f'if(p){{p.classList.remove("sub-highlight");}}'
+        f'return null;'
+        f'}}'
+        # 左侧列表项点击 → 滚动右侧到对应行
+        f'function {uid}_left_pick(subName){{'
+        f'var fn=window["{uid}_scroll_to_sub"];'
+        f'if(fn){{setTimeout(function(){{fn(subName);}},200);}}'
+        f'}}'
+        f'document.addEventListener("keydown",function(e){{if(e.key==="Escape"){{{uid}_close();}}}});'
         f'</script>'
     )
 

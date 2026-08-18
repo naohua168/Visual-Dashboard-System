@@ -35,8 +35,8 @@ class AnnualPage(BaseRenderer):
         )
 
         # 收入/回款两个 tab 各自独立 matrix 和 toggle ID
-        inc_table = self._build_matrix(d.inc_piv, d.inc_tgt_grouped, d.inc_customers, d.t_inc, d.inc_rest, tab="inc", subs_with_data=d.subs_with_data, subs_detail=d.subs_detail_inc)
-        pay_table = self._build_matrix(d.pay_piv, d.pay_tgt_grouped, d.pay_customers, d.t_pay, d.pay_rest, tab="pay", subs_with_data=d.subs_with_data, subs_detail=d.subs_detail_pay)
+        inc_table = self._build_matrix(d.inc_piv, d.inc_tgt_grouped, d.inc_customers, d.t_inc, d.inc_rest, tab="inc", subs_with_data=d.subs_with_data, subs_detail=d.subs_detail_inc, subs_all=d.subs_all)
+        pay_table = self._build_matrix(d.pay_piv, d.pay_tgt_grouped, d.pay_customers, d.t_pay, d.pay_rest, tab="pay", subs_with_data=d.subs_with_data, subs_detail=d.subs_detail_pay, subs_all=d.subs_all)
         matrix = (
             f'<div class="section-title sec-sky">重要客户年度达成 · 收入/回款（万元）</div>'
             + cust_tab_bar("annual-cust-inc", "annual-cust-pay")
@@ -48,10 +48,11 @@ class AnnualPage(BaseRenderer):
             range_banner_html(d.annual_range) + hero + dept_cards + matrix, d.date_range
         )
 
-    def _build_matrix(self, piv, tgt_grouped, customers, t_all, rest_customers=None, tab="inc", subs_with_data=None, subs_detail=None) -> str:
+    def _build_matrix(self, piv, tgt_grouped, customers, t_all, rest_customers=None, tab="inc", subs_with_data=None, subs_detail=None, subs_all=None) -> str:
         """纯 HTML 生成 — 接收已 pivoted 的 DataFrame，支持折叠其余客户 + 点击母公司看子公司
 
         tab="inc"/"pay" 用于生成独立的 matrix 和 toggle 按钮 ID，避免收入/回款两 tab ID 冲突。
+        subs_all: 母公司→全量子公司名列表，供左侧抽屉展示。
         """
         if rest_customers is None:
             rest_customers = []
@@ -59,6 +60,8 @@ class AnnualPage(BaseRenderer):
             subs_with_data = {}
         if subs_detail is None:
             subs_detail = {}
+        if subs_all is None:
+            subs_all = {}
         all_custs = customers + rest_customers
         matrix_id = f"annual-{tab}-matrix"
         toggle_id = f"annual-{tab}-toggle"
@@ -130,6 +133,9 @@ class AnnualPage(BaseRenderer):
         import json
         sub_data = {p: subs_detail[p] for p in all_custs if p in subs_detail}
         sub_json = json.dumps(sub_data, ensure_ascii=False)
+        # 左侧列表数据：母公司→全量子公司名（同一图层共享一个 modal）
+        left_data = {p: subs_all.get(p, []) for p in all_custs if p in subs_all}
+        left_json = json.dumps(left_data, ensure_ascii=False)
 
         return (
             f'<div class="table-wrap ann-matrix-wrap no-collapse" id="{matrix_id}">'
@@ -139,5 +145,5 @@ class AnnualPage(BaseRenderer):
             f'每格：百分比 / 实际金额 / 目标金额 · 全公司合计 '
             f'<strong style="color:var(--accent)">{fmt_wan(t_all)}</strong> 万</div>'
             f'{children_modal_html(uid)}'
-            f'{children_modal_js(uid, sub_json)}'
+            f'{children_modal_js(uid, sub_json, left_json)}'
         )
