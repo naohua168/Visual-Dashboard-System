@@ -2,8 +2,6 @@
 """
 from __future__ import annotations
 
-import pandas as pd
-
 from .base import BaseRenderer
 from .utils import fmt_wan, fmt_yoy, safe_float, extract_date_range, range_banner_html
 from .page_data import prepare_yoy_data, DEPARTMENTS

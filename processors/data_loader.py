@@ -4,7 +4,6 @@
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -79,15 +78,43 @@ def _read_optional(path: Path) -> pd.DataFrame | None:
         return None
 
 
-def _find_xlsx(folder: Path) -> Path:
-    """从文件夹中查找唯一的 xlsx 文件（排除 ~$ 临时锁定文件）"""
-    xlsx_files = [f for f in folder.glob("*.xlsx") if not f.name.startswith("~$")]
-    if len(xlsx_files) == 1:
-        return xlsx_files[0]
-    if len(xlsx_files) > 1:
-        return xlsx_files[0]
-    # 文件夹不存在时返回默认路径（用于错误提示）
-    return folder / f"{folder.name}.xlsx"
+def _find_xlsx(folder: Path) -> Path | None:
+    """从文件夹中查找 xlsx 文件（排除 ~$ 临时锁定文件）
+
+    选择策略：
+    1. 优先取与文件夹同名的 xlsx（清洗引擎的规范输出，最可靠）
+    2. 否则取最近修改的文件（glob 顺序不保证，避免拿错历史版本）
+    3. 目录不存在或无 xlsx → 返回 None
+    """
+    if not folder.is_dir():
+        return None
+    files = sorted(
+        (f for f in folder.glob("*.xlsx") if not f.name.startswith("~$")),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    if not files:
+        return None
+    for f in files:
+        if f.stem == folder.name:
+            return f
+    return files[0]
+
+
+def _require_xlsx(folder: Path, label: str) -> Path:
+    """读取必需表，缺失时抛出指明目录的错误"""
+    path = _find_xlsx(folder)
+    if path is None:
+        raise FileNotFoundError(f"缺少必需数据: {folder}（{label}）")
+    return path
+
+
+def _read_optional_folder(folder: Path) -> pd.DataFrame | None:
+    """读取可选目录下的表，目录缺失/为空返回 None"""
+    path = _find_xlsx(folder)
+    if path is None:
+        return None
+    return _read_optional(path)
 
 
 def load_all(base_dir: Path) -> DashboardData:
@@ -102,34 +129,29 @@ def load_all(base_dir: Path) -> DashboardData:
     MAN = "手动维护"
 
     # 优先加载当年累计（全量数据），从文件夹自动查找xlsx
-    income = _read_optional(_find_xlsx(sheets / SYS / "当年累计收入"))
-    if income is None:
-        raise FileNotFoundError(f"缺少核心数据: {sheets / SYS / '当年累计收入'}")
+    income = _read_optional(_require_xlsx(sheets / SYS / "当年累计收入", "当年累计收入"))
+    payment = _read_optional(_require_xlsx(sheets / SYS / "当年累计回款", "当年累计回款"))
 
-    payment = _read_optional(_find_xlsx(sheets / SYS / "当年累计回款"))
-    if payment is None:
-        raise FileNotFoundError(f"缺少核心数据: {sheets / SYS / '当年累计回款'}")
+    sales_income = pd.read_excel(_require_xlsx(sheets / SYS / "销售收入", "销售收入"))
+    sales_payment = pd.read_excel(_require_xlsx(sheets / SYS / "销售回款", "销售回款"))
 
-    sales_income = pd.read_excel(_find_xlsx(sheets / SYS / "销售收入"))
-    sales_payment = pd.read_excel(_find_xlsx(sheets / SYS / "销售回款"))
+    annual_income_tgt = pd.read_excel(_require_xlsx(sheets / MAN / "年度收入总指标", "年度收入总指标"))
+    annual_payment_tgt = pd.read_excel(_require_xlsx(sheets / MAN / "年度回款总指标", "年度回款总指标"))
+    quarterly_income_tgt = pd.read_excel(_require_xlsx(sheets / MAN / "季度收入指标", "季度收入指标"))
+    quarterly_payment_tgt = pd.read_excel(_require_xlsx(sheets / MAN / "季度回款指标", "季度回款指标"))
+    monthly_income_tgt = pd.read_excel(_require_xlsx(sheets / MAN / "月度收入指标", "月度收入指标"))
+    monthly_payment_tgt = pd.read_excel(_require_xlsx(sheets / MAN / "月度回款指标", "月度回款指标"))
 
-    annual_income_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "年度收入总指标"))
-    annual_payment_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "年度回款总指标"))
-    quarterly_income_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "季度收入指标"))
-    quarterly_payment_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "季度回款指标"))
-    monthly_income_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "月度收入指标"))
-    monthly_payment_tgt = pd.read_excel(_find_xlsx(sheets / MAN / "月度回款指标"))
-
-    yearly_income = _read_optional(_find_xlsx(sheets / SYS / "往年收入"))
-    yearly_payment = _read_optional(_find_xlsx(sheets / SYS / "往年回款"))
+    yearly_income = _read_optional_folder(sheets / SYS / "往年收入")
+    yearly_payment = _read_optional_folder(sheets / SYS / "往年回款")
 
     # 季度累计数据
-    quarterly_income = _read_optional(_find_xlsx(sheets / SYS / "季度累计收入"))
-    quarterly_payment = _read_optional(_find_xlsx(sheets / SYS / "季度累计回款"))
+    quarterly_income = _read_optional_folder(sheets / SYS / "季度累计收入")
+    quarterly_payment = _read_optional_folder(sheets / SYS / "季度累计回款")
 
     # 月明细数据
-    monthly_income_detail = _read_optional(_find_xlsx(sheets / SYS / "月收入"))
-    monthly_payment_detail = _read_optional(_find_xlsx(sheets / SYS / "月回款"))
+    monthly_income_detail = _read_optional_folder(sheets / SYS / "月收入")
+    monthly_payment_detail = _read_optional_folder(sheets / SYS / "月回款")
 
     return DashboardData(
         income=income,
@@ -150,13 +172,3 @@ def load_all(base_dir: Path) -> DashboardData:
         monthly_payment_detail=monthly_payment_detail,
         sales_targets=None,  # 销售规则已移除，目标由手工指标表直接读取
     )
-
-
-def safe_float(v) -> float:
-    """安全转 float，失败返回 0"""
-    try:
-        if v is None or (isinstance(v, float) and math.isnan(v)):
-            return 0.0
-        return float(v)
-    except (ValueError, TypeError):
-        return 0.0

@@ -79,8 +79,12 @@ def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
         s = _strip(c)
         if s in stripped_map:
             return stripped_map[s]
+        # 模糊子串匹配：仅当双方去后缀名都 >=4 字符时才做，避免"科技公司"这类
+        # 短占位名（去后缀后="科技"）被任意含"科技"的子公司名误映射到其母公司
+        # （如 福建市场→国鸿氢能科技...广州氢能研发中心，导致指标错误归并）
         for sub, parent in sorted(_SUB_TO_PARENT.items(), key=lambda x: -len(x[0])):
-            if _strip(sub) in s or s in _strip(sub):
+            sub_st = _strip(sub)
+            if len(sub_st) >= 4 and len(s) >= 4 and (sub_st in s or s in sub_st):
                 return parent
         return c
 
@@ -110,11 +114,50 @@ def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
 
 
+def _load_sub_sales_to_parent() -> dict[tuple[str, str], str]:
+    """加载 (子公司, 销售) → 父组 映射 — 重叠客户（同子公司归属多父组）按销售区分
+
+    例如 福龙马集团：配置中 福建市场→福龙马(江国川)、广东自有客户→福龙马(黎国键)
+    → (福龙马, 江国川)→福建市场, (福龙马, 黎国键)→广东自有客户
+    """
+    import json
+    path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    result: dict[tuple[str, str], str] = {}
+    for parent, group in data.get("客户归属", {}).items():
+        for sub, sub_cfg in group.get("子公司", {}).items():
+            sub_key = sub.strip()
+            if isinstance(sub_cfg, dict):
+                for metric_cfg in sub_cfg.values():
+                    if isinstance(metric_cfg, dict):
+                        for dept_cfg in metric_cfg.values():
+                            if isinstance(dept_cfg, dict):
+                                for sales_name in dept_cfg.keys():
+                                    result[(sub_key, str(sales_name).strip())] = parent
+    return result
+
+
 def _consolidate_target(tgt_df: pd.DataFrame) -> pd.DataFrame:
-    """合并目标表：子公司名替换为母公司（复用 _consolidate_customers），然后按 (客户, 销售) 聚合部门指标"""
+    """合并目标表：子公司名替换为母公司（复用 _consolidate_customers），然后按 (客户, 销售) 聚合部门指标
+
+    重叠客户（同子公司归属多父组）先按 (客户, 销售) 归并到正确父组——
+    指标表没有法人主体列，但销售列可区分（如 福龙马+黎国键→广东自有客户、福龙马+江国川→福建市场）
+    """
     if len(tgt_df) == 0:
         return tgt_df
-    df = _consolidate_customers(tgt_df.copy())
+    df = tgt_df.copy()
+    if "销售" in df.columns:
+        sub_sales_to_parent = _load_sub_sales_to_parent()
+        for idx, row in df.iterrows():
+            cust = str(row.get("客户", "")).strip()
+            sales = str(row.get("销售", "")).strip()
+            parent = sub_sales_to_parent.get((cust, sales))
+            if parent:
+                df.at[idx, "客户"] = parent
+    df = _consolidate_customers(df)
     dept_cols = [c for c in DEPARTMENTS if c in df.columns]
     if dept_cols:
         df = df.groupby(["客户", "销售"], as_index=False, dropna=False)[dept_cols].sum()

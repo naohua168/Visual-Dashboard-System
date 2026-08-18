@@ -21,6 +21,28 @@ BASE_DIR = Path(__file__).parent.parent.resolve()
 CHART_JS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
 
 
+def _chartjs_snippet() -> str:
+    """Chart.js 注入片段：优先本地内联（离线/内网可用），本地缺失时回退 CDN"""
+    local = BASE_DIR / "processors" / "static" / "chart.umd.min.js"
+    if local.exists():
+        # 防御性转义，防止未来构建版本出现 </script> 破坏 HTML 解析
+        js = local.read_text(encoding="utf-8").replace("</script>", "<\\/script>")
+        return f"<script>{js}</script>"
+    return (
+        "<script>\n"
+        "// Chart.js CDN 兜底加载（本地 processors/static/chart.umd.min.js 缺失时启用）\n"
+        "(function(){\n"
+        "  var s=document.createElement('script');\n"
+        "  s.src='" + CHART_JS_CDN + "';\n"
+        "  s.async=true;\n"
+        "  s.defer=true;\n"
+        "  s.onerror=function(){console.warn('Chart.js CDN failed; charts will be skipped')};\n"
+        "  document.head.appendChild(s);\n"
+        "})();\n"
+        "</script>"
+    )
+
+
 def _load_config() -> dict:
     cfg_path = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
     with open(cfg_path, "r", encoding="utf-8") as f:
@@ -85,17 +107,7 @@ def build_html(data, title: str, frontend_cfg: dict) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0">
 <title>{title} · {today}</title>
 <style>{GLOBAL_CSS}{GLOBAL_OV_CSS}</style>
-<script>
-// Chart.js 异步加载包装器：CDN 失败时不影响页面功能
-(function(){{
-  var s=document.createElement('script');
-  s.src='{CHART_JS_CDN}';
-  s.async=true;
-  s.defer=true;
-  s.onerror=function(){{console.warn('Chart.js CDN failed; charts will be skipped')}};
-  document.head.appendChild(s);
-}})();
-</script>
+{_chartjs_snippet()}
 </head>
 <body>
 <script>{GLOBAL_JS}</script>

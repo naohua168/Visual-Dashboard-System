@@ -1,29 +1,9 @@
 """测试数据加载器"""
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
+from tests.conftest import BASE_DIR, has_sheets
 from processors.data_loader import DashboardData, load_all
-
-BASE_DIR = Path(__file__).parent.parent
-
-
-def has_sheets():
-    sheets = BASE_DIR / "data" / "sheets"
-    sys_data = [
-        "当年累计收入/当年累计收入.xlsx", "当年累计回款/当年累计回款.xlsx",
-        "销售收入/销售收入.xlsx", "销售回款/销售回款.xlsx",
-    ]
-    if not all((sheets / r).exists() for r in sys_data):
-        return False
-    man = sheets / "手动维护"
-    required_man = [
-        "年度收入总指标", "年度回款总指标",
-        "季度收入指标", "季度回款指标",
-        "月度收入指标", "月度回款指标",
-    ]
-    return all(list((man / d).glob("*.xlsx")) for d in required_man)
 
 
 pytestmark = pytest.mark.skipif(not has_sheets(), reason="data/sheets/ 不完整")

@@ -1218,6 +1218,23 @@ td.cb.is-total .ct{color:#0f172a!important;text-shadow:none!important;}
 td.cb.is-total .ct .cm{color:#0f172a!important;font-size:13.5px!important;}
 td.cb.is-total .ct .cp{color:#0f172a!important;font-size:19px!important;text-shadow:none!important;}
 table.ann-matrix tbody tr:hover td.cb.is-total, table.ann-matrix tbody tr:hover td.cb.is-total .ct, table.ann-matrix tbody tr:hover td.cb.is-total .ct *, table.ann-matrix tbody tr:hover td.cb.is-total .ct .cm, table.ann-matrix tbody tr:hover td.cb.is-total .ct .cp{color:#0f172a!important;background:transparent!important;text-shadow:none!important;}
+/* 销售详情抽屉 — 总计行 CSS（覆盖默认 td.cb 黑字为白色，4级色阶保留） */
+table.ann-matrix tbody tr.row-grand-total td.cb{background:#0f172a!important;border:1px solid #334155!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb .ct{color:#fff!important;text-shadow:none!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb .ct .cp{color:#fff!important;text-shadow:none!important;font-size:18px!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb .ct .cm{color:#fff!important;text-shadow:none!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb .ct .cm .ca{color:#fff!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb .ct .cm .ctv{color:#cbd5e1!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.fg::before{background:#22c55e!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.fo::before{background:#fb923c!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.fl::before{background:#fdba74!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.fy::before{background:#ef4444!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.is-total{background:#1e40af!important;border:2px solid #60a5fa!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.is-total .ct{color:#fff!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.is-total .ct .cp{color:#fff!important;font-size:20px!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.is-total .ct .cm{color:#fff!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.is-total .ct .cm .ca{color:#fff!important;}
+table.ann-matrix tbody tr.row-grand-total td.cb.is-total .ct .cm .ctv{color:#cbd5e1!important;}
 /* 空单元格 */
 table.ann-matrix .td-empty, .ann-matrix .td-empty{text-align:center;color:#94a3b8;font-size:14px;padding:8px 0;}
 

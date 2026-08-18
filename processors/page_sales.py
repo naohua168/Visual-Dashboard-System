@@ -19,7 +19,7 @@ class SalesPage(BaseRenderer):
         d = prepare_sales_data(data, self.base_dir)
 
         hero = hero_rings_html(
-            d.total_inc, d.total_target, d.total_pay, d.total_target,
+            d.total_inc, d.total_target, d.total_pay, d.total_pay_target,
             "", "收入", "回款",
             inc_yoy=d.yoy_inc, pay_yoy=d.yoy_pay, yoy_period=d.yoy_period,
             total_tgt=None, total_label="",
@@ -58,38 +58,59 @@ class SalesPage(BaseRenderer):
     def _card1(self, d) -> str:
         """销售年度达成 — 左右双列：收入 | 回款，按各自完成度排序。整行可点击弹出客户详情"""
 
-        def _sorted_sales(by_sales):
-            return sorted(
-                [s for s in by_sales.keys() if d.sales_targets.get(str(s), 0) > 0],
-                key=lambda s: float(by_sales.get(s, 0)) / d.sales_targets.get(str(s), 0),
-                reverse=True,
-            )
+        def _sorted_sales(by_sales, tgt_dict):
+            # 销售列表 = 指标表里的销售 ∪ 实际数据里出现过的销售（去重），保证 0 指标销售也展示
+            all_sales = set(map(str, tgt_dict.keys())) | set(map(str, by_sales.keys()))
+            all_sales.discard("待确认")
+            all_sales = [s for s in all_sales if s]
+            def _key(s):
+                ti = float(tgt_dict.get(s, 0) or 0)
+                act = float(by_sales.get(s, 0) or 0)
+                # 指标>0 的销售按完成率降序排在前；指标=0 但有实际金额的按实际金额降序排在后
+                if ti > 0:
+                    return (1, act / ti, act)
+                return (0, act, act)
+            return sorted(all_sales, key=_key, reverse=True)
 
-        def _col(by_sales, title, total_act, total_tgt, metric):
-            sales_sorted = _sorted_sales(by_sales)
+        def _col(by_sales, title, total_act, total_tgt, tgt_dict, metric):
+            # TODO: 0 指标销售有实际金额时，total_act > total_tgt → 合计完成率 > 100%。
+            # 当前实际数据中 0 指标销售实际金额=0，不影响；未来若需严格控制，
+            # 可改为 total_act = sum(by_sales[s] for s in tgt_dict if tgt_dict[s] > 0)
+            sales_sorted = _sorted_sales(by_sales, tgt_dict)
             rows = ""
             for s_name in sales_sorted:
-                ti = d.sales_targets.get(str(s_name), 0)
-                act = float(by_sales.get(s_name, 0))
-                rate = (act / ti) if ti else 0
-                pct = round(rate * 100)
-                if rate >= 0.8:
-                    bar_cls = 'level-4'
-                elif rate >= 0.5:
-                    bar_cls = 'level-3'
-                elif rate >= 0.3:
-                    bar_cls = 'level-2'
+                ti = float(tgt_dict.get(str(s_name), 0) or 0)
+                act = float(by_sales.get(s_name, 0) or 0)
+                if ti > 0:
+                    rate = act / ti
+                    pct = round(rate * 100)
+                    if rate >= 0.8:
+                        bar_cls = 'level-4'
+                    elif rate >= 0.5:
+                        bar_cls = 'level-3'
+                    elif rate >= 0.3:
+                        bar_cls = 'level-2'
+                    else:
+                        bar_cls = 'level-1'
+                    bar_w = min(rate * 100, 100)
+                    bar_html = (
+                        f'<div class="bar"><div class="bar-fill {bar_cls}" style="width:{bar_w:.1f}%">'
+                        f'<span class="bar-pct">{pct}%</span></div></div>'
+                    )
+                    tgt_text = f'/{fmt_wan(ti)}'
                 else:
-                    bar_cls = 'level-1'
+                    # 0 指标：进度条空、百分比 "—"（分母为 0 无法计算完成率）
+                    bar_html = '<div class="bar"><div class="bar-fill" style="width:0%"><span class="bar-pct">—</span></div></div>'
+                    tgt_text = '/—'
                 rows += (
                     f'<div class="mini-rate sales-clickable"'
                     f' data-sales="{s_name}" data-metric="{metric}"'
                     f' onclick="openSalesModal(this, \'{s_name}\',\'{metric}\')"'
                     f' title="点击查看 {s_name} 客户达成详情">'
                     f'<span class="sales-name">{s_name}</span>'
-                    f'<div class="bar"><div class="bar-fill {bar_cls}" style="width:{min(rate*100,100):.1f}%"><span class="bar-pct">{pct}%</span></div></div>'
+                    f'{bar_html}'
                     f'<span class="val">{fmt_wan(act)}</span>'
-                    f'<span class="tgt">/{fmt_wan(ti)}</span>'
+                    f'<span class="tgt">{tgt_text}</span>'
                     f'</div>'
                 )
             # 合计行
@@ -112,8 +133,8 @@ class SalesPage(BaseRenderer):
         return (
             f'<div class="section-title sec-green">销售年度达成 · 个人收入/回款 vs 年度目标（点击销售查看客户达成详情）</div>'
             f'<div class="card back-white"><div class="card1-flex">'
-            f'{_col(d.sales_inc, "收入（不含税）", d.total_inc_split, d.total_target, "inc")}'
-            f'{_col(d.sales_pay, "回款（含税）", d.total_pay_split, d.total_target, "pay")}'
+            f'{_col(d.sales_inc, "收入（不含税）", d.total_inc_split, d.total_target, d.sales_targets, "inc")}'
+            f'{_col(d.sales_pay, "回款（含税）", d.total_pay_split, d.total_pay_target, d.sales_payment_targets, "pay")}'
             f'</div></div>'
             + _sales_modal_css()
             + _sales_modal_html()
@@ -127,10 +148,9 @@ class SalesPage(BaseRenderer):
             ) + '<th class="th-name th-total">合计</th></tr>'
             rows = ""
 
+            # 全部销售都展示（指标=0 也行，cell-bg 显示 "—"）
             for s_name in all_sales:
                 s_total_tgt = d.sales_targets.get(str(s_name), 0)
-                if s_total_tgt == 0:
-                    continue
                 s_dept_tgt = d.sales_dept_tgt.get(str(s_name), {})
                 cs = [f'<td class="td-name">{s_name}</td>']
                 for dpt in DEPARTMENTS:
@@ -174,7 +194,7 @@ class SalesPage(BaseRenderer):
             f'<span>收入实际 <b>{fmt_wan(d.total_inc)}</b>万</span><span class="dot">·</span>'
             f'<span>收入目标 <b>{fmt_wan(d.total_target)}</b>万</span><span class="dot">·</span>'
             f'<span>回款实际 <b>{fmt_wan(d.total_pay)}</b>万</span><span class="dot">·</span>'
-            f'<span>回款目标 <b>{fmt_wan(d.total_target)}</b>万</span></div>'
+            f'<span>回款目标 <b>{fmt_wan(d.total_pay_target)}</b>万</span></div>'
         )
 
         js_script = _card3_js_script(parent_json, sub_tgt_json, parent_tgt_json, sub_tgt_by_sales_json, parent_tgt_by_sales_json, parent_cfg_total_json, sales_owned_json)
@@ -711,6 +731,28 @@ def _sales_modal_html() -> str:
 
         // 母公司完成度圆环行
         const _r = 18, _circ = 2 * Math.PI * _r;
+        // ── 销售个人目标汇总（从 __SC3ST_S 全量计算，含仅有指标无实际金额的客户）──
+        let _sTgtAll = 0, _sActAll = 0;
+        const _sTgtMap = (window.__SC3ST_S && window.__SC3ST_S[_curSales]) || {{}};
+        Object.keys(_sTgtMap).forEach(c => {{
+            const t = _sTgtMap[c] && _sTgtMap[c][_curMetric];
+            if (t) {{
+                _DEPS.forEach(d => {{
+                    _sTgtAll += (t[d] || 0);
+                    let cAct = 0;
+                    Object.keys(parents).forEach(p => {{
+                        if (parents[p] && parents[p][c] && parents[p][c][_curMetric]) {{
+                            cAct += parents[p][c][_curMetric][d] || 0;
+                        }}
+                    }});
+                    _sActAll += cAct;
+                }});
+            }}
+        }});
+        const _sRate = _sTgtAll > 0 ? Math.round(_sActAll / _sTgtAll * 100) : 0;
+        function _fJ(v) {{ return Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}}); }}
+        const _sBanner = '<div class="sales-tgt-banner" style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;margin:0 0 14px 0;display:flex;gap:16px;font-size:13px;flex-wrap:wrap"><span style="font-weight:700;color:#92400e">销售个人指标全量</span><span style="color:#92400e">指标合计：<b style="color:#7c2d12;font-size:15px">' + _fJ(_sTgtAll) + '</b></span><span style="color:#92400e">实际完成：<b style="color:#7c2d12;font-size:15px">' + _fJ(_sActAll) + '</b></span><span style="color:#92400e">完成度：<b style="color:#7c2d12;font-size:15px">' + _sRate + '%</b></span><span style="color:#a16207;font-size:11px">（含未展示客户目标）</span></div>';
+
         let ringsHtml = '<div class="parent-rings">';
         parentKeys.forEach(p => {{
             const [pA, pT] = _parentTotals(parents, p);

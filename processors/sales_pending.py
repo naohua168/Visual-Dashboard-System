@@ -19,7 +19,8 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
 
     # ── ① KPI 计算 ──
     grand_total = pending_total_inc + pending_total_pay
-    avg_per_cust = grand_total / pending_count if pending_count else 0
+    cust_n_unique = int(pending["客户"].astype(str).str.strip().nunique()) if len(pending) else 0
+    avg_per_cust = grand_total / cust_n_unique if cust_n_unique else 0
     match_n = ((pending["金额_万_收入"] > 0) & (pending["金额_万_回款"] > 0)).sum()
     only_inc_n = ((pending["金额_万_收入"] > 0) & (pending["金额_万_回款"] == 0)).sum()
     only_pay_n = ((pending["金额_万_收入"] == 0) & (pending["金额_万_回款"] > 0)).sum()
@@ -63,12 +64,13 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
     top_cust_pct = top_cust_amt / grand_total * 100 if grand_total else 0
 
     # ── 渲染子模块 ──
-    kpi_html = _render_kpi_row(pending_count, grand_total, pending_total_inc, pending_total_pay, avg_per_cust, match_n)
+    # cust_n_unique 已在 ① KPI 计算阶段声明（unique 客户数；按法人主体展开后行数可能 > 客户数）
+    kpi_html = _render_kpi_row(cust_n_unique, grand_total, pending_total_inc, pending_total_pay, avg_per_cust, match_n)
     dept_html = _render_dept_dist(dist=dept_dist, grand_total=grand_total, max_dept=max_dept)
     type_html = _render_type_buckets(buckets=type_buckets, grand_total=grand_total)
     quad_html = _render_quad(quad=quad, grand_total=grand_total)
     top_html = _render_top10(top10=top10, max_top=max_top)
-    detail_rows = _render_detail(pending, pending_total_inc, pending_total_pay, grand_total, pending_count)
+    detail_rows = _render_detail(pending, pending_total_inc, pending_total_pay, grand_total, cust_n_unique, pending_count)
 
     return f"""<!-- ═══ 待确认客户 · 右侧滑入面板 ═══ -->
 <div id="pendingModal" class="pnd-overlay" style="display:none" onclick="if(event.target===this)closePendingModal()">
@@ -81,7 +83,7 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
         </div>
         <div>
           <div class="pnd-title">待确认客户 · 数据分析</div>
-          <div class="pnd-subtitle">{pending_count} 家客户未归属销售 · 合计 {fmt_wan(grand_total)} 万</div>
+          <div class="pnd-subtitle">{cust_n_unique} 家客户未归属销售 · 合计 {fmt_wan(grand_total)} 万</div>
         </div>
       </div>
       <button class="pnd-close" onclick="closePendingModal()" aria-label="关闭面板">
@@ -101,7 +103,7 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
         <div class="pnd-chart">{type_html}</div>
       </div>
       <div class="pnd-section">
-        <div class="pnd-section-title">收入/回款匹配<span class="pnd-badge">匹配度 {match_n/pending_count*100:.1f}%</span></div>
+        <div class="pnd-section-title">收入/回款匹配<span class="pnd-badge">匹配度 {match_n/cust_n_unique*100:.1f}%</span></div>
         <div class="pnd-quad-grid">{quad_html}</div>
       </div>
       <div class="pnd-section">
@@ -109,12 +111,13 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
         <div class="pnd-chart">{top_html}</div>
       </div>
       <div class="pnd-section">
-        <div class="pnd-section-title">完整明细表（{pending_count} 家）</div>
+        <div class="pnd-section-title">完整明细表（{cust_n_unique} 家 · {pending_count} 行）</div>
         <div class="pnd-table-wrap">
           <table class="pnd-table">
             <thead><tr>
               <th class="pnd-th-name">客户</th>
               <th style="width:56px">事业部</th>
+              <th class="pnd-th-entity">法人主体</th>
               <th style="width:82px">收入(万)</th>
               <th style="width:82px">回款(万)</th>
               <th style="width:82px">合计(万)</th>
@@ -380,20 +383,24 @@ def _render_top10(top10, max_top):
     return html
 
 
-def _render_detail(pending, pending_total_inc, pending_total_pay, grand_total, pending_count):
-    """完整明细表"""
+def _render_detail(pending, pending_total_inc, pending_total_pay, grand_total, cust_n_unique, pending_count):
+    """完整明细表 · 新增"法人主体"列，便于识别同客户同名下的不同主体"""
     rows = ""
     for _, r in pending.iterrows():
         cust = str(r["客户"])
         dept = str(r["事业部"])
+        entity = str(r["法人主体"]) if "法人主体" in pending.columns else ""
         inc_v = safe_float(r["金额_万_收入"])
         pay_v = safe_float(r["金额_万_回款"])
         tot = inc_v + pay_v
         dcolor = DEPT_COLORS.get(dept, "#94a3b8")
+        # 法人主体为空白或 nan 时显示 "—"
+        ent_disp = entity if entity and entity not in ("nan", "None", "") else "—"
         rows += (
             f'<tr>'
             f'<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{cust}">{cust}</td>'
             f'<td style="text-align:center;font-weight:600;color:{dcolor};font-size:11px">{dept}</td>'
+            f'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#64748b" title="{ent_disp}">{ent_disp}</td>'
             f'<td style="text-align:right">{fmt_wan(inc_v)}</td>'
             f'<td style="text-align:right">{fmt_wan(pay_v)}</td>'
             f'<td style="text-align:right;font-weight:700;color:#1e40af">{fmt_wan(tot)}</td>'
@@ -401,7 +408,8 @@ def _render_detail(pending, pending_total_inc, pending_total_pay, grand_total, p
         )
     rows += (
         f'<tr class="row-total">'
-        f'<td style="font-weight:700">合计（{pending_count}家）</td>'
+        f'<td style="font-weight:700">合计（{cust_n_unique}家 · {pending_count}行）</td>'
+        f'<td></td>'
         f'<td></td>'
         f'<td style="text-align:right;font-weight:700">{fmt_wan(pending_total_inc)}</td>'
         f'<td style="text-align:right;font-weight:700">{fmt_wan(pending_total_pay)}</td>'

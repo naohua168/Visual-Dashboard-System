@@ -5,7 +5,7 @@
 """
 import pandas as pd
 from ..core.column_resolver import extract_columns, print_hit_columns
-from ..core.utils import log_step, filter_by_date, standardize_output
+from ..core.utils import log_step, filter_by_date, standardize_output, read_excel_with_fallback
 from ..core.mapping_loader import DepartmentMapper
 from ..core.customer_matcher import CustomerMatcher
 from ..core.config import get_data_path, load_clean_params
@@ -17,7 +17,7 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     file_path = get_data_path(config, "财务端", file_type)
 
     log_step(f"财务端{file_type}", f"读取 {file_path.name}")
-    df = pd.read_excel(file_path, sheet_name=src_config["Sheet"][0], engine=src_config["引擎"])
+    df = read_excel_with_fallback(file_path, src_config["Sheet"], src_config["引擎"])
     total_in = len(df)
     log_step(f"财务端{file_type}", f"原始数据: {total_in}行 x {len(df.columns)}列")
 

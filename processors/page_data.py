@@ -490,7 +490,8 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
 # ══════════════════════════════════════════════════════════════
 @dataclass
 class SalesData:
-    total_target: float = 0
+    total_target: float = 0         # 年度收入指标按销售聚合的总额（卡片1收入合计分母）
+    total_pay_target: float = 0     # 年度回款指标按销售聚合的总额（卡片1回款合计分母）
     # 全量（财务端当年累计，含待确认）
     total_inc: float = 0       # sales_income 全量（含待确认）
     total_pay: float = 0       # sales_payment 全量（含待确认）
@@ -501,7 +502,8 @@ class SalesData:
     sales_range: str = ""
     date_range: str = ""
     # 销售目标 + 部门目标
-    sales_targets: dict[str, float] = field(default_factory=dict)
+    sales_targets: dict[str, float] = field(default_factory=dict)        # 销售→年度收入指标 4 部门合计
+    sales_payment_targets: dict[str, float] = field(default_factory=dict)  # 销售→年度回款指标 4 部门合计
     sales_dept_tgt: dict[str, dict[str, float]] = field(default_factory=dict)
     dept_inc_tgt_total: dict[str, float] = field(default_factory=dict)
     dept_pay_tgt_total: dict[str, float] = field(default_factory=dict)
@@ -518,7 +520,8 @@ class SalesData:
     # 按销售拆分的客户目标（销售详情弹窗/矩阵用）
     sc3_tgts_by_sales: dict = field(default_factory=dict)  # {sales: {cust: {inc/pay: {dept:val,total}}}}
     # card3 母公司聚合
-    sub_to_parent: dict[str, str] = field(default_factory=dict)   # 子公司→母公司
+    sub_to_parent: dict[str, str] = field(default_factory=dict)   # 子公司→母公司（后写覆盖，仅用于无销售歧义时）
+    sub_sales_to_parent: dict[tuple[str, str], str] = field(default_factory=dict)  # (子公司,销售)→父组，重叠客户按销售归属父组
     sc3_by_parent: dict = field(default_factory=dict)    # {sales: {parent: {sub: {inc/pay: {dept:val}}}}}
     sc3_tgts_by_parent: dict = field(default_factory=dict)   # {parent: {inc/pay: {dept:val}}}（全销售聚合，兼容）
     # 按销售拆分的母公司目标（销售详情弹窗/矩阵用）
@@ -568,11 +571,20 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
         for dpt in DEPARTMENTS:
             d.sales_dept_tgt[sales][dpt] += safe_float(row.get(dpt, 0))
 
+    # 年度回款指标按销售聚合（卡片1回款列分母 — 与收入指标独立）
+    for _, row in pay_tgt.iterrows():
+        sales = str(row.get("销售", "")).strip()
+        if not sales or sales in ("待确认", "", "nan"):
+            continue
+        total = sum(safe_float(row.get(dpt, 0)) for dpt in DEPARTMENTS)
+        d.sales_payment_targets[sales] = d.sales_payment_targets.get(sales, 0) + total
+
     for dpt in DEPARTMENTS:
         d.dept_inc_tgt_total[dpt] = safe_float(inc_tgt[dpt].fillna(0).sum())
         d.dept_pay_tgt_total[dpt] = safe_float(pay_tgt[dpt].fillna(0).sum())
 
     d.total_target = sum(d.sales_targets.values())
+    d.total_pay_target = sum(d.sales_payment_targets.values())
     d.total_inc = float(df_si["金额_万"].sum())   # 销售全量
     d.total_pay = float(df_sp["金额_万"].sum())
     d.total_inc_split = float(si_ok["金额_万"].sum())  # 已归属（不含待确认）
@@ -592,12 +604,17 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
         s = str(r["销售"]); dpt = str(r["事业部"])
         d.pay_by_sd.setdefault(s, {})[dpt] = safe_float(r["金额_万"])
 
+    # 销售列表 = 指标表里的销售 ∪ 实际数据里出现过的销售（去重 + 排"待确认"），保证 0 指标销售也展示
+    all_sales_inc = set(d.sales_inc.keys()) | set(d.sales_targets.keys()) | set(d.sales_payment_targets.keys())
+    all_sales_pay = set(d.sales_pay.keys()) | set(d.sales_targets.keys()) | set(d.sales_payment_targets.keys())
+    all_sales_inc.discard("待确认")
+    all_sales_pay.discard("待确认")
     d.sales_list = sorted(
-        [s for s in d.sales_inc if s != "待确认"],
+        [s for s in all_sales_inc if s],
         key=lambda x: d.sales_targets.get(x, 0), reverse=True
     )
     d.pay_sales_list = sorted(
-        [s for s in d.sales_pay if s != "待确认"],
+        [s for s in all_sales_pay if s],
         key=lambda x: d.sales_targets.get(x, 0), reverse=True
     )
 
@@ -691,7 +708,8 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
             # 母公司配置的子公司总数（含母公司自身，若配置列出）
             d.sc3_parent_cfg_total[parent] = len(group.get("子公司", {}))
             for sub, sub_cfg in group.get("子公司", {}).items():
-                d.sub_to_parent[sub.strip()] = parent
+                sub_key = sub.strip()
+                d.sub_to_parent[sub_key] = parent
                 # 该子公司归属哪些销售（从配置的部门销售分配读取）
                 sales_set: set[str] = set()
                 if isinstance(sub_cfg, dict):
@@ -700,7 +718,9 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
                             for dept_cfg in metric_cfg.values():
                                 if isinstance(dept_cfg, dict):
                                     sales_set.update(str(s).strip() for s in dept_cfg.keys())
+                # 记录 (子公司, 销售) → 父组：重叠客户（同子公司归属多父组）按销售区分
                 for s_name in sales_set:
+                    d.sub_sales_to_parent[(sub_key, s_name)] = parent
                     d.sales_owned_subs.setdefault(s_name, {}).setdefault(parent, 0)
                     d.sales_owned_subs[s_name][parent] += 1
 
@@ -721,9 +741,10 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
                 p_data[mt]["total"] = sum(p_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
 
     # 按销售拆分版本：母公司目标聚合（{销售: {母公司: {inc/pay: {dept}}}}）
+    # 重叠客户（同子公司归属多父组）时按 (客户,销售) 查父组，如 福龙马+黎国键→广东自有客户、福龙马+江国川→福建市场
     for sales, s_data in d.sc3_tgts_by_sales.items():
         for cust, cust_data in s_data.items():
-            parent = d.sub_to_parent.get(cust, cust)
+            parent = d.sub_sales_to_parent.get((cust, sales)) or d.sub_to_parent.get(cust, cust)
             p_data = d.sc3_tgts_by_parent_by_sales.setdefault(sales, {}).setdefault(parent, {})
             for mt in ("inc", "pay"):
                 if mt not in cust_data:
@@ -751,13 +772,16 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
     d.annual_range = get_config_range(base_dir, "年度累计") or ""
     d.date_range = d.annual_range
 
-    # 待确认
-    pending_inc = df_si[df_si["销售"] == "待确认"].groupby(["客户", "事业部"])["金额_万"].sum().reset_index()
-    pending_pay = df_sp[df_sp["销售"] == "待确认"].groupby(["客户", "事业部"])["金额_万"].sum().reset_index()
-    pending = pending_inc.merge(pending_pay, on=["客户", "事业部"], how="outer",
+    # 待确认 — 按 (客户, 事业部, 法人主体) 拆分，同客户同事业部下不同法人主体分行展示
+    si_p = df_si[df_si["销售"] == "待确认"].copy()
+    sp_p = df_sp[df_sp["销售"] == "待确认"].copy()
+    grp_keys = ["客户", "事业部", "法人主体"] if "法人主体" in si_p.columns else ["客户", "事业部"]
+    pending_inc = si_p.groupby(grp_keys, dropna=False)["金额_万"].sum().reset_index()
+    pending_pay = sp_p.groupby(grp_keys, dropna=False)["金额_万"].sum().reset_index()
+    pending = pending_inc.merge(pending_pay, on=grp_keys, how="outer",
                                 suffixes=("_收入", "_回款")).fillna(0)
     pending["合计"] = pending["金额_万_收入"] + pending["金额_万_回款"]
-    pending = pending.sort_values("合计", ascending=False)
+    pending = pending.sort_values("合计", ascending=False).reset_index(drop=True)
     d.pending_count = len(pending)
     d.pending_total_inc = float(pending["金额_万_收入"].sum())
     d.pending_total_pay = float(pending["金额_万_回款"].sum())

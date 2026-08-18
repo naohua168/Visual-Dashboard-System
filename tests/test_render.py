@@ -5,18 +5,7 @@ from pathlib import Path
 
 import pytest
 
-BASE_DIR = Path(__file__).parent.parent
-OUTPUT = BASE_DIR / "output"
-
-
-def has_sheets():
-    sheets = BASE_DIR / "data" / "sheets"
-    required = ["当年累计收入/当年累计收入.xlsx", "当年累计回款/当年累计回款.xlsx",
-                "销售收入/销售收入.xlsx", "销售回款/销售回款.xlsx"]
-    man = sheets / "手动维护"
-    required_man = ["年度收入总指标", "月度收入指标", "月度回款指标"]
-    return (all((sheets / r).exists() for r in required)
-            and all(list((man / d).glob("*.xlsx")) for d in required_man))
+from tests.conftest import BASE_DIR, OUTPUT, has_sheets
 
 
 pytestmark = pytest.mark.skipif(not has_sheets(), reason="data/sheets/ 不完整")

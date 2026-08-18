@@ -1,10 +1,11 @@
 # Visual Dashboard System — 核心依赖
 # 安装: pip install -r requirements.txt
+# 运行环境: Python 3.12+（推荐 Conda 环境 visual-dashboard-system）
 
 # 数据处理
 pandas>=1.5.0
-openpyxl>=3.1.0          # 读取 .xlsx
-xlrd>=2.0.0               # 读取 .xls
+openpyxl>=3.1.0          # 读取/写入 .xlsx（含配置编辑器.xlsx 生成与同步）
+xlrd>=2.0.0              # 读取 .xls（运营端数据）
 
 # 测试
 pytest>=7.0.0

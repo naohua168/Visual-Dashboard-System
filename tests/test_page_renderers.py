@@ -1,6 +1,6 @@
 """测试渲染页面模块 — 6 页看板"""
-from pathlib import Path
 import pytest
+from tests.conftest import BASE_DIR, has_sheets
 from processors.data_loader import load_all
 from processors.page_overview import OverviewPage
 from processors.page_annual import AnnualPage
@@ -9,16 +9,6 @@ from processors.page_sales import SalesPage
 from processors.page_yoy import YoyPage
 from processors.page_quarterly import QuarterlyPage
 
-BASE_DIR = Path(__file__).parent.parent
-
-def has_sheets():
-    sheets = BASE_DIR / "data" / "sheets"
-    required = ["当年累计收入/当年累计收入.xlsx", "当年累计回款/当年累计回款.xlsx",
-                "销售收入/销售收入.xlsx", "销售回款/销售回款.xlsx"]
-    man = sheets / "手动维护"
-    required_man = ["年度收入总指标", "月度收入指标", "月度回款指标"]
-    return (all((sheets / r).exists() for r in required)
-            and all(list((man / d).glob("*.xlsx")) for d in required_man))
 
 pytestmark = pytest.mark.skipif(not has_sheets(), reason="data/sheets/ data incomplete")
 
@@ -47,6 +37,7 @@ class TestPageRender:
     @pytest.mark.parametrize("cls,page_id,nav_name", PAGE_CLASSES)
     def test_page_renders_html(self, shared_data, cls, page_id, nav_name):
         page = cls()
+        page.base_dir = BASE_DIR  # 与 processors/run.py 生产用法一致
         assert page.page_id == page_id
         assert page.nav_name == nav_name
         html = page.render(shared_data)
