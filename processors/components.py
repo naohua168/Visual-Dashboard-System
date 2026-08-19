@@ -142,19 +142,20 @@ def cust_tab_bar(inc_div_id: str, pay_div_id: str) -> str:
 
 
 def children_modal_html(uid: str) -> str:
-    """点击母公司查看子公司详情的左右联动抽屉（同一图层，同时出现/消失）
+    """点击母公司查看子公司详情 — 两侧侧面弹窗
 
-    结构（一个 modal 容器内）：
-    - backdrop（半透明遮罩，点击关闭）
-    - .children-left-panel  子公司名列表（左侧 slide-in）
-    - .children-modal-panel 子公司×4部门详情（右侧 slide-in）
-    左右 panel 共用同一个开关函数，同一图层显示/隐藏。
+    行为（按用户要求优化）：
+    - 两侧 panel 同时从左/右滑入（同一图层）
+    - 背景：中间空白区点击关闭（不触发 panel 内部）
+    - 退出：X 按钮 / 点空白区 / ESC
+    - 定位：根据窗口宽度动态调整 panel 宽度
+    - 不滚动其他内容：body 用 position:fixed 锁滚动
     """
     return (
         f'<div id="{uid}_modal" class="children-modal hidden">'
-        # 单一遮罩（覆盖中间空白区，点击关闭）
-        f'<div class="children-modal-backdrop" onclick="{uid}_close()"></div>'
-        # 左侧 panel：子公司名列表
+        # 单一遮罩层（点击关闭，z-index 最低）
+        f'<div class="children-modal-backdrop" data-close="1" onclick="{uid}_close()"></div>'
+        # 左侧 panel：子公司名列表（z-index 高于 backdrop）
         f'<div id="{uid}_left_panel" class="children-left-panel">'
         f'<div class="children-left-header">'
         f'<span id="{uid}_left_title">子公司列表</span>'
@@ -174,30 +175,41 @@ def children_modal_html(uid: str) -> str:
         f'<div id="{uid}_body" class="children-modal-body"></div>'
         f'</div></div>'
         f'<style>'
-        f'.children-modal{{position:fixed;inset:0;z-index:9999}} '
+        f'.children-modal{{position:fixed;inset:0;z-index:9999;pointer-events:none}} '
         f'.children-modal.hidden{{display:none}} '
-        f'.children-modal-backdrop{{position:absolute;inset:0;background:rgba(0,0,0,0.35);opacity:0;pointer-events:none;transition:opacity 0.25s ease}} '
+        # backdrop：全屏，pointer-events:auto，z 最低（在 panel 之下）
+        f'.children-modal-backdrop{{position:absolute;inset:0;background:rgba(15,23,42,0.42);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity 0.25s ease}} '
+        f'.children-modal:not(.hidden){{pointer-events:auto}} '
         f'.children-modal:not(.hidden) .children-modal-backdrop{{opacity:1;pointer-events:auto}} '
-        f'.children-modal-panel{{position:fixed;right:0;top:0;width:min(96vw,900px);height:100vh;background:#fff;'
-        f'box-shadow:-10px 0 40px rgba(0,0,0,0.18);display:flex;flex-direction:column;'
-        f'transform:translateX(100%);transition:transform 0.3s cubic-bezier(0.16,1,0.3,1)}} '
+        # 右侧 panel：根据窗口宽度自适应
+        f'.children-modal-panel{{position:fixed;right:0;top:0;bottom:0;width:min(92vw,820px);background:#fff;'
+        f'box-shadow:-12px 0 32px rgba(15,23,42,0.22);display:flex;flex-direction:column;'
+        f'transform:translateX(100%);transition:transform 0.32s cubic-bezier(0.16,1,0.3,1);z-index:2;pointer-events:auto;overflow:hidden}} '
         f'.children-modal-panel.show{{transform:translateX(0)}} '
-        f'.children-left-panel{{position:fixed;left:0;top:0;width:min(70vw,360px);height:100vh;background:#fff;'
-        f'box-shadow:10px 0 40px rgba(0,0,0,0.18);display:flex;flex-direction:column;'
-        f'transform:translateX(-100%);transition:transform 0.3s cubic-bezier(0.16,1,0.3,1)}} '
+        # 左侧 panel：根据窗口宽度自适应（中等屏幕 320，大屏 380）
+        f'.children-left-panel{{position:fixed;left:0;top:0;bottom:0;width:clamp(280px,32vw,380px);background:#fff;'
+        f'box-shadow:12px 0 32px rgba(15,23,42,0.22);display:flex;flex-direction:column;'
+        f'transform:translateX(-100%);transition:transform 0.32s cubic-bezier(0.16,1,0.3,1);z-index:2;pointer-events:auto;overflow:hidden}} '
         f'.children-left-panel.show{{transform:translateX(0)}} '
+        # 响应式：窄屏时左右 panel 占满宽度
+        f'@media (max-width:780px){{'
+        f'.children-modal-panel{{width:100vw;}}'
+        f'.children-left-panel{{width:min(85vw,360px);}}'
+        f'}}'
         f'.children-modal-header{{padding:16px 20px;background:#1e293b;color:#fff;display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0}} '
         f'.children-modal-header span{{font-size:16px;font-weight:700}} '
-        f'.children-modal-header button{{background:transparent;color:#fff;border:none;font-size:22px;cursor:pointer;padding:0 4px;line-height:1}} '
+        f'.children-modal-header button{{background:transparent;color:#fff;border:none;font-size:24px;line-height:1;cursor:pointer;padding:0 6px;opacity:0.85;transition:opacity 0.15s}} '
+        f'.children-modal-header button:hover{{opacity:1}} '
         f'.children-left-header{{padding:16px 20px;background:#1e293b;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}} '
         f'.children-left-header span{{font-size:15px;font-weight:700}} '
-        f'.children-left-header button{{background:transparent;color:#fff;border:none;font-size:22px;cursor:pointer;padding:0 4px;line-height:1}} '
+        f'.children-left-header button{{background:transparent;color:#fff;border:none;font-size:24px;line-height:1;cursor:pointer;padding:0 6px;opacity:0.85;transition:opacity 0.15s}} '
+        f'.children-left-header button:hover{{opacity:1}} '
         f'.children-modal-kpi{{font-size:12px;color:#cbd5e1;margin-top:6px}} '
         f'.children-modal-kpi b{{color:#fff;font-weight:600}} '
-        f'.children-modal-body{{flex:1;min-height:0;padding:16px 20px;overflow-y:auto;overflow-x:auto}} '
-        f'.children-left-body{{flex:1;min-height:0;padding:10px 12px;overflow-y:auto}} '
+        f'.children-modal-body{{flex:1;min-height:0;padding:16px 20px;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch}} '
+        f'.children-left-body{{flex:1;min-height:0;padding:10px 12px;overflow-y:auto;-webkit-overflow-scrolling:touch}} '
         f'.children-left-item{{padding:8px 10px;border-radius:6px;font-size:13px;color:#1e293b;cursor:pointer;'
-        f'border-bottom:1px solid #f1f5f9;transition:background 0.12s}} '
+        f'border-bottom:1px solid #f1f5f9;transition:background 0.12s;user-select:none}} '
         f'.children-left-item:hover{{background:#eef2ff}} '
         f'.children-left-item .li-idx{{color:#94a3b8;font-weight:400;margin-right:8px;font-size:11px}} '
         f'.children-left-empty{{text-align:center;color:#94a3b8;padding:40px 10px;font-size:13px}} '
@@ -248,7 +260,10 @@ def children_modal_js(uid: str, sub_detail_json: str, left_data_json: str = "[]"
         f'}}'
         f'function {uid}_show(el,name){{'
         # 滚动到被点击的行
-        f'if(el&&el.scrollIntoView){{el.scrollIntoView({{block:"start",behavior:"smooth"}});}}'
+        # 不再调用 el.scrollIntoView()，避免在 body position:fixed 锁滚动时
+        # 引发页面跳动。弹窗用 position:fixed 始终覆盖在视口两侧，
+        # 用户视野不变，从两侧滑入即可。
+        f'void(el);'
         # 渲染内容
         f'var data=window["{uid}_DATA"][name]||{{}};'
         f'var subs=Object.keys(data);'
@@ -312,11 +327,30 @@ def children_modal_js(uid: str, sub_detail_json: str, left_data_json: str = "[]"
         f'document.getElementById("{uid}_left_body").innerHTML=lb;'
         f'}}'
         # 打开抽屉并锁定背景滚动：左右 panel 同步出现（同一图层）
+        # 使用 position:fixed + 记录 scrollY 防止滚动跳到顶部
+        f'function {uid}_lockScroll(){{'
+        f'var scrollY=window.scrollY||window.pageYOffset||0;'
+        f'window["{uid}_SCROLL_Y"]=scrollY;'
+        # 用 overflow:hidden 锁滚动 + 负 margin-top 保持视觉位置
+        # 比 position:fixed 更可靠：fixed 元素的视口参考不变
+        f'document.documentElement.style.overflow="hidden";'
+        f'document.body.style.overflow="hidden";'
+        f'document.body.style.marginTop=-scrollY+"px";'
+        f'document.body.style.width="100%";'
+        f'}}'
+        f'function {uid}_unlockScroll(){{'
+        f'var scrollY=window["{uid}_SCROLL_Y"]||0;'
+        f'document.documentElement.style.overflow="";'
+        f'document.body.style.overflow="";'
+        f'document.body.style.marginTop="";'
+        f'document.body.style.width="";'
+        f'window.scrollTo(0,scrollY);'
+        f'}}'
         f'setTimeout(function(){{'
         f'document.getElementById("{uid}_modal").classList.remove("hidden");'
         f'document.getElementById("{uid}_panel").classList.add("show");'
         f'var lp=document.getElementById("{uid}_left_panel");if(lp)lp.classList.add("show");'
-        f'document.body.style.overflow="hidden";'
+        f'{uid}_lockScroll();'
         # 打开时清除上一次高亮
         f'if(window["{uid}_cur_hl_clear"]){{{uid}_cur_hl_clear();}}'
         f'}},150);'
@@ -324,7 +358,10 @@ def children_modal_js(uid: str, sub_detail_json: str, left_data_json: str = "[]"
         f'function {uid}_close(){{'
         f'document.getElementById("{uid}_panel").classList.remove("show");'
         f'var lp=document.getElementById("{uid}_left_panel");if(lp)lp.classList.remove("show");'
-        f'setTimeout(function(){{document.getElementById("{uid}_modal").classList.add("hidden");document.body.style.overflow="";}},250);'
+        f'setTimeout(function(){{'
+        f'document.getElementById("{uid}_modal").classList.add("hidden");'
+        f'{uid}_unlockScroll();'
+        f'}},250);'
         f'}}'
         # 左侧列表联动：滚动右侧抽屉到指定子公司行并高亮
         f'function {uid}_scroll_to_sub(subName){{'

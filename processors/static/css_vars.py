@@ -1476,12 +1476,13 @@ CSS_ANIMATIONS = """
    动画系统 — 6项动画
    ══════════════════════════════════════════════════════ */
 
-/* 1. 页面切换过渡 — pageIn */
+/* 1. 页面切换过渡 — pageIn
+   注意：只用 opacity，避免 transform 使 .page 成为 fixed 弹窗的 containing block */
 @keyframes pageIn {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
-.page.active { animation: pageIn .35s ease-out; }
+.page.active { animation: pageIn .3s ease-out; }
 
 /* 2. KPI卡片交错入场 — fadeUp (延迟由 JS 动态添加) */
 @keyframes fadeUp {
@@ -1501,8 +1502,9 @@ CSS_ANIMATIONS = """
 }
 .tab-panel.active { animation: tabIn .2s ease; }
 
-/* 5. 页面容器预留动画空间 */
-.page { transform: translateY(0); }
+/* 5. 页面容器预留动画空间
+   注意：不要给 .page 加 transform/filter/will-change，否则会成为
+   position:fixed 弹窗的 containing block，导致弹窗定位错位（相对容器而非视口）。 */
 """
 
 GLOBAL_CSS = CSS_CORE + CSS_COMPONENTS + CSS_RESPONSIVE + CSS_ANIMATIONS
