@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-from .base import BaseRenderer, rate_cls, hero_rings_html
-from .utils import fmt_wan, safe_float, range_banner_html
-from .components import cell_bg_html, cust_tab_bar, mini_rate_row
+from .base import BaseRenderer, hero_rings_html
+from .utils import fmt_wan, range_banner_html
+from .components import cell_bg_html, cust_tab_bar
 from .page_data import prepare_sales_data, DEPARTMENTS
 from .sales_pending import build_pending_modal
 
@@ -385,8 +385,9 @@ document.addEventListener("DOMContentLoaded", () => {{
     const sel = document.getElementById("sc3SalesSel");
     if (sel) {{
         // 初始时显示"待选"占位内容
-        document.getElementById("sc3-inc-matrix").innerHTML = '<div class="sales-modal-empty" style="padding:60px 20px;text-align:center;color:#94a3b8;font-size:14px">📋 请从上方选择销售查看客户达成详情</div>';
-        document.getElementById("sc3-pay-matrix").innerHTML = '<div class="sales-modal-empty" style="padding:60px 20px;text-align:center;color:#94a3b8;font-size:14px">📋 请从上方选择销售查看客户达成详情</div>';
+        const emptySvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 8px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        document.getElementById("sc3-inc-matrix").innerHTML = '<div class="sales-modal-empty" style="padding:60px 20px;text-align:center;color:#94a3b8;font-size:14px">' + emptySvg + '请从上方选择销售查看客户达成详情</div>';
+        document.getElementById("sc3-pay-matrix").innerHTML = '<div class="sales-modal-empty" style="padding:60px 20px;text-align:center;color:#94a3b8;font-size:14px">' + emptySvg + '请从上方选择销售查看客户达成详情</div>';
     }}
 }});
 </script>'''

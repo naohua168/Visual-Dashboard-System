@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .base import BaseRenderer, hero_rings_html, rate_cls
-from .utils import fmt_wan, safe_float, extract_date_range, range_banner_html
+from .utils import fmt_wan, safe_float, range_banner_html
 from .page_data import prepare_overview_data, DEPARTMENTS
 from .config_loader import get_value
 from .components import cell_bg_pct_only

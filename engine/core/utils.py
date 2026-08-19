@@ -77,10 +77,41 @@ def infer_company_type(entity):
     return "", ""
 
 
+def clean_customer_name(name) -> str:
+    """清理客户名：去首尾空白 + 去尾部多余括号（全/半角）+ 去空括号对 + 重复空格
+
+    例：
+      "新丰县国防动员办公室）"  → "新丰县国防动员办公室"
+      " 某某（测试）公司 "       → "某某（测试）公司"
+      "某公司（）"               → "某公司"
+    """
+    if pd.isna(name):
+        return ""
+    s = str(name).strip()
+    # 去掉尾部多余的右括号（全角） ），只保留左括号开头的成对内容
+    while s.endswith("）") or s.endswith(")"):
+        # 统计成对数量：若整串右括号多于左括号，说明尾部有多余右括号
+        open_cnt = s.count("（") + s.count("(")
+        close_cnt = s.count("）") + s.count(")")
+        if close_cnt > open_cnt:
+            s = s[:-1]
+        else:
+            break
+    # 去掉空括号对（如 某公司（） / 某公司() ）
+    import re
+    s = re.sub(r"（\s*）", "", s)
+    s = re.sub(r"\(\s*\)", "", s)
+    # 合并连续空白
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def standardize_output(df):
-    """标准化输出列顺序"""
+    """标准化输出列顺序，并对客户列做名称清理"""
     std_cols = ["事业部", "金额", "客户", "法人主体", "日期"]
     for col in std_cols:
         if col not in df.columns:
             df[col] = ""
+    if "客户" in df.columns:
+        df["客户"] = df["客户"].apply(clean_customer_name)
     return df[std_cols].copy()

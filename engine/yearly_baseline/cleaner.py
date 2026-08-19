@@ -14,7 +14,6 @@ from pathlib import Path
 import pandas as pd
 
 from ..core.config import BASE_DIR, CONFIG_PATH, get_yearly_baseline_path
-from ..core.mapping_loader import load_department_mapper
 from ..core.utils import log_step
 
 # 事业部全名→简称

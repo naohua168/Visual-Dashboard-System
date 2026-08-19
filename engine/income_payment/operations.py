@@ -7,8 +7,6 @@ from datetime import datetime
 import pandas as pd
 from ..core.column_resolver import extract_columns, print_hit_columns
 from ..core.utils import log_step, standardize_output, read_excel_with_fallback
-from ..core.mapping_loader import DepartmentMapper
-from ..core.customer_matcher import CustomerMatcher
 from ..core.config import get_data_path
 
 

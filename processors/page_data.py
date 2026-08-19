@@ -15,7 +15,7 @@ import pandas as pd
 from .utils import safe_float, get_config_range
 from .config_loader import CustomerFilter
 from .page_data_utils import (
-    _add_wan, _build_cust_parent_map, _build_subs_detail, _build_subs_with_data,
+    _add_wan, _build_subs_detail, _build_subs_with_data,
     _consolidate_customers, _consolidate_target, _customer_pivot,
     _data_max_month, _dept_target_sum, _get_yearly_year,
     _group_by_parent, _load_children_map, _parse_month_range,

@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from .base import BaseRenderer
-from .utils import fmt_wan, fmt_yoy, safe_float, extract_date_range, range_banner_html
+from .utils import fmt_wan, range_banner_html
 from .page_data import prepare_yoy_data, DEPARTMENTS
+from .static.icons import icon
 
 
 def yoy_arrow(cur: float, prev: float) -> str:
     if prev == 0 and cur == 0:
         return '<span class="yoy-arrow flat">−</span>'
     if cur > prev:
-        return '<span class="yoy-arrow up">▲</span>'
+        return f'<span class="yoy-arrow up">{icon("trending-up", size=12)}</span>'
     if cur < prev:
-        return '<span class="yoy-arrow down">▼</span>'
+        return f'<span class="yoy-arrow down">{icon("trending-down", size=12)}</span>'
     return '<span class="yoy-arrow flat">−</span>'
 
 

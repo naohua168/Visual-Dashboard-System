@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .base import BaseRenderer, hero_rings_html
-from .utils import fmt_wan, range_banner_html
+from .utils import range_banner_html
 from .components import (
     cell_bg_html, cust_tab_bar, hidden_dept_card_wrapper, dept_card_html,
     children_modal_html, children_modal_js,
