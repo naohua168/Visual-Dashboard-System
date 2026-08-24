@@ -134,20 +134,37 @@ class TestSortedCustomers:
         return pd.DataFrame({"合计": values}, index=names)
 
     def test_non_target_above_50w_shown(self):
-        """非指标客户：实际≥50万就展示"""
+        """非指标客户：实际>0 就展示（无金额阈值）"""
         tgt = self._make_df(["A", "B"], [100, 50])
         piv = self._make_df(["A", "B", "C", "D"], [80, 30, 60, 30])
         pri, rest = _sorted_customers(tgt, piv=piv)
-        assert "C" in pri, "非指标但实际≥50万的客户 C 应展示"
-        assert "D" not in pri, "非指标且实际<50万的客户 D 不应展示"
-        # 指标客户在前：A(100), B(50)；非指标≥50万在后：C
-        assert pri == ["A", "B", "C"]
+        assert "C" in pri, "非指标但有实际60万的客户 C 应展示"
+        assert "D" in pri, "非指标但有实际30万的客户 D 应展示"
+        # 指标客户在前：A(100), B(50)；非指标有实际在后：C(60), D(30)
+        assert pri == ["A", "B", "C", "D"]
 
     def test_target_all_zero_excluded(self):
-        """指标客户指标全为0不展示"""
+        """指标全为0且无实际：不展示"""
         tgt = self._make_df(["A", "B"], [100, 0])
-        pri, rest = _sorted_customers(tgt)
-        assert "B" not in pri, "指标全为0的客户 B 应排除"
+        piv = self._make_df([], [])
+        pri, rest = _sorted_customers(tgt, piv=piv)
+        assert "B" not in pri, "指标全为0且无实际的客户 B 应排除"
+        assert "A" in pri
+
+    def test_target_zero_but_has_actual_shown(self):
+        """指标=0但有实际金额（>0）：展示"""
+        tgt = self._make_df(["A", "B"], [100, 0])
+        piv = self._make_df(["A", "B", "C"], [80, 60, 30])
+        pri, rest = _sorted_customers(tgt, piv=piv)
+        assert "B" in pri, "指标=0但有实际60万的客户 B 应展示"
+        assert "C" in pri, "无指标但有实际30万的客户 C 应展示"
+
+    def test_no_target_no_actual_excluded(self):
+        """无指标且无实际：不展示"""
+        tgt = self._make_df(["A"], [100])
+        piv = self._make_df(["A", "D"], [80, 0])
+        pri, rest = _sorted_customers(tgt, piv=piv)
+        assert "D" not in pri, "无指标且无实际的客户 D 不应展示"
 
     def test_empty_piv_still_works(self):
         """piv 为空时只返回有目标的客户"""

@@ -17,10 +17,10 @@ from .config_loader import CustomerFilter
 from .page_data_utils import (
     _add_wan, _build_subs_detail, _build_subs_with_data,
     _consolidate_customers, _consolidate_target, _customer_pivot,
-    _data_max_month, _dept_target_sum, _get_yearly_year,
-    _group_by_parent, _load_children_map, _parse_month_range,
-    _resplit_priority, _sorted_customers, _yoy_from_yearly,
-    _yoy_rate, DEPARTMENTS,
+    _data_max_month, _dept_target_sum, _expand_children_map,
+    _get_yearly_year, _group_by_parent, _load_children_map,
+    _parse_month_range, _resplit_priority, _sorted_customers,
+    _yoy_from_yearly, _yoy_rate, DEPARTMENTS,
 )
 
 
@@ -196,7 +196,7 @@ def prepare_annual_data(data, base_dir: Path) -> AnnualData:
     d.customers = d.inc_customers
 
     # 弹窗：构建"有数据"的子公司列表（去重合并 inc/pay 客户表）
-    children_map = _load_children_map()
+    children_map = _expand_children_map(_load_children_map())
     all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
     d.subs_all = children_map  # 左侧列表：全量子公司名（配置来源）
     d.subs_with_data = _build_subs_with_data(
@@ -340,8 +340,8 @@ def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
     d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, monthly_filter)
     d.customers = d.inc_customers
 
-    # 弹窗：构建"有数据"的子公司列表
-    children_map = _load_children_map()
+    # 弹窗：构建"有数据"的子公司列表（含销售拆分键，如 科技公司·王海龙 → 只列该销售子公司）
+    children_map = _expand_children_map(_load_children_map())
     all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
     d.subs_all = children_map  # 左侧列表：全量子公司名（配置来源）
     d.subs_with_data = _build_subs_with_data(
@@ -473,8 +473,9 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, quarterly_filter)
     d.customers = d.inc_customers
 
-    # 弹窗：构建"有数据"的子公司列表（用原始未 consolidate 数据，保留子公司独立行）
-    children_map = _load_children_map()
+    # 弹窗：构建"有数据"的子公司列表（用原始未 consolidate 数据，保留子公司独立行；
+    # 含销售拆分键，如 科技公司·王海龙 → 只列该销售子公司）
+    children_map = _expand_children_map(_load_children_map())
     all_parents = list({*d.inc_customers, *d.inc_rest, *d.pay_customers, *d.pay_rest})
     d.subs_all = children_map  # 左侧列表：全量子公司名（配置来源）
     d.subs_with_data = _build_subs_with_data(
@@ -665,7 +666,12 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
                         c_data[mt]["total"] = sum(c_data[mt].get(dpt, 0) for dpt in DEPARTMENTS)
 
     # card3 客户目标（全销售聚合 + 按销售拆分两版本）
-    for _, row in inc_tgt.iterrows():
+    # 注意：直接读原始指标表（不经过 _consolidate_target），客户键保留子公司原名，
+    # 与 sc3_by_parent（来自销售拆分实际数据、按子公司名组织）对齐，避免合并后
+    # 客户键变成 '科技公司·王海龙' 导致矩阵子公司行匹配不到目标。
+    raw_inc_tgt = data.annual_income_targets
+    raw_pay_tgt = data.annual_payment_targets
+    for _, row in raw_inc_tgt.iterrows():
         cust = str(row.get("客户", "")).strip()
         sales = str(row.get("销售", "")).strip()
         if not cust:
@@ -681,7 +687,7 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
         else:
             for dpt in DEPARTMENTS:
                 d.sc3_tgts[cust]["inc"][dpt] = d.sc3_tgts[cust]["inc"].get(dpt, 0) + int(round(safe_float(row.get(dpt, 0))))
-    for _, row in pay_tgt.iterrows():
+    for _, row in raw_pay_tgt.iterrows():
         cust = str(row.get("客户", "")).strip()
         sales = str(row.get("销售", "")).strip()
         if not cust:

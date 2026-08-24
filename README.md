@@ -401,11 +401,11 @@ Visual Dashboard_system/
 │   ├── page_yoy.py                   #   年度同比
 │   ├── sales_pending.py              #   待确认客户弹窗
 │   ├── components.py / config_loader.py / base.py / hero.py / utils.py
-│   └── static/                       #   共享 CSS/JS 变量
+│   └── static/                       #   CSS/JS/图标/Chart.js（含 icons.py、chart.umd.min.js）
 ├── scripts/                          # ★ 工具脚本
 │   ├── config_excel_to_json.py       #   配置编辑器 Excel → JSON 同步
 │   └── verify_dashboard.py           #   看板质量验证（JS语法/onclick函数）
-├── tests/                            # 15 文件，128 passed + 15 skipped
+├── tests/                            # 15 文件，143 passed（含 conftest.py）
 ├── docs/                             # 设计文档 + 部署指南
 ├── output/                           # ★ 看板输出（不上传 Git）
 │   ├── 看板/看板_YYYYMMDD.html        #   6 页可视化看板
@@ -448,7 +448,7 @@ python -m processors.run
 ### 3. 运行测试
 
 ```bash
-python -m pytest tests/ -v              # 128 passed + 15 skipped
+python -m pytest tests/ -v              # 143 passed
 python -m pytest tests/ -k "splitter"   # 按关键字
 ```
 
@@ -466,9 +466,9 @@ Phase 4: 渲染看板    →  6页HTML + Excel总表 → output/
 | 页面 | 核心内容 |
 |------|----------|
 | 数据总览 | Hero 双环 + 事业部矩阵 + 销售 Top N |
-| 年度达成 | Hero + 部门卡 + 客户达成矩阵(cell-bg) + 子公司抽屉弹窗 |
-| 月度达成 | Hero + 部门卡 + 客户达成矩阵 + 子公司抽屉弹窗 |
-| 季度达成 | Hero + 部门卡 + 客户达成矩阵 + 子公司抽屉弹窗 |
+| 年度达成 | Hero + 部门卡 + 客户达成矩阵(cell-bg) + 左右两侧抽屉弹窗 |
+| 月度达成 | Hero + 部门卡 + 客户达成矩阵 + 左右两侧抽屉弹窗 |
+| 季度达成 | Hero + 部门卡 + 客户达成矩阵 + 左右两侧抽屉弹窗 |
 | 销售达成 | 卡片1:销售进度条 / 卡片2:销售×事业部矩阵 / 卡片3:销售×客户矩阵 + 抽屉弹窗 |
 | 年度同比 | 事业部同比表 + 客户同比矩阵（无年基线粒度时降级） |
 
@@ -481,10 +481,12 @@ Phase 4: 渲染看板    →  6页HTML + Excel总表 → output/
 | 列名映射 | 每个字段多个备选列名按序尝试；**回款用应收金额、收入用不含税金额** |
 | 单位转化 | 清洗引擎统一输出"元" → 广东/湖南 ×10000 → 渲染层 ÷10000 → "万元" → `fmt_wan()` 千分位 |
 | 客户归拢 | 3+ 子公司自动聚合到母公司名；1:1 关系不聚合 |
-| 子公司弹窗 | 点击母公司名 → 右侧滑入抽屉，展示子公司×4部门+合计的实际/目标/完成度 |
+| 子公司弹窗 | 点击母公司名 → 左右两侧滑入抽屉（左侧子公司列表、右侧×4部门明细），点击左侧项联动右侧滚动高亮 |
 | 全局 .0f | 金额统一按万元取整无小数点 |
-| 销售归属 | 96 母公司 → 548 子公司 → 收入/回款 → 4部门 → 销售 → 比例；未匹配标记"待确认" |
+| 销售归属 | 125 母公司 → 577 子公司 → 收入/回款 → 4部门 → 销售 → 比例；未匹配标记"待确认" |
 | 比亚迪拆分 | 重名子公司按法人主体分配（广东→黄浩浩，非广东→周涵林） |
+| 图表本地化 | Chart.js 内联进 HTML（`processors/static/chart.umd.min.js`），离线可用，CDN 兜底 |
+| Lucide 图标 | 统一内联 SVG 图标库（`processors/static/icons.py`），零外部依赖 |
 
 ## 技术栈
 

@@ -22,10 +22,10 @@ GLOBAL_OV_CSS = """
 /* ov-container 填满 */
 .page#overview .ov-container{flex:1;display:flex;flex-direction:column;gap:14px;}
 
-/* 飞入动画 */
-@keyframes flyInLeft{0%{opacity:0;transform:translateX(-60px);}100%{opacity:1;transform:translateX(0);}}
-@keyframes flyInRight{0%{opacity:0;transform:translateX(60px);}100%{opacity:1;transform:translateX(0);}}
-@keyframes flyInUp{0%{opacity:0;transform:translateY(30px);}100%{opacity:1;transform:translateY(0);}}
+/* 飞入动画（Apple 风格：位移更克制，缓动 EaseOut） */
+@keyframes flyInLeft{0%{opacity:0;transform:translateX(-24px);}100%{opacity:1;transform:translateX(0);}}
+@keyframes flyInRight{0%{opacity:0;transform:translateX(24px);}100%{opacity:1;transform:translateX(0);}}
+@keyframes flyInUp{0%{opacity:0;transform:translateY(16px);}100%{opacity:1;transform:translateY(0);}}
 
 .ov-cards{display:grid;grid-template-columns:1fr 1fr;gap:18px;flex:1;min-height:0;}
 .ov-card{
@@ -40,8 +40,8 @@ GLOBAL_OV_CSS = """
   display:flex;flex-direction:column;gap:14px;
   min-height:100%;
 }
-.ov-card.ov-card-left{animation:flyInLeft 0.7s cubic-bezier(.2,.8,.3,1) both;}
-.ov-card.ov-card-right{animation:flyInRight 0.7s cubic-bezier(.2,.8,.3,1) both;}
+.ov-card.ov-card-left{animation:flyInLeft .5s var(--ease-out) both;}
+.ov-card.ov-card-right{animation:flyInRight .5s var(--ease-out) both;}
 
 /* 卡片头部：标题 + YoY */
 .ov-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
@@ -112,7 +112,7 @@ GLOBAL_OV_CSS = """
   display:grid;grid-template-columns:repeat(6,1fr);gap:10px;
   background:rgba(255,255,255,0.06);backdrop-filter:blur(16px);
   border:1px solid rgba(255,255,255,0.15);border-radius:12px;
-  padding:12px 16px;animation:flyInUp 0.6s cubic-bezier(.2,.8,.3,1) both;
+  padding:12px 16px;animation:flyInUp .4s var(--ease-out) both;
 }
 .ov-kpi{display:flex;flex-direction:column;gap:3px;}
 .ov-kpi-label{font-size:11px;color:rgba(255,255,255,0.7);font-weight:500;}

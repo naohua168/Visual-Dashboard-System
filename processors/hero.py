@@ -61,8 +61,9 @@ def hero_rings_html(inc_act: float, inc_tgt: float, pay_act: float, pay_tgt: flo
                     yoy_period: str = "", total_tgt: float | None = None,
                     total_label: str = "总指标", show_cust_sales: bool = True) -> str:
     """5列 Hero 布局（信息丰富版）"""
-    inc_r = inc_act / inc_tgt if inc_tgt else 0
-    pay_r = pay_act / pay_tgt if pay_tgt else 0
+    # 有实际金额但无指标 → 完成度 100%
+    inc_r = 1.0 if (inc_tgt == 0 and inc_act > 0) else (inc_act / inc_tgt if inc_tgt else 0)
+    pay_r = 1.0 if (pay_tgt == 0 and pay_act > 0) else (pay_act / pay_tgt if pay_tgt else 0)
     inc_gap = inc_tgt - inc_act
     pay_gap = pay_tgt - pay_act
     onclick = f' onclick="{toggle_js}"' if toggle_js else ""

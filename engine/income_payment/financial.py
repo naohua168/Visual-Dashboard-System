@@ -114,8 +114,65 @@ def clean_hunan(config, matcher, time_range, file_type):
     return df
 
 
+def clean_shaoguan(config, matcher, time_range, file_type):
+    """清洗南方韶关公司数据 — 无表头格式（按列位置提取）
+
+    文件结构: 第0列客户 / 第1列日期 / 第2列金额（金额单位万元）
+    回款 Sheet 可能为空（当前无数据），返回空 DataFrame 即可。
+    """
+    src_config = config["数据源"]["财务端"]["南方韶关"]
+    file_path = get_data_path(config, "财务端", "南方韶关")
+    sheet_name = src_config["Sheet"][file_type][0]
+
+    log_step(f"南方韶关{file_type}", f"读取 {file_path.name}[{sheet_name}]")
+    try:
+        df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"], header=None)
+    except Exception as e:
+        log_step(f"南方韶关{file_type}", f"读取失败: {e}", "WARN")
+        return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
+
+    if df is None or len(df) == 0:
+        log_step(f"南方韶关{file_type}", f"无数据（空 Sheet）", "WARN")
+        return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
+
+    # 按列位置提取（列名可能是 Unnamed: 0/1/2）
+    col_pos = src_config.get("列位置", {"客户": 0, "日期": 1, "金额": 2})
+    if df.shape[1] < 3:
+        log_step(f"南方韶关{file_type}", f"列数不足: {df.shape[1]}列，跳过", "WARN")
+        return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
+
+    out = pd.DataFrame({
+        "客户": df.iloc[:, col_pos["客户"]],
+        "日期": df.iloc[:, col_pos["日期"]],
+        "金额": df.iloc[:, col_pos["金额"]],
+    })
+    # 去掉全空行（表头占位行如 NaN/NaT）
+    out = out.dropna(subset=["客户", "金额"]).copy()
+    out["客户"] = out["客户"].astype(str).str.strip()
+    out = out[out["客户"].notna() & (out["客户"] != "") & (out["客户"] != "nan")].copy()
+    if len(out) == 0:
+        log_step(f"南方韶关{file_type}", "无有效数据行，跳过", "WARN")
+        return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
+
+    out = filter_by_date(out, "日期", time_range["start_date"], time_range["end_date"])
+    log_step(f"南方韶关{file_type}", f"日期筛选后: {len(out)}行")
+
+    # 金额单位万元 → 元
+    out["金额"] = pd.to_numeric(out["金额"], errors="coerce").fillna(0.0) * 10000.0
+    out["事业部"] = src_config["事业部固定"]
+    out["法人主体"] = src_config.get("法人主体", "南方（韶关）智能网联新能源汽车试验检测中心有限公司")
+
+    before = len(out)
+    out = matcher.filter_dataframe(out, "客户", keep_unmatched=False)
+    log_step(f"南方韶关{file_type}", f"白名单匹配: 成功{len(out)}行, 丢弃{before - len(out)}行")
+
+    out = standardize_output(out)
+    log_step(f"南方韶关{file_type}", f"最终: {len(out)}行, 金额合计: {out['金额'].sum():,.2f}（已转万元→元）", "OK")
+    return out
+
+
 def clean_financial(config, mapper, matcher, file_type, time_range):
-    """财务端完整清洗：主表 + 广东 + 湖南 -> 合并"""
+    """财务端完整清洗：主表 + 广东 + 湖南 + 南方韶关 -> 合并"""
     print(f"\n{'='*50}")
     print(f"  Phase 1: 财务端{file_type}清洗")
     print(f"{'='*50}")
@@ -123,7 +180,8 @@ def clean_financial(config, mapper, matcher, file_type, time_range):
     df_main = clean_financial_main(config, mapper, matcher, file_type, time_range)
     df_gd = clean_guangdong(config, matcher, time_range, file_type)
     df_hn = clean_hunan(config, matcher, time_range, file_type)
+    df_sg = clean_shaoguan(config, matcher, time_range, file_type)
 
-    df_all = pd.concat([df_main, df_gd, df_hn], ignore_index=True)
-    log_step(f"财务端{file_type}", f"合并: {len(df_main)} + {len(df_gd)} + {len(df_hn)} = {len(df_all)}行", "OK")
+    df_all = pd.concat([df_main, df_gd, df_hn, df_sg], ignore_index=True)
+    log_step(f"财务端{file_type}", f"合并: {len(df_main)} + {len(df_gd)} + {len(df_hn)} + {len(df_sg)} = {len(df_all)}行", "OK")
     return df_all

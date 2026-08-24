@@ -48,8 +48,9 @@ class OverviewPage(BaseRenderer):
             inc_v = d.dept_inc.get(dpt_name, 0)
             pay_v = d.dept_pay.get(dpt_name, 0)
             tgt = d.dept_tgt_inc.get(dpt_name, 0)
-            inc_r = inc_v / tgt if tgt > 0 else 0
-            pay_r = pay_v / tgt if tgt > 0 else 0
+            # 有实际金额但无指标 → 完成度 100%
+            inc_r = 1.0 if (tgt == 0 and inc_v > 0) else (inc_v / tgt if tgt > 0 else 0)
+            pay_r = 1.0 if (tgt == 0 and pay_v > 0) else (pay_v / tgt if tgt > 0 else 0)
             t_inc_act += inc_v; t_pay_act += pay_v
             dcolor = DEPT_COLORS.get(dpt_name, "#94a3b8")
             rows += (

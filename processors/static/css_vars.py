@@ -29,6 +29,12 @@ CSS_CORE = """
   --shadow-md:0 4px 6px -1px rgba(0,0,0,0.06),0 1px 3px rgba(0,0,0,0.04);
   --shadow-lg:0 10px 15px -3px rgba(0,0,0,0.06),0 4px 6px rgba(0,0,0,0.04);
   --header-h:52px; --nav-h:40px;
+  /* ── 动画（Apple 风格缓动）── */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);           /* 苹果标准 ease */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);        /* EaseOutQuint — 快入缓出 */
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);     /* 标准 ease-in-out */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);   /* 回弹（弹窗专用） */
+  --dur-fast: 150ms; --dur-base: 250ms; --dur-slow: 400ms;
 }
 html,body{height:100%;overflow-x:hidden;}
 body{
@@ -1473,34 +1479,50 @@ CSS_RESPONSIVE = """
 
 CSS_ANIMATIONS = """
 /* ══════════════════════════════════════════════════════
-   动画系统 — 6项动画
+   动画系统 — Apple 风格
+   - 缓动统一走 :root 变量（--ease / --ease-out / --ease-spring）
+   - 时长规范: 快150ms / 常250ms / 慢400ms
+   - 支持 prefers-reduced-motion 减少动画
    ══════════════════════════════════════════════════════ */
 
-/* 1. 页面切换过渡 — pageIn
-   注意：只用 opacity，避免 transform 使 .page 成为 fixed 弹窗的 containing block */
-@keyframes pageIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.page.active { animation: pageIn .3s ease-out; }
+/* 1. 页面切换过渡 — pageIn（纯 opacity，避免 transform 成 containing block） */
+@keyframes pageIn { from { opacity: 0; } to { opacity: 1; } }
+.page.active { animation: pageIn var(--dur-base) var(--ease); }
 
-/* 2. KPI卡片交错入场 — fadeUp (延迟由 JS 动态添加) */
+/* 2. KPI卡片交错入场 — fadeUp（位移从 24px 降为 16px，更克制） */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(24px); }
+  from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.anim-fade-up { animation: fadeUp .45s ease-out both; }
+/* fill-mode 用 backwards：动画期间显示 from(opacity:0)，结束后回到自然状态 opacity:1。
+   both 在 reduce-motion/动画不触发时会永久停在 opacity:0 导致 KPI 卡片消失。 */
+.anim-fade-up { animation: fadeUp var(--dur-slow) var(--ease-out) backwards; }
 
-/* 3. 进度条填充动画 - 仅在 .mini-rate 内的 .bar-fill 加过渡 */
-.mini-rate .bar-fill { transition: width .6s cubic-bezier(0.22, 1, 0.36, 1); }
-.annual-hero-fill { transition: width 1s cubic-bezier(0.22, 1, 0.36, 1); }
+/* 3. 进度条填充动画（EaseOutQuint，快速开始慢速结束） */
+.mini-rate .bar-fill { transition: width .5s var(--ease-out); }
+.annual-hero-fill { transition: width .7s var(--ease-out); }
 
 /* 4. Tab淡入切换 */
-@keyframes tabIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes tabIn { from { opacity: 0; } to { opacity: 1; } }
+.tab-panel.active { animation: tabIn var(--dur-fast) var(--ease-in-out); }
+
+/* 5. 通用交互过渡（按钮/卡片 hover） */
+button, .td-name-clickable, .kpi, .mag-btn, .toggle-all-btn {
+  transition: opacity var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease),
+              background-color var(--dur-fast) var(--ease);
 }
-.tab-panel.active { animation: tabIn .2s ease; }
+
+/* 6. 尊重系统"减少动态效果"偏好 — 关闭所有位移动画 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* 5. 页面容器预留动画空间
    注意：不要给 .page 加 transform/filter/will-change，否则会成为

@@ -113,8 +113,8 @@ class SalesPage(BaseRenderer):
                     f'<span class="tgt">{tgt_text}</span>'
                     f'</div>'
                 )
-            # 合计行
-            total_rate = total_act / total_tgt if total_tgt else 0
+            # 合计行（有实际无指标 → 100%）
+            total_rate = 1.0 if (total_tgt == 0 and total_act > 0) else (total_act / total_tgt if total_tgt else 0)
             rpct = round(total_rate * 100)
             summary = (
                 f'<div class="mini-rate summary-rate">'
@@ -356,7 +356,8 @@ function __sc3Build(parents) {{
 }}
 
 function __sc3Cell(act, tgt, isTotal) {{
-    const _fmt = v => Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}});
+    // 0<v<1 → ">0"，避免四舍五入成 0 造成"实际0却100%"误解
+    const _fmt = v => {{ v = Number(v||0); if (v > 0 && v < 1) return ">0"; return v.toLocaleString("zh-CN", {{maximumFractionDigits: 0}}); }};
     // 0/0 → 显示"—"（无数据）；act>0 且 tgt=0 → 超额100%
     if (act === 0 && tgt === 0) return '<td class="cb is-empty"><div class="ct"><span class="cp">—</span><div class="cm"><span class="cc"><span class="ca">—</span><span class="s">/</span><span class="ctv">—</span></span></div></div></td>';
     let rate, pctLab;
@@ -751,7 +752,7 @@ def _sales_modal_html() -> str:
             }}
         }});
         const _sRate = _sTgtAll > 0 ? Math.round(_sActAll / _sTgtAll * 100) : 0;
-        function _fJ(v) {{ return Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}}); }}
+        function _fJ(v) {{ v = Number(v||0); if (v > 0 && v < 1) return ">0"; return v.toLocaleString("zh-CN", {{maximumFractionDigits: 0}}); }}
         const _sBanner = '<div class="sales-tgt-banner" style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;margin:0 0 14px 0;display:flex;gap:16px;font-size:13px;flex-wrap:wrap"><span style="font-weight:700;color:#92400e">销售个人指标全量</span><span style="color:#92400e">指标合计：<b style="color:#7c2d12;font-size:15px">' + _fJ(_sTgtAll) + '</b></span><span style="color:#92400e">实际完成：<b style="color:#7c2d12;font-size:15px">' + _fJ(_sActAll) + '</b></span><span style="color:#92400e">完成度：<b style="color:#7c2d12;font-size:15px">' + _sRate + '%</b></span><span style="color:#a16207;font-size:11px">（含未展示客户目标）</span></div>';
 
         let ringsHtml = '<div class="parent-rings">';
@@ -796,7 +797,7 @@ def _sales_modal_html() -> str:
     }}
 
     function _modalCell(act, tgt, isTotal) {{
-        const _f = v => Number(v||0).toLocaleString("zh-CN", {{maximumFractionDigits: 0}});
+        const _f = v => {{ v = Number(v||0); if (v > 0 && v < 1) return ">0"; return v.toLocaleString("zh-CN", {{maximumFractionDigits: 0}}); }};
         // 0/0 → "—"，act>0 且 tgt=0 → 超额100%
         if (act === 0 && tgt === 0) return '<td class="cb is-empty"><div class="ct"><span class="cp">—</span><div class="cm"><span class="cc"><span class="ca">—</span><span class="s">/</span><span class="ctv">—</span></span></div></div></td>';
         let rate, pctLab;

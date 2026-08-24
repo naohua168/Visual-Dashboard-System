@@ -15,7 +15,8 @@ function showPage(id){
   host.appendChild(document.importNode(tpl.content,true));
   var pageEl=host.firstElementChild;
   if(pageEl)pageEl.classList.add('active');
-  delayAnim(host,'.kpi,.hero-kpi,.ring-kpi,.mini-rate,.kpi-row>*',80);
+  // KPI 卡片不做入场动画（保持始终可见，避免 fill-mode 隐藏问题）
+  delayAnim(host,'.mini-rate,.kpi-row>*',60);
   setTimeout(window.__resizeAllCharts,100);
   window.scrollTo(0,0);
 }
@@ -66,8 +67,8 @@ if(typeof Chart!=='undefined'){
   Chart.defaults.font.family='"Segoe UI","Microsoft YaHei",Arial,sans-serif';
   Chart.defaults.font.size=10;
   Chart.defaults.maintainAspectRatio=false;
-  // 自定义图表入场动画
-  Chart.defaults.animation={duration:1200,easing:'easeOutQuart'};
+  // 自定义图表入场动画（Apple 风格：更快，EaseOutQuint）
+  Chart.defaults.animation={duration:800,easing:'easeOutQuint'};
 }
 
 // ══════════════════════════════════════════════════════
@@ -128,7 +129,7 @@ setTimeout(initTableCollapse,200);
 // 首屏动画
 setTimeout(function(){
   var firstPage=document.querySelector('.page.active');
-  if(firstPage) delayAnim(firstPage, '.kpi, .hero-kpi, .ring-kpi, .mini-rate, .kpi-row>*', 80);
+  if(firstPage) delayAnim(firstPage, '.mini-rate,.kpi-row>*', 60);
 }, 300);
 
 // ══════════════════════════════════════════════════════

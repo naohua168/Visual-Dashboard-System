@@ -13,6 +13,96 @@ from .config_loader import CustomerFilter
 
 # ── 客户合并：子公司 → 母公司
 _SUB_TO_PARENT: dict[str, str] | None = None  # 懒加载
+# 销售拆分：{母公司: {子公司: 销售}}  — 配置自 展示规则.json._销售拆分.客户矩阵
+_SALES_SPLIT: dict[str, dict[str, str]] | None = None
+
+
+def _load_sales_split(base_dir: Path | None = None) -> dict[str, dict[str, str]]:
+    """加载销售拆分配置 → {母公司: {子公司: 销售}}
+
+    读取 展示规则.json 的 _销售拆分.客户矩阵（母公司名列表），
+    再从 客户销售归属.json 中该母公司的每个子公司的收入配置取归属销售。
+    """
+    global _SALES_SPLIT
+    if _SALES_SPLIT is not None:
+        return _SALES_SPLIT
+    root = base_dir or Path(__file__).parent.parent
+    split: dict[str, dict[str, str]] = {}
+    try:
+        import json
+        rules_path = root / "config" / "前端渲染" / "展示规则.json"
+        ownership_path = root / "config" / "清洗配置" / "客户销售归属.json"
+        if rules_path.exists() and ownership_path.exists():
+            rules = json.load(open(rules_path, "r", encoding="utf-8"))
+            ownership = json.load(open(ownership_path, "r", encoding="utf-8"))
+            split_cfg = rules.get("_销售拆分", {}).get("客户矩阵", [])
+            ownership_groups = ownership.get("客户归属", {})
+            for parent in split_cfg:
+                group = ownership_groups.get(parent, {})
+                sub_sales: dict[str, str] = {}
+                for sub, sub_cfg in group.get("子公司", {}).items():
+                    sub_key = sub.strip()
+                    if not isinstance(sub_cfg, dict):
+                        continue
+                    # 收入配置：{部门: {销售: 比例}}，取首个销售
+                    inc_cfg = sub_cfg.get("收入", {})
+                    for dept_cfg in inc_cfg.values():
+                        if isinstance(dept_cfg, dict) and dept_cfg:
+                            sub_sales[sub_key] = list(dept_cfg.keys())[0]
+                            break
+                    if sub_key not in sub_sales:
+                        pay_cfg = sub_cfg.get("回款", {})
+                        for dept_cfg in pay_cfg.values():
+                            if isinstance(dept_cfg, dict) and dept_cfg:
+                                sub_sales[sub_key] = list(dept_cfg.keys())[0]
+                                break
+                if sub_sales:
+                    split[parent] = sub_sales
+    except Exception:
+        pass
+    _SALES_SPLIT = split
+    return split
+
+
+def _sub_to_sales_key(c: str, parent: str) -> str | None:
+    """子公司 → '母公司·销售' 键（若母公司配置了销售拆分），否则 None"""
+    split = _load_sales_split()
+    sales_map = split.get(parent)
+    if not sales_map:
+        return None
+    sales = sales_map.get(c)
+    if not sales:
+        return None
+    return f"{parent}·{sales}"
+
+
+def _sales_from_key(key: str, split_map: dict[str, dict[str, str]] | None = None) -> str | None:
+    """从 '母公司·销售' 键提取销售名；非拆分键返回 None"""
+    if "·" not in key:
+        return None
+    parent, sales = key.split("·", 1)
+    split_map = split_map or _load_sales_split()
+    if parent in split_map:
+        return sales
+    return None
+
+
+def _expand_children_map(children_map: dict[str, list[str]]) -> dict[str, list[str]]:
+    """扩展母公司→子公司列表：为销售拆分的母公司生成 '母公司·销售' → 该销售子公司列表"""
+    split_map = _load_sales_split()
+    if not split_map:
+        return children_map
+    expanded = dict(children_map)
+    for parent, sales_map in split_map.items():
+        all_subs = children_map.get(parent, [])
+        sales_list: dict[str, list[str]] = {}
+        for s in all_subs:
+            sales = sales_map.get(s)
+            if sales:
+                sales_list.setdefault(sales, []).append(s)
+        for sales, subs in sales_list.items():
+            expanded[f"{parent}·{sales}"] = subs
+    return expanded
 
 
 def _load_sub_to_parent() -> dict[str, str]:
@@ -99,10 +189,17 @@ def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
     for p, children in parent_children.items():
         if p in all_custs or len(children) >= 3:
             consolidate.add(p)
+    # 配置了销售拆分的母公司：即使当月/当季数据中只出现 <3 家子公司也聚合按销售拆分
+    # （如月度回款 科技公司 当月仅 2 家有数据，否则会被 _group_by_parent 退回母公司名，两位销售数据混在一起）
+    consolidate |= set(_load_sales_split().keys())
 
     def _smart_map(c):
         p = _map(c)
         if p in consolidate:
+            # 配置了销售拆分的母公司：子公司映射为 '母公司·销售'，矩阵按销售拆行
+            split_key = _sub_to_sales_key(str(c), p)
+            if split_key:
+                return split_key
             return p
         return c
 
@@ -148,6 +245,7 @@ def _consolidate_target(tgt_df: pd.DataFrame) -> pd.DataFrame:
     if len(tgt_df) == 0:
         return tgt_df
     df = tgt_df.copy()
+    split_parents = set(_load_sales_split().keys())
     if "销售" in df.columns:
         sub_sales_to_parent = _load_sub_sales_to_parent()
         for idx, row in df.iterrows():
@@ -155,7 +253,15 @@ def _consolidate_target(tgt_df: pd.DataFrame) -> pd.DataFrame:
             sales = str(row.get("销售", "")).strip()
             parent = sub_sales_to_parent.get((cust, sales))
             if parent:
-                df.at[idx, "客户"] = parent
+                # 拆分母公司 → '母公司·销售'；否则 → 母公司
+                if parent in split_parents:
+                    df.at[idx, "客户"] = f"{parent}·{sales}" if sales else parent
+                else:
+                    df.at[idx, "客户"] = parent
+            elif cust in split_parents and sales and sales not in ("待确认", "", "nan"):
+                # 客户名本身就是拆分母公司（如月度/季度指标表按 客户='科技公司' + 销售 粒度维护）
+                # → 拆成 '母公司·销售'，保证与实际数据按销售拆分口径一致（两个销售相加 = 全部）
+                df.at[idx, "客户"] = f"{cust}·{sales}"
     df = _consolidate_customers(df)
     dept_cols = [c for c in DEPARTMENTS if c in df.columns]
     if dept_cols:
@@ -192,10 +298,17 @@ def _build_subs_with_data(
                 target_custs.add(str(c))
 
     sub_data: dict[str, list[str]] = {}
+    split_map = _load_sales_split()
     for p in parents:
         all_subs = children_map.get(p, [])
         subs = [s for s in all_subs if s != p]
         subs = [s for s in subs if s in actual_custs or s in target_custs]
+        # 销售拆分键：'母公司·销售' → 只取该销售名下的子公司
+        sales = _sales_from_key(p, split_map)
+        if sales is not None:
+            parent_name = p.split("·")[0]
+            sales_map = split_map.get(parent_name, {})
+            subs = [s for s in subs if sales_map.get(s) == sales]
         if subs:
             sub_data[p] = subs
     return sub_data
@@ -232,6 +345,8 @@ def _build_subs_detail(
                     actual.setdefault(c, {})[dpt] = safe_float(row["金额_万"])
 
     target: dict[str, dict[str, float]] = {}
+    # 按 (客户, 销售) 拆分的目标：拆分母公司的"本部"行需按销售取各自目标（如 科技公司+王海龙）
+    target_by_sales: dict[tuple[str, str], dict[str, float]] = {}
     if raw_target is not None and len(raw_target) and "客户" in raw_target.columns:
         dept_cols = [c for c in DEPARTMENTS if c in raw_target.columns]
         for _, row in raw_target.iterrows():
@@ -240,15 +355,29 @@ def _build_subs_detail(
                 t = target.setdefault(c, {dpt: 0.0 for dpt in dept_cols})
                 for dpt in dept_cols:
                     t[dpt] += safe_float(row[dpt])
+                sales = str(row.get("销售", "")).strip()
+                if sales and sales not in ("待确认", "", "nan"):
+                    ts = target_by_sales.setdefault((c, sales), {dpt: 0.0 for dpt in dept_cols})
+                    for dpt in dept_cols:
+                        ts[dpt] += safe_float(row[dpt])
 
     result: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
+    split_map = _load_sales_split()
     for p in parents:
         sub_detail: dict[str, dict[str, dict[str, float]]] = {}
+        # 销售拆分键：'母公司·销售' → 只统计该销售名下子公司的数据
+        sales = _sales_from_key(p, split_map)
+        parent_name = p.split("·")[0] if sales is not None else p
+        sales_map = split_map.get(parent_name, {}) if sales is not None else {}
 
         # 1) 母公司本部（原始数据中直接挂在母公司名下、未拆分给任何子公司的金额）
         # 过滤：4部门全为0且无目标数据时不展示
-        parent_act_data = actual.get(p, {})
-        parent_tgt_data = target.get(p, {})
+        # 拆分键（如 科技公司·王海龙）：本部目标只取该销售名下的目标，避免两位销售互相混入
+        parent_act_data = actual.get(parent_name, {})
+        if sales is not None:
+            parent_tgt_data = target_by_sales.get((parent_name, sales), {})
+        else:
+            parent_tgt_data = target.get(parent_name, {})
         parent_act_total = sum(parent_act_data.get(d, 0.0) for d in DEPARTMENTS)
         parent_tgt_total = sum(parent_tgt_data.get(d, 0.0) for d in DEPARTMENTS)
         if parent_act_total > 0 or parent_tgt_total > 0:
@@ -261,11 +390,13 @@ def _build_subs_detail(
                 total_act += act
                 total_tgt += tgt
             row["合计"] = {"act": total_act, "tgt": total_tgt}
-            sub_detail[f"{p}（本部）"] = row
+            sub_detail[f"{parent_name}（本部）"] = row
 
         # 2) 子公司明细（过滤：4部门act全为0的子公司不展示，仅当年累计有数据的）
-        all_subs = children_map.get(p, [])
-        subs = [s for s in all_subs if s != p]
+        all_subs = children_map.get(parent_name, [])
+        subs = [s for s in all_subs if s != parent_name]
+        if sales is not None:
+            subs = [s for s in subs if sales_map.get(s) == sales]
         for s in subs:
             row = {}
             total_act = total_tgt = 0.0
@@ -439,34 +570,51 @@ def _sorted_customers(tgt_p: pd.DataFrame,
                      base_dir: Path | None = None) -> tuple[list[str], list[str]]:
     """按目标合计降序排列，返回 (优先客户, 其余客户)
 
-    筛选规则：
-    - **指标客户**（出现在 tgt_p）：任一部门目标≠0 → 展示
-    - **非指标客户**（不在 tgt_p）：实际合计 ≥ 50万 → 展示
-    - 收入/回款分开判定（调用方分别传入各自的 piv/tgt）
+    筛选规则（年度/月度/季度统一）：
+    1. **指标客户**：指标合计 > 0 → 展示
+    2. **非指标客户**：指标=0 或无指标，但有实际金额（>0）→ 展示
+    3. **优先展示母公司**（filt.priority 配置）→ 无论如何都展示（即使无指标无实际）
+    4. 其余（无指标 且 无实际）→ 不展示
+
+    收入/回款分开判定（调用方分别传入各自的 piv/tgt）。
 
     优先逻辑：
     - filt.priority 有配置 → 优先名单内客户排前面，其余折叠在"查看全部"
     - filt.priority 为空 → 全部进入优先列表，其余为空
     """
-    # ① 指标客户：任一部门目标 > 0
+    # ① 指标客户：指标合计 > 0
     cs = [c for c in tgt_p.index if tgt_p.loc[c, "合计"] > 0]
 
-    # ② 非指标客户：不在目标表，但实际金额 ≥ 50万
-    if piv is not None and len(piv) and len(tgt_p):
-        extra = [
-            c for c in piv.index
-            if c not in tgt_p.index and piv.loc[c, "合计"] >= 50
-        ]
-        cs.extend(extra)
+    # ② 非指标客户：指标=0 或无指标，但有实际金额（>0）→ 展示
+    if piv is not None and len(piv):
+        for c in piv.index:
+            if c in cs:
+                continue  # 已在指标客户中
+            act = piv.loc[c, "合计"]
+            if act > 0:
+                cs.append(c)
 
-    # ③ 排序：指标客户在前（按目标降序），非指标在后（按实际降序）
-    cs.sort(key=lambda c: (tgt_p.loc[c, "合计"] if c in tgt_p.index else 0,
-                           piv.loc[c, "合计"] if piv is not None and c in piv.index else 0),
-            reverse=True)
+    # ③ 优先展示母公司：无论如何都展示（即使无指标无实际）
+    if filt and filt.has_priority() and base_dir:
+        pri_set = filt.get_priority_names(base_dir)
+        for c in pri_set:
+            if c not in cs:
+                cs.append(c)
+
+    # ④ 排序：指标>0 的按目标降序在前；有实际金额的按实际降序；无数据（仅优先展示）放最后
+    def _sort_key(c):
+        tgt = tgt_p.loc[c, "合计"] if c in tgt_p.index else 0
+        act = piv.loc[c, "合计"] if piv is not None and c in piv.index else 0
+        if tgt > 0:
+            return (1, tgt, act)   # 指标>0：按目标降序
+        if act > 0:
+            return (0, act, 0)     # 无指标有实际：按实际降序
+        return (-1, 0, 0)          # 无数据（仅优先展示）：最后
+    cs.sort(key=_sort_key, reverse=True)
     if filt and (not filt.is_empty() or filt.max_rows > 0):
         cs = filt.apply(cs, piv, tgt_p, base_dir)
 
-    # ④ 优先展示拆分
+    # ⑤ 优先展示拆分
     if filt and filt.has_priority() and base_dir:
         pri_set = filt.get_priority_names(base_dir)
         pri: list[str] = [c for c in cs if c in pri_set]

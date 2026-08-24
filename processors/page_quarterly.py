@@ -85,17 +85,27 @@ class QuarterlyPage(BaseRenderer):
         def _r(cust_list, start_idx, cls="row-data"):
             out = ""
             for i, c in enumerate(cust_list):
-                # 提示数 = 当前 tab 弹窗实际展示的子公司数（不含本部行、不含自引用行），保证与弹窗一致
+                # 实际有数据的子公司（不含本部行、不含自引用行）
                 subs_in_table = [s for s in subs_detail.get(c, {})
                                  if not s.endswith("（本部）") and s != c]
-                if subs_in_table:
+                # 配置的全量子公司（来自客户销售归属.json，含母公司自引用，与弹窗左侧列表一致）
+                configured_subs = subs_all.get(c, []) if subs_all else []
+                # 真正下属子公司（排除自引用母公司本身）；只有自引用 → 视为无子公司，不可点击
+                real_subs = [s for s in configured_subs if s != c]
+                if real_subs:
+                    shown = len(subs_in_table)
+                    total = len(configured_subs)
+                    if shown == total:
+                        hint_text = f"▾ {total}家"
+                    else:
+                        hint_text = f"▾ {shown}/{total}家"
                     cust_html = (
                         f'<td class="td-name td-name-clickable" '
                         f'onclick="{uid}_show(this,\'{c}\')" '
-                        f'title="点击查看 {len(subs_in_table)} 家子公司" '
+                        f'title="点击查看 {shown}/{total} 家子公司（实际有数据/配置总数）" '
                         f'style="cursor:pointer;color:var(--accent)">'
                         f'<span class="row-num">{start_idx+i+1}</span>{c} '
-                        f'<span class="expand-hint">▾ {len(subs_in_table)}家</span></td>'
+                        f'<span class="expand-hint">{hint_text}</span></td>'
                     )
                 else:
                     cust_html = f'<td class="td-name"><span class="row-num">{start_idx+i+1}</span>{c}</td>'

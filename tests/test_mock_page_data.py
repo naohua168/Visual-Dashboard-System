@@ -18,6 +18,7 @@ import pytest
 
 from processors.page_data_utils import (
     _add_wan,
+    _build_subs_detail,
     _consolidate_customers,
     _consolidate_target,
     _customer_pivot,
@@ -197,7 +198,7 @@ class TestSortedCustomers:
             index=["A", "B", "C"],
         )
         pri, rest = _sorted_customers(tgt)
-        assert "B" not in pri  # 目标为0的排除
+        assert "B" not in pri  # 指标=0 且无实际 → 排除
         assert len(pri) == 2
 
 
@@ -233,6 +234,82 @@ class TestConsolidateTarget:
         result = _consolidate_target(tgt)
         assert len(result) == 1
         assert result.iloc[0]["检测"] == 30
+
+
+    def test_split_parent_with_sales_maps_to_split_key(self, monkeypatch):
+        """客户名=拆分母公司本身 + 销售列 → 拆成 '母公司·销售'（月度/季度指标表按 客户=科技公司 + 销售 维护）"""
+        monkeypatch.setattr(
+            "processors.page_data_utils._load_sales_split",
+            lambda: {"科技公司": {"子公司A": "王海龙", "子公司B": "李巍"}},
+        )
+        monkeypatch.setattr("processors.page_data_utils._load_sub_sales_to_parent", lambda: {})
+        tgt = pd.DataFrame({
+            "客户": ["科技公司", "科技公司"],
+            "销售": ["王海龙", "李巍"],
+            "检测": [100, 50],
+            "信息": [30, 20],
+            "能源": [0, 0],
+            "海外": [0, 0],
+        })
+        result = _consolidate_target(tgt)
+        assert set(result["客户"]) == {"科技公司·王海龙", "科技公司·李巍"}
+        whl = result[result["客户"] == "科技公司·王海龙"].iloc[0]
+        assert whl["检测"] == 100
+        lw = result[result["客户"] == "科技公司·李巍"].iloc[0]
+        assert lw["信息"] == 20
+
+    def test_sub_customer_still_maps_to_split_key(self, monkeypatch):
+        """子公司行仍按 (子公司,销售)→母公司 拆成 '母公司·销售'"""
+        monkeypatch.setattr(
+            "processors.page_data_utils._load_sales_split",
+            lambda: {"科技公司": {"子公司A": "王海龙", "子公司B": "李巍"}},
+        )
+        monkeypatch.setattr(
+            "processors.page_data_utils._load_sub_sales_to_parent",
+            lambda: {("子公司A", "王海龙"): "科技公司"},
+        )
+        tgt = pd.DataFrame({
+            "客户": ["子公司A"],
+            "销售": ["王海龙"],
+            "检测": [100],
+            "信息": [0],
+            "能源": [0],
+            "海外": [0],
+        })
+        result = _consolidate_target(tgt)
+        assert list(result["客户"]) == ["科技公司·王海龙"]
+        assert result.iloc[0]["检测"] == 100
+
+
+# ══════════════════════════════════════════════════════════════
+# 测试 _build_subs_detail（弹窗：拆分键本部目标按销售过滤）
+# ══════════════════════════════════════════════════════════════
+class TestBuildSubsDetailSplitParent:
+    def test_head_office_target_filtered_by_sales(self, monkeypatch):
+        """拆分键（科技公司·王海龙）的弹窗本部目标只取该销售，不混入另一位销售"""
+        monkeypatch.setattr(
+            "processors.page_data_utils._load_sales_split",
+            lambda: {"科技公司": {"子公司A": "王海龙", "子公司B": "李巍"}},
+        )
+        raw_actual = pd.DataFrame(columns=["客户", "事业部", "金额"])
+        raw_target = pd.DataFrame({
+            "客户": ["科技公司", "科技公司"],
+            "销售": ["王海龙", "李巍"],
+            "检测": [100, 50],
+            "信息": [30, 20],
+            "能源": [0, 0],
+            "海外": [0, 0],
+        })
+        children_map = {"科技公司": ["子公司A", "子公司B"]}
+        result = _build_subs_detail(
+            raw_actual, raw_target, children_map, ["科技公司·王海龙"]
+        )
+        detail = result["科技公司·王海龙"]
+        ho = detail.get("科技公司（本部）")
+        assert ho is not None
+        assert ho["合计"]["tgt"] == 130  # 100+30，只含王海龙
+        # 李巍 本部目标不被混入
+        assert ho["合计"]["tgt"] != 180  # 100+30+50+20 合计值
 
 
 # ══════════════════════════════════════════════════════════════

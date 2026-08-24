@@ -135,14 +135,14 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
   position:fixed;top:0;left:0;right:0;bottom:0;
   background:rgba(15,23,42,.5);z-index:9999;
   display:flex;justify-content:flex-end;
-  animation:pndFadeIn .2s ease;
+  animation:pndFadeIn .2s var(--ease);
 }}
 /* ═══ 右侧滑入面板 ═══ */
 .pnd-panel{{
   width:min(860px,92vw);height:100vh;max-height:100vh;
   background:#fff;box-shadow:-8px 0 40px rgba(0,0,0,.15);
   display:flex;flex-direction:column;
-  animation:pndSlideIn .3s cubic-bezier(.4,0,.2,1);
+  animation:pndSlideIn .35s var(--ease-spring);
   overflow:hidden;
 }}
 /* ═══ 头部 ═══ */
@@ -245,7 +245,7 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
 }}
 /* ═══ 动画 ═══ */
 @keyframes pndFadeIn{{from{{opacity:0}}to{{opacity:1}}}}
-@keyframes pndSlideIn{{from{{transform:translateX(40px);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
+@keyframes pndSlideIn{{from{{transform:translateX(24px);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
 </style>
 <script>
 function openPendingModal(){{

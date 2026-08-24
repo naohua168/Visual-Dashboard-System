@@ -100,6 +100,7 @@ echo ═══ Phase 0: 年基线清洗 ═══
 %PYTHON% -m engine.yearly_baseline.run
 if %ERRORLEVEL% neq 0 (
     echo [警告] 年基线清洗异常，继续执行后续步骤...
+    echo          （年度同比功能将降级为不显示，其余页面不受影响）
     echo.
 )
 
@@ -108,6 +109,9 @@ echo ═══ Phase 1+2: 收入/回款清洗 ═══
 %PYTHON% -m engine.income_payment.run
 if %ERRORLEVEL% neq 0 (
     echo [错误] 收入/回款清洗失败！
+    echo.
+    echo   修复后可用以下命令从本步骤续跑：
+    echo     %PYTHON% main.py --from=clean
     pause
     exit /b %ERRORLEVEL%
 )
@@ -117,6 +121,9 @@ echo ═══ Phase 3: 销售拆分 ═══
 %PYTHON% -m engine.sales.run
 if %ERRORLEVEL% neq 0 (
     echo [错误] 销售拆分失败！
+    echo.
+    echo   修复后可用以下命令从本步骤续跑：
+    echo     %PYTHON% main.py --from=split
     pause
     exit /b %ERRORLEVEL%
 )
@@ -126,6 +133,9 @@ echo ═══ Phase 4: 渲染看板 + 汇总Excel ═══
 %PYTHON% -m processors.run
 if %ERRORLEVEL% neq 0 (
     echo [错误] 渲染失败！
+    echo.
+    echo   修复后可用以下命令从本步骤续跑：
+    echo     %PYTHON% main.py --from=render
     pause
     exit /b %ERRORLEVEL%
 )

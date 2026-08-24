@@ -104,17 +104,18 @@ echo ╠════════════════════════
 echo ║  📦 %PKG_NAME%.zip (!ZMB! MB)  ║
 echo ╠══════════════════════════════════════════════════════╣
 echo ║  包含（完整环境，可解压即用）:                      ║
-echo ║  ▪ engine/      清洗引擎 (17 模块)                  ║
-echo ║  ▪ processors/  渲染层 (39 模块)                    ║
+echo ║  ▪ engine/      清洗引擎 (11 模块)                  ║
+echo ║  ▪ processors/  渲染层 (20 模块)                    ║
 echo ║  ▪ scripts/     工具脚本 (配置同步 + 看板验证)       ║
 echo ║  ▪ config/      配置（含配置编辑器.xlsx）            ║
-echo ║  ▪ tests/       测试用例                            ║
+echo ║  ▪ tests/       测试用例 (15 文件)                  ║
 echo ║  ▪ main.py      调度器入口                          ║
 echo ║  ▪ run_all.bat  双击运行                            ║
 echo ║  ▪ docs/        部署指南 + 设计文档                  ║
 echo ║  ▪ data/raw/    原始数据（财务端/运营端/往年/客户名单）║
 echo ║  ▪ data/mappings/ 映射（部门 + 客户名单）           ║
 echo ║  ▪ data/sheets/手动维护/  6张指标表                 ║
+echo ║  ▪ Chart.js 已本地化 (离线可用)                    ║
 echo ╠══════════════════════════════════════════════════════╣
 echo ║  不包含（运行后自动生成）:                          ║
 echo ║  ▪ data/sheets/系统数据清理/  清洗中间产物           ║

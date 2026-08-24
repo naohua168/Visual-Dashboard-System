@@ -9,6 +9,9 @@ def fmt_wan(amount: float | int | None) -> str:
 
     输入金额单位：万元（page_data_utils._add_wan 已做 ÷10000 转换）
     本函数仅做千分位格式化，不改变数值。
+
+    特殊规则：0 < 金额 < 1（万）时显示 ">0"，避免四舍五入成 0 造成
+    "实际为0却完成度100%"的误解。
     """
     if amount is None or (isinstance(amount, float) and math.isnan(amount)):
         return "—"
@@ -18,6 +21,8 @@ def fmt_wan(amount: float | int | None) -> str:
         return "—"
     if v == 0:
         return "0"
+    if 0 < v < 1:
+        return ">0"
     return f"{v:,.0f}"
 
 

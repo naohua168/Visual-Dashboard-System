@@ -27,12 +27,17 @@ def _rate_color(rate: float) -> tuple[str, str]:
 def cell_bg_html(act: float, tgt: float, is_total_col: bool = False,
                  fmt_fn=None) -> str:
     """cell-bg 填充格 — CSS 类替代 --fill 变量，伪元素替代 fill-bg div"""
-    _fmt = fmt_fn or (lambda v: f"{v:,.0f}" if v else "—")
+    from .utils import fmt_wan
+    _fmt = fmt_fn or (lambda v: fmt_wan(v))
 
     if act == 0 and tgt == 0:
         return '<td class="td-empty">—</td>'
 
-    rate = act / tgt if tgt else 0
+    # 有实际金额但无指标 → 完成度 100%
+    if tgt == 0 and act > 0:
+        rate = 1.0
+    else:
+        rate = act / tgt if tgt else 0
     pct_num = min(rate * 100, 100)
     pct_label = f"{rate * 100:.0f}%"
     pct_cls, fill_cls = _rate_color(rate)
@@ -73,7 +78,11 @@ def mini_rate_row(name: str, act: float, tgt: float, name_width: int = 48,
     结构: [名称(width)] [进度条+百分比] [实际值] [/目标值]
     """
     _fmt = fmt_fn or (lambda v: f"{v:,.0f}")
-    rate = act / tgt if tgt else 0
+    # 有实际金额但无指标 → 完成度 100%
+    if tgt == 0 and act > 0:
+        rate = 1.0
+    else:
+        rate = act / tgt if tgt else 0
     rate_cls = _rate_color(rate)[0]
     bar_cls = rate_cls or "level-4" if rate >= 0.8 else ""
     bar_cls = bar_cls.replace("achieved", "level-4").replace(" low", "level-2")
@@ -101,7 +110,11 @@ def mini_rate_summary_row(name: str, act: float, tgt: float,
                           name_width: int = 48, fmt_fn=None) -> str:
     """mini-rate 合计行（带顶部分割线）"""
     _fmt = fmt_fn or (lambda v: f"{v:,.0f}")
-    rate = act / tgt if tgt else 0
+    # 有实际金额但无指标 → 完成度 100%
+    if tgt == 0 and act > 0:
+        rate = 1.0
+    else:
+        rate = act / tgt if tgt else 0
     rate_cls = _rate_color(rate)[0]
     if rate < 0.3:
         bar_cls = "level-1"
@@ -152,7 +165,7 @@ def children_modal_html(uid: str) -> str:
     - 不滚动其他内容：body 用 position:fixed 锁滚动
     """
     return (
-        f'<div id="{uid}_modal" class="children-modal hidden">'
+        f'<div id="{uid}_modal" class="children-modal">'
         # 单一遮罩层（点击关闭，z-index 最低）
         f'<div class="children-modal-backdrop" data-close="1" onclick="{uid}_close()"></div>'
         # 左侧 panel：子公司名列表（z-index 高于 backdrop）
@@ -175,22 +188,26 @@ def children_modal_html(uid: str) -> str:
         f'<div id="{uid}_body" class="children-modal-body"></div>'
         f'</div></div>'
         f'<style>'
-        f'.children-modal{{position:fixed;inset:0;z-index:9999;pointer-events:none}} '
-        f'.children-modal.hidden{{display:none}} '
-        # backdrop：全屏，pointer-events:auto，z 最低（在 panel 之下）
-        f'.children-modal-backdrop{{position:absolute;inset:0;background:rgba(15,23,42,0.42);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity 0.25s ease}} '
-        f'.children-modal:not(.hidden){{pointer-events:auto}} '
-        f'.children-modal:not(.hidden) .children-modal-backdrop{{opacity:1;pointer-events:auto}} '
-        # 右侧 panel：根据窗口宽度自适应
+        # 关键：visibility + opacity 替代 display:none，保证 transition 始终可用
+        f'.children-modal{{position:fixed;inset:0;z-index:9999;pointer-events:none;visibility:hidden;opacity:0;transition:opacity .28s var(--ease)}} '
+        f'.children-modal.open{{visibility:visible;opacity:1;pointer-events:auto}} '
+        f'.children-modal.open .children-modal-backdrop{{opacity:1;pointer-events:auto}} '
+        # backdrop：全屏，pointer-events:auto
+        f'.children-modal-backdrop{{position:absolute;inset:0;background:rgba(15,23,42,0.45);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .28s var(--ease)}} '
+        # 右侧 panel：飞入动画（位移+缩放+透明度，弹性缓动）
         f'.children-modal-panel{{position:fixed;right:0;top:0;bottom:0;width:min(92vw,820px);background:#fff;'
         f'box-shadow:-12px 0 32px rgba(15,23,42,0.22);display:flex;flex-direction:column;'
-        f'transform:translateX(100%);transition:transform 0.32s cubic-bezier(0.16,1,0.3,1);z-index:2;pointer-events:auto;overflow:hidden}} '
-        f'.children-modal-panel.show{{transform:translateX(0)}} '
-        # 左侧 panel：根据窗口宽度自适应（中等屏幕 320，大屏 380）
+        f'transform:translateX(110%) scale(0.97);opacity:0;'
+        f'transition:transform .45s var(--ease-spring),opacity .3s var(--ease-out);'
+        f'z-index:2;pointer-events:auto;overflow:hidden}} '
+        f'.children-modal.open .children-modal-panel{{transform:translateX(0) scale(1);opacity:1}} '
+        # 左侧 panel：错位 60ms 飞入，层次感
         f'.children-left-panel{{position:fixed;left:0;top:0;bottom:0;width:clamp(280px,32vw,380px);background:#fff;'
         f'box-shadow:12px 0 32px rgba(15,23,42,0.22);display:flex;flex-direction:column;'
-        f'transform:translateX(-100%);transition:transform 0.32s cubic-bezier(0.16,1,0.3,1);z-index:2;pointer-events:auto;overflow:hidden}} '
-        f'.children-left-panel.show{{transform:translateX(0)}} '
+        f'transform:translateX(-110%) scale(0.97);opacity:0;'
+        f'transition:transform .45s var(--ease-spring) 60ms,opacity .3s var(--ease-out) 60ms;'
+        f'z-index:2;pointer-events:auto;overflow:hidden}} '
+        f'.children-modal.open .children-left-panel{{transform:translateX(0) scale(1);opacity:1}} '
         # 响应式：窄屏时左右 panel 占满宽度
         f'@media (max-width:780px){{'
         f'.children-modal-panel{{width:100vw;}}'
@@ -244,7 +261,8 @@ def children_modal_js(uid: str, sub_detail_json: str, left_data_json: str = "[]"
         f'window["{uid}_DATA"]={sub_detail_json};'
         f'window["{uid}_LEFT"]={left_data_json};'
         f'const {uid}_DEPS=["检测","信息","能源","海外","合计"];'
-        f'function {uid}_fmt(v){{return Number(v||0).toLocaleString("zh-CN",{{maximumFractionDigits:0}});}}'
+        # 0<v<1 → ">0"，避免四舍五入成 0 造成"实际0却100%"误解
+        f'function {uid}_fmt(v){{v=Number(v||0);if(v>0&&v<1){{return ">0";}}return v.toLocaleString("zh-CN",{{maximumFractionDigits:0}});}}'
         f'function {uid}_cell(act,tgt){{'
         f'act=act||0;tgt=tgt||0;'
         # 0/0 → "—"，act>0 且 tgt=0 → 超额100%，act>0 且 tgt>0 → act/tgt
@@ -346,22 +364,27 @@ def children_modal_js(uid: str, sub_detail_json: str, left_data_json: str = "[]"
         f'document.body.style.width="";'
         f'window.scrollTo(0,scrollY);'
         f'}}'
-        f'setTimeout(function(){{'
-        f'document.getElementById("{uid}_modal").classList.remove("hidden");'
-        f'document.getElementById("{uid}_panel").classList.add("show");'
-        f'var lp=document.getElementById("{uid}_left_panel");if(lp)lp.classList.add("show");'
+        # 打开：requestAnimationFrame 双帧确保 transition 从初始态播放
         f'{uid}_lockScroll();'
         # 打开时清除上一次高亮
         f'if(window["{uid}_cur_hl_clear"]){{{uid}_cur_hl_clear();}}'
-        f'}},150);'
+        # 帧1：移除隐藏，让浏览器计算初始态（opacity:0, translateX 屏幕外）
+        f'var _m=document.getElementById("{uid}_modal");'
+        f'_m.classList.remove("open");'
+        # 强制重绘
+        f'void _m.offsetWidth;'
+        # 帧2：添加 open，触发 transition
+        f'requestAnimationFrame(function(){{'
+        f'requestAnimationFrame(function(){{'
+        f'_m.classList.add("open");'
+        f'}});'
+        f'}});'
         f'}}'
         f'function {uid}_close(){{'
-        f'document.getElementById("{uid}_panel").classList.remove("show");'
-        f'var lp=document.getElementById("{uid}_left_panel");if(lp)lp.classList.remove("show");'
+        f'document.getElementById("{uid}_modal").classList.remove("open");'
         f'setTimeout(function(){{'
-        f'document.getElementById("{uid}_modal").classList.add("hidden");'
         f'{uid}_unlockScroll();'
-        f'}},250);'
+        f'}},320);'
         f'}}'
         # 左侧列表联动：滚动右侧抽屉到指定子公司行并高亮
         f'function {uid}_scroll_to_sub(subName){{'
