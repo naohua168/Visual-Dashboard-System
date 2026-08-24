@@ -23,12 +23,6 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     df = extract_columns(df, src_config["列映射"])
     print_hit_columns(df, f"财务端{file_type}")
 
-    # 客户区域筛选（仅保留三区）
-    if "客户区域" in df.columns:
-        before = len(df)
-        df = df[df["客户区域"] == "三区"].copy()
-        log_step(f"财务端{file_type}", f"三区筛选: 保留{len(df)}行, 排除{before - len(df)}行")
-
     # 日期筛选
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"财务端{file_type}", f"日期筛选后: {len(df)}行 (排除{total_in - len(df)}行)")
