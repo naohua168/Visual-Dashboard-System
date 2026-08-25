@@ -265,7 +265,8 @@ def _consolidate_target(tgt_df: pd.DataFrame) -> pd.DataFrame:
     df = _consolidate_customers(df)
     dept_cols = [c for c in DEPARTMENTS if c in df.columns]
     if dept_cols:
-        df = df.groupby(["客户", "销售"], as_index=False, dropna=False)[dept_cols].sum()
+        # sort=False 保留指标表原始行序（聚合后的公司顺序 = 指标表首次出现顺序）
+        df = df.groupby(["客户", "销售"], as_index=False, dropna=False, sort=False)[dept_cols].sum()
     return df
 
 
@@ -496,9 +497,10 @@ def _customer_pivot(df: pd.DataFrame, tgt: pd.DataFrame) -> tuple[pd.DataFrame, 
                 av_cols.append(c)
                 dept_map[d] = c
                 break
-    piv = df.pivot_table(index="客户", columns="事业部", values="金额_万", aggfunc="sum", fill_value=0)
+    piv = df.pivot_table(index="客户", columns="事业部", values="金额_万", aggfunc="sum", fill_value=0, sort=False)
     if av_cols:
-        tgt_p = tgt.groupby("客户")[av_cols].sum()
+        # sort=False：保留指标表行序（客户矩阵展示顺序 = 指标表顺序）
+        tgt_p = tgt.groupby("客户", sort=False)[av_cols].sum()
         rename = {v: k for k, v in dept_map.items() if v != k}
         if rename:
             tgt_p = tgt_p.rename(columns=rename)
@@ -538,7 +540,8 @@ def _group_by_parent(piv: pd.DataFrame, tgt_g: pd.DataFrame, customers: list[str
         df = df.copy()
         new_idx = [parent_map.get(c, c) for c in df.index]
         df.index = new_idx
-        return df.groupby(df.index).sum()
+        # sort=False：归拢后仍保持指标表顺序
+        return df.groupby(df.index, sort=False).sum()
 
     piv_out = _remap(piv)
     tgt_out = _remap(tgt_g)
@@ -582,17 +585,39 @@ def _sorted_customers(tgt_p: pd.DataFrame,
     - filt.priority 有配置 → 优先名单内客户排前面，其余折叠在"查看全部"
     - filt.priority 为空 → 全部进入优先列表，其余为空
     """
-    # ① 指标客户：指标合计 > 0
-    cs = [c for c in tgt_p.index if tgt_p.loc[c, "合计"] > 0]
-
-    # ② 非指标客户：指标=0 或无指标，但有实际金额（>0）→ 展示
-    if piv is not None and len(piv):
-        for c in piv.index:
-            if c in cs:
-                continue  # 已在指标客户中
-            act = piv.loc[c, "合计"]
-            if act > 0:
+    # ① 指标客户收集（无指定展示顺序时按指标表行序）：
+    #   - 指标表中所有客户（无论指标是否>0）只要"有指标或实际"就按指标表顺序收录
+    #   - 非指标表客户（指标表无记录但有实际）追加到末尾
+    # 说明：指标表中 指标合计=0 但有实际 的客户（如广汽系子公司在月度表无目标）
+    #   也应保持其在指标表中的位置，而不是按实际数据顺序插入
+    tgt_set = set(tgt_p.index)
+    has_pri = bool(filt and filt.has_priority() and base_dir)
+    if has_pri:
+        # 有指定展示顺序：指标>0 客户在前（按指标表行序），其余按实际金额
+        cs = [c for c in tgt_p.index if tgt_p.loc[c, "合计"] > 0]
+        if piv is not None and len(piv):
+            for c in piv.index:
+                if c in cs:
+                    continue  # 已在指标客户中
+                act = piv.loc[c, "合计"]
+                if act > 0:
+                    cs.append(c)
+    else:
+        # 无指定展示顺序：所有指标表客户（有指标或有实际）按指标表行序
+        cs = []
+        for c in tgt_p.index:
+            has_tgt = tgt_p.loc[c, "合计"] > 0
+            act = piv.loc[c, "合计"] if piv is not None and c in piv.index else 0
+            if has_tgt or act > 0:
                 cs.append(c)
+        # 非指标表客户（有实际）：追加末尾
+        if piv is not None and len(piv):
+            for c in piv.index:
+                if c in tgt_set or c in cs:
+                    continue
+                act = piv.loc[c, "合计"]
+                if act > 0:
+                    cs.append(c)
 
     # ③ 优先展示母公司：无论如何都展示（即使无指标无实际）
     if filt and filt.has_priority() and base_dir:
@@ -601,16 +626,18 @@ def _sorted_customers(tgt_p: pd.DataFrame,
             if c not in cs:
                 cs.append(c)
 
-    # ④ 排序：指标>0 的按目标降序在前；有实际金额的按实际降序；无数据（仅优先展示）放最后
-    def _sort_key(c):
-        tgt = tgt_p.loc[c, "合计"] if c in tgt_p.index else 0
-        act = piv.loc[c, "合计"] if piv is not None and c in piv.index else 0
-        if tgt > 0:
-            return (1, tgt, act)   # 指标>0：按目标降序
-        if act > 0:
-            return (0, act, 0)     # 无指标有实际：按实际降序
-        return (-1, 0, 0)          # 无数据（仅优先展示）：最后
-    cs.sort(key=_sort_key, reverse=True)
+    # ④ 排序：有指定展示顺序（优先展示配置非空）时按金额降序；
+    #     无指定展示顺序时保持指标表原始顺序（cs 已按 tgt_p.index 指标表行序收集）
+    if filt and filt.has_priority() and base_dir:
+        def _sort_key(c):
+            tgt = tgt_p.loc[c, "合计"] if c in tgt_p.index else 0
+            act = piv.loc[c, "合计"] if piv is not None and c in piv.index else 0
+            if tgt > 0:
+                return (1, tgt, act)   # 指标>0：按目标降序
+            if act > 0:
+                return (0, act, 0)     # 无指标有实际：按实际降序
+            return (-1, 0, 0)          # 无数据（仅优先展示）：最后
+        cs.sort(key=_sort_key, reverse=True)
     if filt and (not filt.is_empty() or filt.max_rows > 0):
         cs = filt.apply(cs, piv, tgt_p, base_dir)
 

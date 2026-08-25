@@ -440,11 +440,11 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d.qtr_range = get_config_range(base_dir, "季度累计筛选") or ""
     d.date_range = d.qtr_range
 
-    # 客户矩阵 — 指标值+客户列表均用季度目标
-    inc_tgt_grouped = inc_tgt.groupby("客户")[
+    # 客户矩阵 — 指标值+客户列表均用季度目标（sort=False 保留指标表顺序）
+    inc_tgt_grouped = inc_tgt.groupby("客户", sort=False)[
         [c for c in DEPARTMENTS if c in inc_tgt.columns]
     ].sum()
-    pay_tgt_grouped = pay_tgt.groupby("客户")[
+    pay_tgt_grouped = pay_tgt.groupby("客户", sort=False)[
         [c for c in DEPARTMENTS if c in pay_tgt.columns]
     ].sum()
     inc_tgt_grouped["合计"] = inc_tgt_grouped.sum(axis=1)

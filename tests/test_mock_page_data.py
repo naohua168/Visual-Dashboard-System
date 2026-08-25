@@ -175,7 +175,7 @@ class TestSortedCustomers:
             index=["A", "B", "C"],
         )
         pri, rest = _sorted_customers(tgt)
-        assert pri == ["A", "C", "B"]  # 按目标降序
+        assert pri == ["A", "B", "C"]  # 无优先展示 → 按指标表顺序
         assert rest == []
 
     def test_with_priority(self):
