@@ -82,6 +82,12 @@ METRIC_VALUES = ["收入", "回款", "收入,回款"]
 # 部门取值
 DEPT_VALUES = ["检测", "信息", "能源", "海外"]
 
+# KPI 指标 sheet（单独 sheet，控制 Hero 圆环的指标总数，万元）
+# 值留空 = 不覆盖（用指标文件合计）；填数字 = 覆盖 KPI 卡片显示
+KPI_PAGES = ["年度达成", "月度达成", "季度达成"]
+KPI_METRICS = ["收入", "回款"]
+KPI_HEADERS = ["页面", "指标", "值(万元)", "说明"]
+
 
 # ──────────────────────────────────────────────────────────────
 # Excel 读取 → 时间配置 dict
@@ -442,6 +448,70 @@ def update_display_rules(rules: dict, dry_run: bool = False) -> dict:
     return new_cfg
 
 
+def update_kpi_rules(kpi: dict, dry_run: bool = False) -> dict:
+    """把 KPI 指标覆盖写回 展示规则.json 对应页面的 `KPI指标` 区块。
+
+    只更新「年度达成/月度达成/季度达成」三个页面下的 KPI指标 子对象，
+    其余配置不动；某页面收入/回款都留空时不写该区块（恢复指标文件合计）。
+    """
+    if not DISPLAY_RULES_CFG.exists():
+        raise FileNotFoundError(f"展示规则.json 不存在: {DISPLAY_RULES_CFG}")
+
+    text = DISPLAY_RULES_CFG.read_text(encoding="utf-8")
+    cfg = json.loads(text)
+    new_cfg = dict(cfg)
+    for page in KPI_PAGES:
+        page_cfg = dict(new_cfg.get(page, {}))
+        # 仅更新 KPI指标 区块，保留页面其他内容
+        page_kpi = {m: v for m, v in kpi.get(page, {}).items() if v is not None}
+        if page_kpi:
+            page_cfg["KPI指标"] = page_kpi
+        else:
+            page_cfg.pop("KPI指标", None)
+        new_cfg[page] = page_cfg
+
+    if dry_run:
+        return new_cfg
+
+    DISPLAY_RULES_CFG.write_text(
+        json.dumps(new_cfg, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return new_cfg
+
+
+# ──────────────────────────────────────────────────────────────
+# Excel 读取 → KPI 指标 dict
+# ──────────────────────────────────────────────────────────────
+def excel_to_kpi(sheet) -> dict:
+    """从「KPI指标」sheet 构建 {页面: {收入: float|None, 回款: float|None}}
+
+    值留空 = 不覆盖（KPI 卡片用指标文件合计）；填数字（万元）= 覆盖 Hero 圆环指标总数。
+    写回展示规则.json 对应页面的 `KPI指标` 区块，不影响表格/矩阵里的明细指标。
+    """
+    result: dict[str, dict[str, float | None]] = {
+        page: {m: None for m in KPI_METRICS} for page in KPI_PAGES
+    }
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        page = _parse_cell(row[0])
+        metric = _parse_cell(row[1])
+        value = row[2]
+        if not page:
+            continue  # 空行
+        if page not in KPI_PAGES:
+            raise ValueError(f"非法 KPI 页面: {page!r}（可选 {'/'.join(KPI_PAGES)}）")
+        if metric not in KPI_METRICS:
+            raise ValueError(f"非法 KPI 指标: {metric!r}（可选 {'/'.join(KPI_METRICS)}）")
+        v: float | None = None
+        if value not in (None, ""):
+            try:
+                v = float(value)
+            except (TypeError, ValueError):
+                raise ValueError(f"KPI 指标值非法（应为数字，万元）: {page}/{metric} = {value!r}")
+        result[page][metric] = v
+    return result
+
+
 # ──────────────────────────────────────────────────────────────
 # Excel 读取 → 销售归属 dict
 # ──────────────────────────────────────────────────────────────
@@ -770,7 +840,49 @@ def init_excel_template():
 
     ws_a.freeze_panes = "A2"
 
-    # ── Sheet 4: 说明 ──
+    # ── Sheet 4: KPI指标（Hero 圆环指标总数覆盖，万元）──
+    rules_now = json.loads(DISPLAY_RULES_CFG.read_text(encoding="utf-8"))
+    ws_k = wb.create_sheet("KPI指标")
+    ws_k.append(KPI_HEADERS)
+    for col, h in enumerate(KPI_HEADERS, 1):
+        c = ws_k.cell(row=1, column=col)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = border
+
+    k_row = 2
+    k_notes = {
+        "年度达成": "年度达成页 + 数据总览页的年度 KPI 指标总数",
+        "月度达成": "月度达成页的 KPI 指标总数",
+        "季度达成": "季度达成页的 KPI 指标总数",
+    }
+    for page in KPI_PAGES:
+        page_kpi = rules_now.get(page, {}).get("KPI指标", {})
+        for metric in KPI_METRICS:
+            v = page_kpi.get(metric)
+            vals = [page, metric, v if v is not None else "", k_notes[page]]
+            for c, vv in enumerate(vals, 1):
+                cell = ws_k.cell(row=k_row, column=c, value=vv)
+                cell.border = border
+                cell.alignment = Alignment(vertical="center", wrap_text=(c == 4))
+            k_row += 1
+
+    # 列宽
+    k_widths = [16, 12, 16, 46]
+    for i, w in enumerate(k_widths, 1):
+        ws_k.column_dimensions[get_column_letter(i)].width = w
+    # 数据验证：页面 / 指标 下拉
+    from openpyxl.worksheet.datavalidation import DataValidation
+    dv_kpage = DataValidation(type="list", formula1='"' + ",".join(KPI_PAGES) + '"', allow_blank=True)
+    dv_kpage.add(f"A2:A{ws_k.max_row + 50}")
+    ws_k.add_data_validation(dv_kpage)
+    dv_kmetric = DataValidation(type="list", formula1='"' + ",".join(KPI_METRICS) + '"', allow_blank=True)
+    dv_kmetric.add(f"B2:B{ws_k.max_row + 50}")
+    ws_k.add_data_validation(dv_kmetric)
+    ws_k.freeze_panes = "A2"
+
+    # ── Sheet 5: 说明 ──
     ws2 = wb.create_sheet("说明")
     lines = [
         ["配置编辑器使用说明"],
@@ -809,7 +921,16 @@ def init_excel_template():
         ["   - 比例: 分配比例，默认 1（全额）；拆分时填小数如 0.3 或百分比 30%"],
         ["   - 说明: 备注（可选）"],
         [""],
-        ["5. 常见修改："],
+        ["5. 「KPI指标」sheet 列说明（Hero 圆环指标总数，万元）："],
+        ["   - 页面: 年度达成 / 月度达成 / 季度达成"],
+        ["   - 指标: 收入 / 回款"],
+        ["   - 值(万元): 填数字 = 覆盖 KPI 卡片显示的指标总数（如 50000 = 5亿）"],
+        ["     · 留空 = 不覆盖，KPI 卡片仍按指标文件合计（现状）"],
+        ["     · 不影响表格/矩阵/部门卡里的明细指标（只改 Hero 圆环总数）"],
+        ["   - 说明: 备注（可选）"],
+        ["   - 注意: 数据总览页的年度 KPI 跟随「年度达成」的设置"],
+        [""],
+        ["6. 常见修改："],
         ["   - 换月份: 改「时间配置」的月度数据开始/结束日期"],
         ["   - 调整优先展示客户: 改「展示规则」对应页面的 客户矩阵.优先展示.N 行"],
         ["   - 显示全部客户: 把 客户矩阵.优先展示 的所有行删掉，保留一条空值行"],
@@ -877,7 +998,24 @@ def main():
     else:
         print("⚠️  Excel 缺少「展示规则」sheet，跳过")
 
-    # 3) 销售归属 → 客户销售归属.json
+    # 3) KPI指标 → 展示规则.json 各页面 KPI指标 区块
+    if "KPI指标" in wb.sheetnames:
+        ws_k = wb["KPI指标"]
+        kpi = excel_to_kpi(ws_k)
+        new_rules = update_kpi_rules(kpi, dry_run=dry_run)
+        if dry_run:
+            print("【DRY-RUN】将写回以下 KPI 指标覆盖：")
+            for page, m in kpi.items():
+                print(f"  - {page}: {json.dumps(m, ensure_ascii=False)}")
+        else:
+            set_count = sum(
+                1 for m in kpi.values() for v in m.values() if v is not None
+            )
+            print(f"✅ 已更新 展示规则.json 的 KPI指标 区块（{set_count} 项覆盖，其余按指标文件合计）")
+    else:
+        print("⚠️  Excel 缺少「KPI指标」sheet，跳过")
+
+    # 4) 销售归属 → 客户销售归属.json
     if "销售归属" in wb.sheetnames:
         ws_a = wb["销售归属"]
         att = excel_to_attribution(ws_a)

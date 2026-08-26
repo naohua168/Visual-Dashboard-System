@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from .utils import safe_float, get_config_range
-from .config_loader import CustomerFilter
+from .config_loader import CustomerFilter, get_value
 
 # ── 客户合并：子公司 → 母公司
 _SUB_TO_PARENT: dict[str, str] | None = None  # 懒加载
@@ -443,6 +443,22 @@ def _dept_target_sum(targets: pd.DataFrame) -> float:
         for d in DEPARTMENTS
         for c in [d, f"{d}收入", f"{d}回款"] if c in cols
     )
+
+
+def _kpi_target(base_dir: Path, page: str, metric: str, fallback: float) -> float:
+    """Hero KPI 卡片指标总数（万元）。
+
+    优先用 展示规则.json 中该页面 `KPI指标.{metric}` 的覆盖值；
+    未设置（None/空/缺失）时回退到指标文件合计（fallback）。
+    只影响 Hero 圆环指标总数，不影响表格/矩阵/部门卡明细指标。
+    """
+    try:
+        val = get_value(base_dir, page, f"KPI指标.{metric}")
+        if val is not None and str(val).strip() not in ("", "nan"):
+            return float(val)
+    except Exception:
+        pass
+    return float(fallback)
 
 
 def _yoy_rate(cur: float, prev: float) -> float | None:

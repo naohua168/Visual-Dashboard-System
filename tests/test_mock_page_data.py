@@ -25,6 +25,7 @@ from processors.page_data_utils import (
     _data_max_month,
     _dept_target_sum,
     _group_by_parent,
+    _kpi_target,
     _parse_month_range,
     _resplit_priority,
     _sorted_customers,
@@ -76,6 +77,55 @@ class TestDeptTargetSum:
     def test_empty(self):
         tgt = pd.DataFrame()
         assert _dept_target_sum(tgt) == 0
+
+
+# ══════════════════════════════════════════════════════════════
+# 测试 _kpi_target (Hero KPI 指标总数覆盖)
+# ══════════════════════════════════════════════════════════════
+class TestKpiTarget:
+    """展示规则.json 的 `KPI指标` 覆盖值生效；未设置时回退指标文件合计"""
+
+    @pytest.fixture(autouse=True)
+    def _reset_rules_cache(self):
+        """每次测试重置展示规则全局缓存（_load_rules 按 base_dir 缓存）"""
+        import processors.config_loader as cl
+        cl._RULES = None
+        yield
+        cl._RULES = None
+
+    def _make_base_dir(self, kpi_block=None):
+        """构造带 config/前端渲染/展示规则.json 的临时目录"""
+        tmp = Path(tempfile.mkdtemp())
+        cfg_dir = tmp / "config" / "前端渲染"
+        cfg_dir.mkdir(parents=True)
+        rules = {}
+        if kpi_block is not None:
+            rules["年度达成"] = {"KPI指标": kpi_block}
+        (cfg_dir / "展示规则.json").write_text(
+            __import__("json").dumps(rules, ensure_ascii=False), encoding="utf-8"
+        )
+        return tmp
+
+    def test_configured_value_used(self):
+        base = self._make_base_dir({"收入": 60000, "回款": 40000})
+        assert _kpi_target(base, "年度达成", "收入", 999) == 60000
+        assert _kpi_target(base, "年度达成", "回款", 999) == 40000
+
+    def test_unconfigured_fallback(self):
+        # 无 KPI指标 区块 → 回退 fallback
+        base = self._make_base_dir(None)
+        assert _kpi_target(base, "年度达成", "收入", 107080) == 107080
+
+    def test_partial_configured(self):
+        # 只配收入，回款缺省 → 收入覆盖、回款 fallback
+        base = self._make_base_dir({"收入": 5000})
+        assert _kpi_target(base, "年度达成", "收入", 999) == 5000
+        assert _kpi_target(base, "年度达成", "回款", 3722) == 3722
+
+    def test_null_value_fallback(self):
+        # 值显式为 null → 视为未设置
+        base = self._make_base_dir({"收入": None})
+        assert _kpi_target(base, "年度达成", "收入", 999) == 999
 
 
 # ══════════════════════════════════════════════════════════════

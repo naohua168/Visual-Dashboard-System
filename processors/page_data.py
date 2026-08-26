@@ -18,7 +18,7 @@ from .page_data_utils import (
     _add_wan, _build_subs_detail, _build_subs_with_data,
     _consolidate_customers, _consolidate_target, _customer_pivot,
     _data_max_month, _dept_target_sum, _expand_children_map,
-    _get_yearly_year, _group_by_parent, _load_children_map,
+    _get_yearly_year, _group_by_parent, _kpi_target, _load_children_map,
     _parse_month_range, _resplit_priority, _sorted_customers,
     _yoy_from_yearly, _yoy_rate, DEPARTMENTS,
 )
@@ -67,8 +67,9 @@ def prepare_overview_data(data, base_dir: Path) -> OverviewData:
 
     d.t_inc = float(df_inc["金额_万"].sum())
     d.t_pay = float(df_pay["金额_万"].sum())
-    d.t_inc_tgt = _dept_target_sum(inc_tgt_df)
-    d.t_pay_tgt = _dept_target_sum(pay_tgt_df)
+    # 数据总览页的年度 KPI 跟随「年度达成」的 KPI指标 覆盖；未设置则用指标文件合计
+    d.t_inc_tgt = _kpi_target(base_dir, "年度达成", "收入", _dept_target_sum(inc_tgt_df))
+    d.t_pay_tgt = _kpi_target(base_dir, "年度达成", "回款", _dept_target_sum(pay_tgt_df))
 
     cur_start_m, cur_end_m = _parse_month_range(base_dir, "年度累计")
     cur_end_m = min(cur_end_m, _data_max_month(df_inc))
@@ -156,8 +157,9 @@ def prepare_annual_data(data, base_dir: Path) -> AnnualData:
 
     d.t_inc = float(df_inc["金额_万"].sum())
     d.t_pay = float(df_pay["金额_万"].sum())
-    d.t_inc_tgt = _dept_target_sum(inc_tgt)
-    d.t_pay_tgt = _dept_target_sum(pay_tgt)
+    # Hero KPI 指标总数：优先用配置编辑器 KPI指标 覆盖值，未设置则用指标文件合计
+    d.t_inc_tgt = _kpi_target(base_dir, "年度达成", "收入", _dept_target_sum(inc_tgt))
+    d.t_pay_tgt = _kpi_target(base_dir, "年度达成", "回款", _dept_target_sum(pay_tgt))
 
     cur_end_m = min(6, _data_max_month(df_inc))
     cur_year = pd.Timestamp.now().year
@@ -288,8 +290,9 @@ def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
         if len(dates):
             d.latest_month = f"{dates.min().year}-{int(dates.min().month):02d}"
 
-    d.inc_tgt = _dept_target_sum(inc_tgt)
-    d.pay_tgt = _dept_target_sum(pay_tgt)
+    # Hero KPI 指标总数：优先用配置编辑器 KPI指标 覆盖值，未设置则用指标文件合计
+    d.inc_tgt = _kpi_target(base_dir, "月度达成", "收入", _dept_target_sum(inc_tgt))
+    d.pay_tgt = _kpi_target(base_dir, "月度达成", "回款", _dept_target_sum(pay_tgt))
 
     # 同比
     cur_year = int(d.latest_month.split('-')[0]) if d.latest_month and "-" in d.latest_month else 2026
@@ -428,8 +431,9 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
 
     d.total_inc = float(q_inc["金额_万"].sum())
     d.total_pay = float(q_pay["金额_万"].sum())
-    d.inc_tgt_total = _dept_target_sum(inc_tgt)
-    d.pay_tgt_total = _dept_target_sum(pay_tgt)
+    # Hero KPI 指标总数：优先用配置编辑器 KPI指标 覆盖值，未设置则用指标文件合计
+    d.inc_tgt_total = _kpi_target(base_dir, "季度达成", "收入", _dept_target_sum(inc_tgt))
+    d.pay_tgt_total = _kpi_target(base_dir, "季度达成", "回款", _dept_target_sum(pay_tgt))
 
     cur_year = 2026
     prev_year = _get_yearly_year(base_dir)
