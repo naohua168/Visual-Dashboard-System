@@ -37,13 +37,14 @@ class OverviewPage(BaseRenderer):
         thead = (
             "<tr>"
             '<th rowspan="2" class="th-name">事业部</th>'
-            '<th colspan="2" class="group-header inc-group">收入（年度）</th>'
-            '<th colspan="2" class="group-header pay-group">回款（年度）</th>'
+            '<th colspan="3" class="group-header inc-group">收入（年度）</th>'
+            '<th colspan="3" class="group-header pay-group">回款（年度）</th>'
             "</tr>"
-            "<tr><th>实际（万）</th><th>完成度</th><th>实际（万）</th><th>完成度</th></tr>"
+            "<tr><th>目标（万）</th><th>实际（万）</th><th>完成度</th>"
+            "<th>目标（万）</th><th>实际（万）</th><th>完成度</th></tr>"
         )
         rows = ""
-        t_inc_act = t_pay_act = 0.0
+        t_inc_act = t_pay_act = t_inc_tgt = 0.0
         for dpt_name in DEPARTMENTS:
             inc_v = d.dept_inc.get(dpt_name, 0)
             pay_v = d.dept_pay.get(dpt_name, 0)
@@ -51,26 +52,30 @@ class OverviewPage(BaseRenderer):
             # 有实际金额但无指标 → 完成度 100%
             inc_r = 1.0 if (tgt == 0 and inc_v > 0) else (inc_v / tgt if tgt > 0 else 0)
             pay_r = 1.0 if (tgt == 0 and pay_v > 0) else (pay_v / tgt if tgt > 0 else 0)
-            t_inc_act += inc_v; t_pay_act += pay_v
+            t_inc_act += inc_v; t_pay_act += pay_v; t_inc_tgt += tgt
             dcolor = DEPT_COLORS.get(dpt_name, "#94a3b8")
             rows += (
                 f'<tr>'
                 f'<td class="td-name"><span style="color:{dcolor};font-weight:800">● {dpt_name}</span></td>'
+                f'<td class="num-cell">{fmt_wan(tgt)}</td>'
                 f'<td class="num-cell" style="font-weight:700">{fmt_wan(inc_v)}</td>'
                 + cell_bg_pct_only(inc_r) +
+                f'<td class="num-cell">{fmt_wan(tgt)}</td>'
                 f'<td class="num-cell" style="font-weight:700">{fmt_wan(pay_v)}</td>'
                 + cell_bg_pct_only(pay_r) +
                 f'</tr>'
             )
 
-        tgt_sum = sum(d.dept_tgt_inc.values())
-        t_inc_r = t_inc_act / tgt_sum if tgt_sum > 0 else 0
-        t_pay_r = t_pay_act / tgt_sum if tgt_sum > 0 else 0
+        # 合计完成度分母沿用收入目标合计（与单行回款完成度口径一致）
+        t_inc_r = t_inc_act / t_inc_tgt if t_inc_tgt > 0 else 0
+        t_pay_r = t_pay_act / t_inc_tgt if t_inc_tgt > 0 else 0
         rows += (
             f'<tr class="row-total">'
             f'<td class="td-name td-total">合计（4部门）</td>'
+            f'<td class="num-cell" style="font-weight:800">{fmt_wan(t_inc_tgt)}</td>'
             f'<td class="num-cell" style="font-weight:800">{fmt_wan(t_inc_act)}</td>'
             + cell_bg_pct_only(t_inc_r) +
+            f'<td class="num-cell" style="font-weight:800">{fmt_wan(t_inc_tgt)}</td>'
             f'<td class="num-cell" style="font-weight:800">{fmt_wan(t_pay_act)}</td>'
             + cell_bg_pct_only(t_pay_r) +
             f'</tr>'

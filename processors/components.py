@@ -438,7 +438,7 @@ def dept_card_html(df, df_tgt, departments: list[str], metric: str,
         float(df[df["事业部"] == d]["金额_万"].sum()) if df is not None else 0
         for d in departments
     )
-    # 兼容 xxx / xxx收入 / xxx回款 三种列命名
+    # 部门列名兼容三种命名：'检测' / '检测收入' / '检测回款'
     def _tgt_col(dept: str) -> str | None:
         for c in [dept, f"{dept}收入", f"{dept}回款"]:
             if c in df_tgt.columns:

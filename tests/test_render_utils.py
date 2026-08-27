@@ -11,7 +11,6 @@ class TestFmtWan:
         assert fmt_wan(1234.56) == "1,235"
 
     def test_zero(self):
-        # 全局 .0f 取整显示
         assert fmt_wan(0) == "0"
 
     def test_none(self):

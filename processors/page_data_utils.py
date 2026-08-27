@@ -436,7 +436,7 @@ def _add_wan(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _dept_target_sum(targets: pd.DataFrame) -> float:
-    """汇总 4 部门指标合计，兼容 xxx / xxx收入 / xxx回款 三种列命名"""
+    """汇总 4 部门指标合计，部门列名兼容三种命名：'检测' / '检测收入' / '检测回款'"""
     cols = targets.columns
     return sum(
         safe_float(targets[c].sum())

@@ -45,7 +45,7 @@ class DashboardData:
     monthly_income_detail: pd.DataFrame | None = None  # 月收入明细
     monthly_payment_detail: pd.DataFrame | None = None  # 月回款明细
 
-    # 销售个人目标（按 客户→销售 对应规则 × 部门目标 计算）
+    # 销售个人目标（停用：目标由手工指标表直接读取）
     sales_targets: dict[str, float] | None = None  # {销售名: 个人年度总目标}
 
     @property
