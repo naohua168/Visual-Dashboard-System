@@ -79,8 +79,9 @@ def prepare_overview_data(data, base_dir: Path) -> OverviewData:
         if len(inc_dates):
             cur_year = int(inc_dates.min().year)
     d.yoy_period = f"{cur_year}年{cur_start_m:02d}-{cur_end_m:02d}月"
-    d.yoy_inc = _yoy_from_yearly(data.yearly_income, d.t_inc, cur_start_m, cur_end_m)
-    d.yoy_pay = _yoy_from_yearly(data.yearly_payment, d.t_pay, cur_start_m, cur_end_m)
+    # 数据总览同比需月份粒度（1-8月 vs 上年同月）；年基线无月份粒度时不显示
+    d.yoy_inc = _yoy_from_yearly(data.yearly_income, d.t_inc, cur_start_m, cur_end_m, True)
+    d.yoy_pay = _yoy_from_yearly(data.yearly_payment, d.t_pay, cur_start_m, cur_end_m, True)
 
     d.annual_range = get_config_range(base_dir, "年度累计") or ""
     d.date_range = d.annual_range
@@ -438,8 +439,9 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     cur_year = 2026
     prev_year = _get_yearly_year(base_dir)
     d.yoy_period = f"{cur_year}年{d.q_start:02d}-{d.q_end:02d}月 vs {prev_year}年{d.q_start:02d}-{d.q_end:02d}月"
-    d.yoy_inc = _yoy_from_yearly(data.yearly_income, d.total_inc, d.q_start, d.q_end)
-    d.yoy_pay = _yoy_from_yearly(data.yearly_payment, d.total_pay, d.q_start, d.q_end)
+    # 季度同比需月份粒度（7-9月 vs 上年同季）；年基线无月份粒度时不显示
+    d.yoy_inc = _yoy_from_yearly(data.yearly_income, d.total_inc, d.q_start, d.q_end, True)
+    d.yoy_pay = _yoy_from_yearly(data.yearly_payment, d.total_pay, d.q_start, d.q_end, True)
 
     d.qtr_range = get_config_range(base_dir, "季度累计筛选") or ""
     d.date_range = d.qtr_range

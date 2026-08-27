@@ -489,13 +489,22 @@ def _data_max_month(df: pd.DataFrame) -> int:
 
 
 def _yoy_from_yearly(yearly: pd.DataFrame | None, cur_val: float,
-                     start_m: int, end_m: int) -> float | None:
-    """从年基线计算同比"""
+                     start_m: int, end_m: int,
+                     require_month_granularity: bool = False) -> float | None:
+    """从年基线计算同比。
+
+    - 年基线有月份粒度（nunique>1）：按 [start_m, end_m] 月份范围取去年同期
+    - 年基线无月份粒度（nunique<=1，如"上年 1-N 月全量"单值）：
+      - require_month_granularity=False（年度页）：退化用整年值比较（1-12月 vs 上年整年合理）
+      - require_month_granularity=True（月度/季度页）：返回 None（无法算月份粒度同比，不显示）
+    """
     if yearly is None or len(yearly) == 0:
         return None
     yi = yearly.copy()
     yi["月"] = pd.to_datetime(yi["日期"], errors="coerce").dt.month
     if yi["月"].nunique() <= 1:
+        if require_month_granularity:
+            return None  # 需要月份粒度但基线无 → 不显示同比
         prev = float(yi["金额"].sum()) / 10000.0
     else:
         prev = float(yi[(yi["月"] >= start_m) & (yi["月"] <= end_m)]["金额"].sum()) / 10000.0

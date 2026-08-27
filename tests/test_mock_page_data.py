@@ -172,6 +172,25 @@ class TestYoyFromYearly:
         result = _yoy_from_yearly(yi, 75, 1, 2)  # cur=75万, prev=50万 → +50%
         assert result == pytest.approx(0.5)
 
+    def test_summary_mode_require_granularity_none(self):
+        """汇总模式 + require_month_granularity=True（月度/季度页）→ 返回 None"""
+        yi = pd.DataFrame({
+            "日期": ["2025-07-01", "2025-07-01", "2025-07-01"],
+            "金额": [500000, 300000, 200000],
+        })
+        # 无月份粒度 + 要求月份粒度 → None（不显示同比）
+        assert _yoy_from_yearly(yi, 120, 7, 9, True) is None
+
+    def test_monthly_mode_require_granularity_still_works(self):
+        """逐月模式 + require_month_granularity=True → 正常算同比"""
+        yi = pd.DataFrame({
+            "日期": ["2025-07-01", "2025-08-01"],
+            "金额": [500000, 300000],
+        })
+        # 7~8月 → 80万/10000 = 80万；cur=100万 → +25%
+        result = _yoy_from_yearly(yi, 100, 7, 8, True)
+        assert result == pytest.approx(0.25)
+
 
 # ══════════════════════════════════════════════════════════════
 # 测试 _data_max_month
