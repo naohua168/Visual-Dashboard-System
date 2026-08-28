@@ -21,6 +21,7 @@ from .page_data_utils import (
     _get_yearly_year, _group_by_parent, _kpi_target, _load_children_map,
     _parse_month_range, _resplit_priority, _sorted_customers,
     _yoy_from_yearly, _yoy_rate, DEPARTMENTS,
+    filter_gd_by_legal,
 )
 
 
@@ -849,8 +850,14 @@ def prepare_yoy_data(data, base_dir: Path) -> YoyData:
     d.prev_year = _get_yearly_year(base_dir)
 
     d.annual_range = get_config_range(base_dir, "年度累计") or ""
-    df_inc = _consolidate_customers(_add_wan(data.income.copy()))
-    df_pay = _consolidate_customers(_add_wan(data.payment.copy()))
+    # 当年/基线数据：广东自有客户组中"多组配置"子公司按法人过滤（与销售拆分引擎口径对齐）
+    # 法人=广东汽车检测中心 → 广东自有组；其他法人 → 不归广东自有组（走其他配置组）
+    data_income_filtered = filter_gd_by_legal(data.income.copy())
+    data_payment_filtered = filter_gd_by_legal(data.payment.copy())
+    yearly_income_filtered = filter_gd_by_legal(data.yearly_income.copy())
+    yearly_payment_filtered = filter_gd_by_legal(data.yearly_payment.copy())
+    df_inc = _consolidate_customers(_add_wan(data_income_filtered))
+    df_pay = _consolidate_customers(_add_wan(data_payment_filtered))
 
     d.df_inc = df_inc; d.df_pay = df_pay
 
@@ -879,8 +886,11 @@ def prepare_yoy_data(data, base_dir: Path) -> YoyData:
     d.date_range = d.annual_range
     cur_months = set(range(cur_start_m, cur_end_m + 1))
 
-    pi = data.yearly_income.copy()
-    pp = data.yearly_payment.copy()
+    # 往年基线：与当年同一聚合逻辑（年度页 _consolidate_customers 母公司归拢+销售拆分），
+    # 保证 科技公司·王海龙/李巍 等拆分键在当年/往年粒度一致，同比才有意义
+    # 基线也按当年同样的口径做广东自有法人过滤（与销售拆分引擎对齐）
+    pi = _consolidate_customers(_add_wan(yearly_income_filtered))
+    pp = _consolidate_customers(_add_wan(yearly_payment_filtered))
     # 往年数据筛选：汇总模式（所有行同一月份）→ 直接全量；逐月模式 → 按 cur_months 筛选
     _yi_months = pd.to_datetime(pi["日期"], errors="coerce").dt.month if "日期" in pi.columns else pd.Series(dtype=float)
     _yp_months = pd.to_datetime(pp["日期"], errors="coerce").dt.month if "日期" in pp.columns else pd.Series(dtype=float)
@@ -888,8 +898,6 @@ def prepare_yoy_data(data, base_dir: Path) -> YoyData:
         pi = pi[[pd.notna(x) and x.month in cur_months for x in pd.to_datetime(pi["日期"], errors="coerce")]].copy()
     if cur_months and "日期" in pp.columns and _yp_months.nunique() > 1:
         pp = pp[[pd.notna(x) and x.month in cur_months for x in pd.to_datetime(pp["日期"], errors="coerce")]].copy()
-
-    _add_wan(pi); _add_wan(pp)
 
     d.ci = float(df_inc["金额_万"].sum()); d.pvi = float(pi["金额_万"].sum())
     d.cp = float(df_pay["金额_万"].sum()); d.pvp = float(pp["金额_万"].sum())
@@ -936,7 +944,9 @@ def prepare_yoy_data(data, base_dir: Path) -> YoyData:
         d.inc_cust_piv, _, all_top = _group_by_parent(
             d.inc_cust_piv, pd.DataFrame(), all_top, base_dir
         )
-        d.top_customers, d.top_rest = _resplit_priority(all_top, base_dir, yoy_filter)
+        d.top_customers, d.top_rest = _resplit_priority(
+            all_top, base_dir, yoy_filter, piv=d.inc_cust_piv
+        )
         if d.inc_prev_piv is not None:
             d.inc_prev_piv, _, _ = _group_by_parent(
                 d.inc_prev_piv, pd.DataFrame(), [], base_dir

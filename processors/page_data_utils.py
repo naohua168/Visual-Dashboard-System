@@ -138,12 +138,98 @@ def _load_children_map() -> dict[str, list[str]]:
     return children
 
 
+# 广东自有客户组：法人主体过滤常量（与销售拆分引擎 GD_LEGAL_ENTITY 对齐）
+GD_LEGAL_FILTER = "广东汽车检测中心有限公司"
+GD_PARENT_FILTER = "广东自有客户"
+
+
+def _gd_multi_sub_to_keep() -> set[str]:
+    """广东自有客户组中"多组配置"的子公司集合（这些公司按法人主体过滤）
+
+    仅广东自有配置的子公司（不在其他任何组中）→ 无歧义，全部保留
+    """
+    import json
+    path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
+    if not path.exists():
+        return set()
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    gd_subs = set(cfg.get("客户归属", {}).get(GD_PARENT_FILTER, {}).get("子公司", {}).keys())
+    all_other = set()
+    for p, grp in cfg.get("客户归属", {}).items():
+        if p == GD_PARENT_FILTER:
+            continue
+        all_other.update(grp.get("子公司", {}).keys())
+    return {s.strip() for s in gd_subs & all_other}
+
+
+def filter_gd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
+    """广东自有客户组中"多组配置"的子公司按法人重映射（而非删除）
+
+    - 法人 == 广东汽车检测中心有限公司 → 客户名保持原样（后续 _consolidate_customers 归"广东自有客户"组）
+    - 法人 != 广东汽车检测中心有限公司 → 客户名改为该子公司的"其他父组"名（优先"零部件客户"；
+      否则取第一个非广东自有组），使金额进入对应父组而不是凭空消失
+
+    与销售拆分引擎 `_select_parent_group` 口径一致：法人=广东→广东自有组，否则→优先零部件客户。
+    此过滤在 _consolidate_customers 之前调用，使聚合后的"广东自有客户"行金额等于
+    销售拆分后"广东自有客户"组的金额（口径对齐）。
+    """
+    if df is None or len(df) == 0:
+        return df
+    if "客户" not in df.columns or "法人主体" not in df.columns:
+        return df
+    multi = _gd_multi_sub_to_keep()
+    if not multi:
+        return df
+    import json
+    cfg_path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        return df
+
+    # 构建 多组子公司 → 其"其他父组"（优先零部件客户）
+    sub_other_parent: dict[str, str] = {}
+    for sub in multi:
+        groups = [p for p, grp in cfg.get("客户归属", {}).items()
+                  if sub in grp.get("子公司", {})]
+        others = [p for p in groups if p != GD_PARENT_FILTER]
+        if not others:
+            continue
+        sub_other_parent[sub] = (
+            "零部件客户" if "零部件客户" in others else others[0]
+        )
+
+    cust_col = df["客户"].astype(str).str.strip()
+    legal_col = df["法人主体"].astype(str).str.strip()
+    not_gd_legal = legal_col != GD_LEGAL_FILTER
+    is_multi = cust_col.isin(sub_other_parent)
+    remap_mask = is_multi & not_gd_legal
+
+    n_remap = int(remap_mask.sum())
+    if n_remap == 0:
+        return df
+    df = df.copy()
+    df.loc[remap_mask, "客户"] = df.loc[remap_mask, "客户"].map(
+        lambda c: sub_other_parent.get(str(c).strip(), str(c).strip())
+    )
+    import logging
+    logging.getLogger("vd.filter").info(
+        f"广东自有法人重映射: {n_remap} 行非广东法人子公司 → 归入其其他父组（零部件客户等）"
+    )
+    return df
+
+
 def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
     """将子公司名替换为母公司名（3+子公司时聚合，或客户本身就是母公司）"""
     global _SUB_TO_PARENT
     if _SUB_TO_PARENT is None:
         _SUB_TO_PARENT = _load_sub_to_parent()
     df = df.copy()
+    # 广东自有客户组中"多组配置"子公司按法人过滤（法人=广东汽车检测中心→广东自有组，否则→其他组）
+    # 统一所有页面（数据总览/年度/月度/季度/销售/同比）口径，与销售拆分引擎一致
+    df = filter_gd_by_legal(df)
     SUFFIXES = ('有限公司', '科技', '股份有限公司', '有限责任公司', '公司')
 
     def _strip(s):
@@ -583,9 +669,28 @@ def _group_by_parent(piv: pd.DataFrame, tgt_g: pd.DataFrame, customers: list[str
 
 
 def _resplit_priority(all_custs: list[str], base_dir: Path,
-                      filt: CustomerFilter) -> tuple[list[str], list[str]]:
-    """母公司归拢后重新拆分优先/其余"""
+                      filt: CustomerFilter,
+                      piv: pd.DataFrame | None = None) -> tuple[list[str], list[str]]:
+    """母公司归拢后重新拆分优先/其余
+
+    - 有优先展示配置 → 优先名单在前、其余折叠在"查看全部"
+    - 无优先展示配置 → 按 max_rows 截断（当年 pivot 合计降序），被截断的进入 rest
+    """
     if not filt.has_priority():
+        if filt.max_rows > 0 and piv is not None and len(all_custs) > filt.max_rows:
+            cs = list(all_custs)
+            cs.sort(
+                key=lambda c: (float(piv.loc[c, "合计"]) if c in piv.index else 0),
+                reverse=True,
+            )
+            # 销售拆分键保护：保证 科技公司·王海龙 / 科技公司·李巍 不被截断
+            split_keys = [c for c in cs if _sales_from_key(c) is not None]
+            top_n = cs[: filt.max_rows]
+            rest = [c for c in cs[filt.max_rows :] if c not in split_keys]
+            for k in split_keys:
+                if k not in top_n:
+                    top_n.append(k)
+            return top_n, rest
         return all_custs, []
     parent_map = _build_cust_parent_map(base_dir)
     pri_parents = {parent_map.get(s, s) for s in filt.get_priority_names(base_dir)}
@@ -664,7 +769,28 @@ def _sorted_customers(tgt_p: pd.DataFrame,
             return (-1, 0, 0)          # 无数据（仅优先展示）：最后
         cs.sort(key=_sort_key, reverse=True)
     if filt and (not filt.is_empty() or filt.max_rows > 0):
+        # 销售拆分键保护：截断前提取，保证 科技公司·王海龙 / 科技公司·李巍 不被 max_rows 挤出
+        split_keys = [c for c in cs if _sales_from_key(c) is not None]
+        before_cs = list(cs)  # 截断前完整列表（用于收集被截断的客户）
         cs = filt.apply(cs, piv, tgt_p, base_dir)
+        missing = [k for k in split_keys if k not in cs]
+        if missing:
+            cs = cs + missing
+            # 追加后保持排行榜按当年累计金额降序（拆分键插到正确位置）
+            if piv is not None:
+                cs.sort(
+                    key=lambda c: (float(piv.loc[c, "合计"]) if c in piv.index else 0),
+                    reverse=True,
+                )
+        # 被 max_rows 截断的客户 → rest（供"查看全部"折叠展示），按当年金额降序
+        rest_all = [c for c in before_cs if c not in cs]
+        if piv is not None:
+            rest_all.sort(
+                key=lambda c: (float(piv.loc[c, "合计"]) if c in piv.index else 0),
+                reverse=True,
+            )
+    else:
+        rest_all: list[str] = []
 
     # ⑤ 优先展示拆分
     if filt and filt.has_priority() and base_dir:
@@ -672,4 +798,4 @@ def _sorted_customers(tgt_p: pd.DataFrame,
         pri: list[str] = [c for c in cs if c in pri_set]
         rest: list[str] = [c for c in cs if c not in pri_set]
         return pri, rest
-    return cs, []
+    return cs, rest_all
