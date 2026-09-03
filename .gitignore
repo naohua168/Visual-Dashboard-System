@@ -49,6 +49,9 @@ htmlcov/
 # ===== 打包产物 =====
 Visual-Dashboard-System_*.zip
 
+# ===== 内置 Python 运行时（打包用，构建脚本 scripts/prepare_runtime.bat）=====
+runtime/
+
 # ===== 临时文件 =====
 *.tmp
 *.bak

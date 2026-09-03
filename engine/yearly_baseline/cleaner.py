@@ -139,6 +139,29 @@ def _clean_single(label, file_path, mapper=None):
 
     log_step("年%s" % label, "重命名: %s" % str(rename_map))
 
+    # ── 内部交易过滤（列值="是" 的行排除，与运营端逻辑一致）──
+    internal_col = None
+    for candidate in ["是否属于内部交易", "是否属于内部款项", "内部交易", "内部款项"]:
+        if candidate in df.columns:
+            internal_col = candidate
+            break
+    if internal_col is not None:
+        before = len(df)
+        df = df[~df[internal_col].astype(str).str.strip().eq("是")].copy()
+        if before - len(df) > 0:
+            log_step("年%s" % label,
+                     "内部交易过滤: 排除%d行, 保留%d行（列:%s）" % (before - len(df), len(df), internal_col), "OK")
+    else:
+        log_step("年%s" % label, "内部交易列不存在，跳过过滤", "WARN")
+
+    # ── 内部交易排除名单过滤（与财务端/销售层口径一致，防御未标记数据）──
+    if mapper is not None and "客户" in df.columns:
+        before = len(df)
+        df = df[~df["客户"].astype(str).str.strip().apply(mapper.is_excluded)].copy()
+        if before - len(df) > 0:
+            log_step("年%s" % label,
+                     "内部交易名单过滤: 排除%d行, 保留%d行" % (before - len(df), len(df)), "OK")
+
     # ── 事业部映射 ──
     if mapper:
         try:

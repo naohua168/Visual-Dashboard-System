@@ -54,6 +54,18 @@ if exist "tests" xcopy /e /i /q /y "tests" "%PKG_DIR%\tests" >nul
 REM 文档
 if exist "docs" xcopy /e /i /q /y "docs" "%PKG_DIR%\docs" >nul
 
+REM 内置 Python 运行时（解压即用，免安装）。若不存在，提示先运行 scripts\prepare_runtime.bat
+if exist "runtime\python\python.exe" (
+    echo [1/4] 复制内置 Python 运行时（免安装）...
+    xcopy /e /i /q /y "runtime" "%PKG_DIR%\runtime" >nul
+) else (
+    echo.
+    echo [警告] 未找到 runtime\python\python.exe ！
+    echo       请先运行 scripts\prepare_runtime.bat 构建内置运行时，
+    echo       否则接收方仍需自行安装 Python 环境。
+    echo.
+)
+
 echo [2/4] 复制系统数据 + 创建目录骨架...
 
 REM ── 原始数据（完整复制，接收方可直接用）──
@@ -115,6 +127,7 @@ echo ║  ▪ docs/        部署指南 + 设计 + 字段映射 + 维护    ║
 echo ║  ▪ data/raw/    原始数据（财务端/运营端/往年/客户名单）║
 echo ║  ▪ data/mappings/ 映射（部门 + 客户名单）           ║
 echo ║  ▪ data/sheets/手动维护/  6张指标表                 ║
+echo ║  ▪ runtime/  内置 Python 运行时（免安装）           ║
 echo ║  ▪ Chart.js 已本地化 (离线可用)                    ║
 echo ╠══════════════════════════════════════════════════════╣
 echo ║  不包含（运行后自动生成）:                          ║

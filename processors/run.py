@@ -195,25 +195,30 @@ def run_render(output_path: str | None = None) -> Path:
         excel_dir = data_dir
     excel_path = excel_dir / f"data_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
     try:
+        # sheet 名称与 data/sheets/ 下文件夹名称完全一致（系统数据清理 + 手动维护）
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-            data.income.to_excel(writer, sheet_name="收入", index=False)
-            data.payment.to_excel(writer, sheet_name="回款", index=False)
-            data.annual_income_targets.to_excel(writer, sheet_name="年度收入指标", index=False)
-            data.annual_payment_targets.to_excel(writer, sheet_name="年度回款指标", index=False)
+            data.income.to_excel(writer, sheet_name="当年累计收入", index=False)
+            data.payment.to_excel(writer, sheet_name="当年累计回款", index=False)
             data.sales_income.to_excel(writer, sheet_name="销售收入", index=False)
             data.sales_payment.to_excel(writer, sheet_name="销售回款", index=False)
-            data.monthly_income_targets.to_excel(writer, sheet_name="月度收入指标", index=False)
-            data.monthly_payment_targets.to_excel(writer, sheet_name="月度回款指标", index=False)
-            data.quarterly_income_targets.to_excel(writer, sheet_name="季度收入指标", index=False)
-            data.quarterly_payment_targets.to_excel(writer, sheet_name="季度回款指标", index=False)
+            if data.quarterly_income is not None:
+                data.quarterly_income.to_excel(writer, sheet_name="季度累计收入", index=False)
+            if data.quarterly_payment is not None:
+                data.quarterly_payment.to_excel(writer, sheet_name="季度累计回款", index=False)
             if data.yearly_income is not None:
-                data.yearly_income.to_excel(writer, sheet_name="2024年收入", index=False)
+                data.yearly_income.to_excel(writer, sheet_name="往年收入", index=False)
             if data.yearly_payment is not None:
-                data.yearly_payment.to_excel(writer, sheet_name="2024年回款", index=False)
+                data.yearly_payment.to_excel(writer, sheet_name="往年回款", index=False)
             if data.monthly_income_detail is not None:
                 data.monthly_income_detail.to_excel(writer, sheet_name="月收入", index=False)
             if data.monthly_payment_detail is not None:
                 data.monthly_payment_detail.to_excel(writer, sheet_name="月回款", index=False)
+            data.annual_income_targets.to_excel(writer, sheet_name="年度收入总指标", index=False)
+            data.annual_payment_targets.to_excel(writer, sheet_name="年度回款总指标", index=False)
+            data.quarterly_income_targets.to_excel(writer, sheet_name="季度收入指标", index=False)
+            data.quarterly_payment_targets.to_excel(writer, sheet_name="季度回款指标", index=False)
+            data.monthly_income_targets.to_excel(writer, sheet_name="月度收入指标", index=False)
+            data.monthly_payment_targets.to_excel(writer, sheet_name="月度回款指标", index=False)
         _log("渲染", f"已写入 {excel_path.relative_to(BASE_DIR)}（{excel_path.stat().st_size/1024:.1f} KB）", "OK")
     except Exception as e:
         _log("渲染", f"Excel 汇总失败: {e}", "WARN")

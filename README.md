@@ -6,8 +6,17 @@
 
 ## 快速开始
 
+### 接收方（解压即用，无需安装任何环境）
+
+1. 解压 `Visual-Dashboard-System_vYYYYMMDD.zip`（内置 `runtime/`，含 Python + 全部依赖）
+2. 放入原始 Excel（`data/raw/`）→ 更新指标表（`data/sheets/手动维护/`）→ 改时间（`config/配置编辑器.xlsx`）
+3. **双击 `run_all.bat`**，自动完成：预检 → 配置同步 → 清洗 → 拆分 → 渲染 → 验证
+4. 打开 `output/看板/看板_YYYYMMDD.html` 查看看板
+
+### 开发者 / 命令行
+
 ```bash
-# 安装依赖
+# 安装依赖（仅开发环境需要）
 pip install -r requirements.txt
 
 # 预检（确认数据就绪）
@@ -49,15 +58,20 @@ run_all.bat
 | 内部实现细节 / 代码结构 | [数据系统设计 · 系统结构](docs/数据系统设计.md#一系统结构) |
 | 测试怎么跑 / 覆盖什么 | [数据系统设计 · 测试套件](docs/数据系统设计.md#八测试套件) |
 
-## 打包交付
+## 打包交付（解压即用）
 
 ```bash
-# Windows 用户双击即可
+# 1) 构建内置运行时（首次打包前运行一次，含 Python + 全部依赖）
+scripts\prepare_runtime.bat
+
+# 2) 打包（Windows 双击即可）
 package.bat
 
 # 生成 Visual-Dashboard-System_vYYYYMMDD.zip
-# 包含全部代码 + 配置 + 目录骨架，不含敏感数据
+# 包含全部代码 + 配置 + 内置运行时，接收方解压后双击 run_all.bat 即可，无需安装任何环境
 ```
+
+> `runtime/` 目录不在 Git 中，由 `scripts/prepare_runtime.bat` 从 python.org 下载嵌入式 Python 并安装依赖后生成。
 
 ---
 
@@ -164,7 +178,7 @@ python scripts/verify_dashboard.py              # 看板质量验证
 │  │ 数据总览│年度达成│月度达成│季度达成│销售达成│年度同比      │        │
 │  └─────────────────────────────────────────────────────────┘        │
 │  output/看板/看板_YYYYMMDD.html（6页交互）                          │
-│  output/数据/data_YYYYMMDD.xlsx（11 Sheet 总表）                   │
+│  output/数据/data_YYYYMMDD.xlsx（16 Sheet 总表，与 data/sheets/ 文件夹名一致）│
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -389,8 +403,13 @@ ERP 系统导出，**当月单月**数据。金额单位：**元**（金额列�
 ```
 Visual Dashboard_system/
 ├── main.py                           # ★ 顶层调度器（argparse + subprocess）
-├── run_all.bat                       # ★ Windows 一键运行（配置同步 + 全流程 + 验证）
-├── package.bat                       #   打包脚本（生成交付 zip）
+├── run_all.bat                       # ★ Windows 一键运行（配置同步 + 全流程 + 验证；优先用内置运行时）
+├── package.bat                       #   打包脚本（生成交付 zip，含内置运行时）
+├── runtime/                          #   内置 Python 运行时（免安装；由 scripts\prepare_runtime.bat 生成）
+├── scripts/
+│   ├── prepare_runtime.bat           #   构建内置运行时（下载嵌入式 Python + 装依赖）
+│   ├── config_excel_to_json.py       #   配置编辑器 Excel → JSON 同步
+│   └── verify_dashboard.py           #   看板质量验证（JS语法/onclick函数）
 ├── config/
 │   ├── 配置编辑器.xlsx               # ★ 配置编辑层（时间/展示规则/KPI指标/销售归属/说明 5 sheet）
 │   ├── 清洗配置/
@@ -430,14 +449,11 @@ Visual Dashboard_system/
 │   ├── sales_pending.py              #   待确认客户弹窗
 │   ├── components.py / config_loader.py / base.py / hero.py / utils.py
 │   └── static/                       #   CSS/JS/图标/Chart.js（含 icons.py、chart.umd.min.js）
-├── scripts/                          # ★ 工具脚本
-│   ├── config_excel_to_json.py       #   配置编辑器 Excel → JSON 同步
-│   └── verify_dashboard.py           #   看板质量验证（JS语法/onclick函数）
 ├── tests/                            # 16 文件，147 passed（含 conftest.py）
 ├── docs/                             # 数据系统设计 / 字段映射 / 部署指南 / 维护指南
 ├── output/                           # ★ 看板输出（不上传 Git）
 │   ├── 看板/看板_YYYYMMDD.html        #   6 页可视化看板
-│   └── 数据/data_YYYYMMDD.xlsx        #   11 Sheet 数据总表
+│   └── 数据/data_YYYYMMDD.xlsx        #   16 Sheet 数据总表（sheet名=data/sheets/文件夹名）
 └── logs/                             # 运行日志
 ```
 
@@ -471,7 +487,7 @@ python -m processors.run
 
 ### 2. 获取结果
 - `output/看板/看板_YYYYMMDD.html` — 6 页可视化看板
-- `output/数据/data_YYYYMMDD.xlsx` — 11 Sheet 数据总表
+- `output/数据/data_YYYYMMDD.xlsx` — 16 Sheet 数据总表（每个 sheet 名称与 `data/sheets/` 下文件夹名称一致）
 
 ### 3. 运行测试
 

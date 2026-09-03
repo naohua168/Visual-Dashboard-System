@@ -50,3 +50,45 @@ def test_clean_single_dept_mapping(tmp_path):
 def test_clean_yearly_no_source(tmp_path):
     from engine.yearly_baseline.cleaner import clean_yearly
     assert clean_yearly(source_dir=tmp_path) is None
+
+def test_clean_single_filters_internal_trade_income(tmp_path):
+    """收入文件: '是否属于内部交易'='是' 的行应被排除"""
+    from engine.yearly_baseline.cleaner import _clean_single
+    p = tmp_path / "t.xlsx"
+    pd.DataFrame({
+        "事业部": ["检测工程事业部", "检测工程事业部"],
+        "客户名称": ["外部客户", "内部客户"],
+        "金额": [100, 50],
+        "是否属于内部交易": [None, "是"],
+    }).to_excel(p, index=False)
+    r = _clean_single("收入", p)
+    assert len(r) == 1
+    assert r["客户"].iloc[0] == "外部客户"
+    assert r["金额"].sum() == 100
+
+def test_clean_single_filters_internal_trade_payment(tmp_path):
+    """回款文件: '是否属于内部款项'='是' 的行应被排除；无内部列时不过滤"""
+    from engine.yearly_baseline.cleaner import _clean_single
+    p = tmp_path / "t.xlsx"
+    pd.DataFrame({
+        "事业部": ["检测工程事业部", "检测工程事业部"],
+        "客户名称": ["外部客户", "内部客户"],
+        "金额": [200, 80],
+        "是否属于内部款项": [None, "是"],
+    }).to_excel(p, index=False)
+    r = _clean_single("回款", p)
+    assert len(r) == 1
+    assert r["金额"].sum() == 200
+
+def test_clean_single_no_internal_col(tmp_path):
+    """无内部交易列时全部保留"""
+    from engine.yearly_baseline.cleaner import _clean_single
+    p = tmp_path / "t.xlsx"
+    pd.DataFrame({
+        "事业部": ["检测工程事业部", "检测工程事业部"],
+        "客户名称": ["A", "B"],
+        "金额": [100, 50],
+    }).to_excel(p, index=False)
+    r = _clean_single("收入", p)
+    assert len(r) == 2
+    assert r["金额"].sum() == 150
