@@ -546,7 +546,8 @@ class SalesData:
     sc3_parent_cfg_total: dict = field(default_factory=dict)  # {parent: 配置子公司总数}
     sales_owned_subs: dict = field(default_factory=dict)  # {销售: {母公司: 该销售在配置中拥有的子公司数}}
     # 待确认
-    pending_count: int = 0
+    pending_count: int = 0                # pending_df 行数(按 客户+事业部+法人主体 三维拆分后)
+    pending_cust_n: int = 0               # 去重的客户数(独立口径,用于"客户数/家"展示)
     pending_total_inc: float = 0
     pending_total_pay: float = 0
     pending_df: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -563,12 +564,24 @@ class SalesData:
 
 
 def prepare_sales_data(data, base_dir: Path) -> SalesData:
+    """销售页数据准备。
+
+    重要约定：渲染层在此**不进行任何销售二次分配 / override / 重映射**。
+    所有金额、归属直接来自引擎层 `data/sheets/系统数据清理/销售收入|销售回款.xlsx`
+    （= `engine/sales/run.py` 的产出）。本页只做 groupby 聚合（按销售、按销售+事业部、
+    按销售+母公司+客户+事业部），供 card1/卡2/卡3 矩阵展示。
+
+    特殊规则（比亚迪法人 override、比例拆分、跨父组法人选组、销售拆行键等）均由
+    引擎层完成；销售页不二次判断"该客户该不该归某个销售"。
+    """
     from .sales_pending import build_pending_modal
     d = SalesData()
 
     d.sales_range = get_config_range(base_dir, "年度累计") or ""
-    df_si = _consolidate_customers(_add_wan(data.sales_income.copy()))
-    df_sp = _consolidate_customers(_add_wan(data.sales_payment.copy()))
+    # 引擎层 sales_income / sales_payment 已含 (客户, 销售, 母公司) 字段；
+    # 金额聚合只依赖 销售 / 事业部 两列,无需 consolidate 客户列(也不应在此做销售重映射)
+    df_si = _add_wan(data.sales_income.copy())
+    df_sp = _add_wan(data.sales_payment.copy())
     inc_tgt = _consolidate_target(data.annual_income_targets.copy())
     pay_tgt = _consolidate_target(data.annual_payment_targets.copy())
 
@@ -805,6 +818,8 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
     pending["合计"] = pending["金额_万_收入"] + pending["金额_万_回款"]
     pending = pending.sort_values("合计", ascending=False).reset_index(drop=True)
     d.pending_count = len(pending)
+    # 去重客户数(去掉同一客户在不同事业部/法人主体下的重复行,得到真实"几家客户未归属")
+    d.pending_cust_n = int(pending["客户"].astype(str).str.strip().nunique())
     d.pending_total_inc = float(pending["金额_万_收入"].sum())
     d.pending_total_pay = float(pending["金额_万_回款"].sum())
     d.pending_df = pending

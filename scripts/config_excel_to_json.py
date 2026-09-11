@@ -136,6 +136,17 @@ def excel_to_time_config(sheet) -> dict:
         month_range = _parse_cell(row[6])
         note = _parse_cell(row[7])
 
+        if name == "结算模式":
+            # 特殊行：非日期范围，值为月底结算 / 常规（填在「模式」列）
+            settle = mode if mode != "static" else "常规"
+            if settle not in ("月底结算", "常规"):
+                raise ValueError(f"{name}: 值应为「月底结算」或「常规」（填在「模式」列），当前: {settle!r}")
+            result[name] = {
+                "值": settle,
+                "_说明": note or "月底结算: 运营端=完整年度累计(含当月), 当年/季度累计=仅运营端; 常规: 当年/季度累计=财务端+运营端。月数据均只用财务端。",
+            }
+            continue
+
         if mode == "dynamic":
             if strategy not in DYNAMIC_STRATEGIES:
                 raise ValueError(
@@ -385,6 +396,9 @@ def update_cleaning_config(time_config: dict, dry_run: bool = False) -> dict:
     # 保留 _说明（顶层 + 年基线数据）
     if "_说明" in old_tr:
         time_config = {"_说明": old_tr["_说明"], **time_config}
+    # 结算模式：Excel 未提供该行时保留原 JSON 值（向前兼容旧模板）
+    if "结算模式" not in time_config and "结算模式" in old_tr:
+        time_config["结算模式"] = old_tr["结算模式"]
     if old_tr.get("年基线数据", {}).get("_说明"):
         if "年基线数据" in time_config:
             time_config["年基线数据"] = {
@@ -575,13 +589,15 @@ def excel_to_attribution(sheet) -> dict:
 
 
 def update_attribution(attribution: dict, dry_run: bool = False) -> dict:
-    """把销售归属写回 客户销售归属.json（保留 _说明，客户归属数据来自 Excel）"""
+    """把销售归属写回 客户销售归属.json（保留 _说明/_销售拆分，客户归属数据来自 Excel）"""
     if not ATTRIBUTION_CFG.exists():
         raise FileNotFoundError(f"客户销售归属.json 不存在: {ATTRIBUTION_CFG}")
 
     text = ATTRIBUTION_CFG.read_text(encoding="utf-8")
     cfg = json.loads(text)
+    # _销售拆分（客户矩阵按销售拆行的母公司列表）也以本 JSON 为事实源，写回时保留
     new_cfg = {"_说明": cfg.get("_说明", "客户统一归属 — 母公司→子公司→销售分配"),
+               "_销售拆分": cfg.get("_销售拆分"),
                "客户归属": attribution}
 
     if dry_run:
@@ -678,6 +694,21 @@ def init_excel_template():
             c = ws.cell(row=r, column=col)
             c.border = border
             c.fill = PatternFill("solid", fgColor=fill_color)
+            c.alignment = Alignment(vertical="center", wrap_text=(col == 8))
+
+    # 结算模式行（值填在「模式」列：月底结算 / 常规）
+    settle = tr.get("结算模式", {})
+    if settle:
+        ws.append([
+            "结算模式", settle.get("值", "常规"), "",
+            "", "", "", "",
+            settle.get("_说明", "月底结算: 当年/季度累计=仅运营端; 常规: =财务端+运营端"),
+        ])
+        r = ws.max_row
+        for col in range(1, len(HEADERS) + 1):
+            c = ws.cell(row=r, column=col)
+            c.border = border
+            c.fill = PatternFill("solid", fgColor="FCE4D6")
             c.alignment = Alignment(vertical="center", wrap_text=(col == 8))
 
     # 列宽

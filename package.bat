@@ -40,6 +40,7 @@ xcopy /e /i /q /y "config" "%PKG_DIR%\config" >nul
 REM 入口文件
 copy /y "main.py" "%PKG_DIR%\main.py" >nul
 copy /y "run_all.bat" "%PKG_DIR%\run_all.bat" >nul
+copy /y "启动系统.bat" "%PKG_DIR%\启动系统.bat" >nul
 copy /y "package.bat" "%PKG_DIR%\package.bat" >nul
 copy /y "requirements.txt" "%PKG_DIR%\requirements.txt" >nul
 copy /y "pytest.ini" "%PKG_DIR%\pytest.ini" >nul
@@ -97,6 +98,7 @@ REM ── 输出目录（渲染后生成，仅建空骨架）──
 mkdir "%PKG_DIR%\output"
 mkdir "%PKG_DIR%\output\看板"
 mkdir "%PKG_DIR%\output\数据"
+mkdir "%PKG_DIR%\output\销售完成度"
 mkdir "%PKG_DIR%\logs"
 
 echo [3/4] 清理 __pycache__...
@@ -122,7 +124,8 @@ echo ║  ▪ scripts/     工具脚本 (配置同步 + 看板验证)       ║
 echo ║  ▪ config/      配置（含配置编辑器.xlsx + KPI指标）  ║
 echo ║  ▪ tests/       测试用例 (16 文件)                  ║
 echo ║  ▪ main.py      调度器入口                          ║
-echo ║  ▪ run_all.bat  双击运行                            ║
+echo ║  ▪ 启动系统.bat  双击 → 图形化控制台(推荐)           ║
+echo ║  ▪ run_all.bat  双击 → 命令行全流程                  ║
 echo ║  ▪ docs/        部署指南 + 设计 + 字段映射 + 维护    ║
 echo ║  ▪ data/raw/    原始数据（财务端/运营端/往年/客户名单）║
 echo ║  ▪ data/mappings/ 映射（部门 + 客户名单）           ║
@@ -132,7 +135,9 @@ echo ║  ▪ Chart.js 已本地化 (离线可用)                    ║
 echo ╠══════════════════════════════════════════════════════╣
 echo ║  不包含（运行后自动生成）:                          ║
 echo ║  ▪ data/sheets/系统数据清理/  清洗中间产物           ║
-echo ║  ▪ output/        看板 + 数据总表                   ║
+echo ║  ▪ output/看板/     6 页看板                        ║
+echo ║  ▪ output/数据/     数据总表 (16 sheet)             ║
+echo ║  ▪ output/销售完成度/  销售完成度汇总表              ║
 echo ║  ▪ logs/          运行日志                          ║
 echo ╚══════════════════════════════════════════════════════╝
 echo.

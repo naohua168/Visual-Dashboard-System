@@ -10,7 +10,7 @@
 
 1. 解压 `Visual-Dashboard-System_vYYYYMMDD.zip`（内置 `runtime/`，含 Python + 全部依赖）
 2. 放入原始 Excel（`data/raw/`）→ 更新指标表（`data/sheets/手动维护/`）→ 改时间（`config/配置编辑器.xlsx`）
-3. **双击 `run_all.bat`**，自动完成：预检 → 配置同步 → 清洗 → 拆分 → 渲染 → 验证
+3. **双击 `启动系统.bat`**（图形化控制台，推荐）或 `run_all.bat`（命令行），自动完成：配置同步 → 清洗 → 拆分 → 渲染 → 汇总 → 验证
 4. 打开 `output/看板/看板_YYYYMMDD.html` 查看看板
 
 ### 开发者 / 命令行
@@ -207,6 +207,9 @@ cleaning_config.json / 展示规则.json / 客户销售归属.json (事实源)
 | 月度数据 | `2026-08-01 ~ 2026-08-31` | 月度达成 |
 | 季度累计 | `2026-07-01 ~ 2026-09-30` | 季度达成 |
 | 年基线 | `年份: 2025, 月份: [1, 8]` | 年度同比（Phase 0） |
+| **结算模式** | `月底结算` / `常规` | 决定 **当年累计/季度累计** 是否叠加财务端当月 |
+
+> **结算模式（2026-09 起）**：`月底结算` = 运营端已是完整年度累计（含当月），当年累计/季度累计**仅用运营端**，不再叠加财务端（避免当月重复）；`常规` = 当年累计/季度累计 = 财务端(当月)+运营端。**月数据始终只用财务端当月**（月度达成页）。
 
 也可直接改 JSON：`config/清洗配置/cleaning_config.json` → `时间范围`。
 
@@ -403,7 +406,8 @@ ERP 系统导出，**当月单月**数据。金额单位：**元**（金额列�
 ```
 Visual Dashboard_system/
 ├── main.py                           # ★ 顶层调度器（argparse + subprocess）
-├── run_all.bat                       # ★ Windows 一键运行（配置同步 + 全流程 + 验证；优先用内置运行时）
+├── 启动系统.bat                      # ★ 图形化控制台入口（双击，WinForms，免装环境）
+├── run_all.bat                       # ★ Windows 命令行一键运行（配置同步 + 全流程 + 验证；优先用内置运行时）
 ├── package.bat                       #   打包脚本（生成交付 zip，含内置运行时）
 ├── runtime/                          #   内置 Python 运行时（免安装；由 scripts\prepare_runtime.bat 生成）
 ├── scripts/
@@ -453,7 +457,8 @@ Visual Dashboard_system/
 ├── docs/                             # 数据系统设计 / 字段映射 / 部署指南 / 维护指南
 ├── output/                           # ★ 看板输出（不上传 Git）
 │   ├── 看板/看板_YYYYMMDD.html        #   6 页可视化看板
-│   └── 数据/data_YYYYMMDD.xlsx        #   16 Sheet 数据总表（sheet名=data/sheets/文件夹名）
+│   ├── 数据/data_YYYYMMDD.xlsx        #   16 Sheet 数据总表（sheet名=data/sheets/文件夹名）
+│   └── 销售完成度/销售完成度汇总_YYYYMMDD.xlsx  # 销售×4部门 实际/指标(元)汇总表
 └── logs/                             # 运行日志
 ```
 

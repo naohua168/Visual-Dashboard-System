@@ -151,7 +151,19 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM ============================================
-echo ═══ Phase 5: 看板质量验证 ═══
+echo ═══ Phase 5: 生成销售完成度汇总表 ═══
+if exist "scripts\sales_summary_report.py" (
+    "%PYTHON%" scripts\sales_summary_report.py
+    if !ERRORLEVEL! neq 0 (
+        echo [警告] 销售完成度汇总表生成失败！
+    )
+) else (
+    echo [跳过] scripts\sales_summary_report.py 不存在
+)
+echo.
+
+REM ============================================
+echo ═══ Phase 6: 看板质量验证 ═══
 if exist "scripts\verify_dashboard.py" (
     "%PYTHON%" scripts\verify_dashboard.py
     if %ERRORLEVEL% neq 0 (
@@ -170,7 +182,8 @@ echo ╚════════════════════════
 echo.
 echo   输出文件:
 for %%f in ("output\看板\看板_*.html") do echo     ▪ 看板: %%f
-for %%f in ("output\数据\data_*.xlsx")  do echo     ▪ 总表: %%f
+for %%f in ("output\数据\data_*.xlsx")  do echo     ▪ 数据总表: %%f
+for %%f in ("output\销售完成度\销售完成度汇总_*.xlsx") do echo     ▪ 销售完成度: %%f
 echo.
 echo   运行日志: logs\
 echo.

@@ -136,8 +136,13 @@ def _select_parent_group(cust_groups: dict[str, dict], legal_entity: str) -> tup
 
 
 def _load_byd_overlap() -> set[str]:
-    """扫描原始 JSON，找出 BYD_SUB_COMPANIES 列表中隶属黄浩浩的子公司。
-    只要黄浩浩负责，就触发法人区分：广东汽车检测中心→黄浩浩，其他→周涵林。"""
+    """扫描原始 JSON，找出 BYD_SUB_COMPANIES 列表中**同时配置黄浩浩与周涵林**
+    （即销售在配置层重合）的子公司。
+
+    仅当这两家公司在 JSON 中都出现（即同一客户在配置里就同时归属黄浩浩和
+    周涵林）时，才触发法人区分：广东汽车检测中心→黄浩浩，非广东→周涵林。
+    单边配置（仅黄浩浩或仅周涵林）的公司保持原拆分结果不动。
+    """
     path = BASE_DIR / "config" / "清洗配置" / "客户销售归属.json"
     if not path.exists():
         return set()
@@ -157,7 +162,8 @@ def _load_byd_overlap() -> set[str]:
 
     overlap: set[str] = set()
     for cust, sales_set in sales_by_cust.items():
-        if BYD_GD_SALES in sales_set:
+        # 必须同时配置黄浩浩 + 周涵林才算"销售重合"，才触发法人区分
+        if BYD_GD_SALES in sales_set and BYD_OTHER_SALES in sales_set:
             overlap.add(cust)
     return overlap
 

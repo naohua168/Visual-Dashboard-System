@@ -13,15 +13,18 @@ from .config_loader import CustomerFilter, get_value
 
 # ── 客户合并：子公司 → 母公司
 _SUB_TO_PARENT: dict[str, str] | None = None  # 懒加载
-# 销售拆分：{母公司: {子公司: 销售}}  — 配置自 展示规则.json._销售拆分.客户矩阵
+# 销售拆分：{母公司: {子公司: 销售}}
+# 配置事实源 = config/清洗配置/客户销售归属.json → _销售拆分.客户矩阵
+# （历史版本曾放在 展示规则.json，读取时兼容回退）
 _SALES_SPLIT: dict[str, dict[str, str]] | None = None
 
 
 def _load_sales_split(base_dir: Path | None = None) -> dict[str, dict[str, str]]:
     """加载销售拆分配置 → {母公司: {子公司: 销售}}
 
-    读取 展示规则.json 的 _销售拆分.客户矩阵（母公司名列表），
-    再从 客户销售归属.json 中该母公司的每个子公司的收入配置取归属销售。
+    读取 客户销售归属.json 的 _销售拆分.客户矩阵（母公司名列表），
+    再从该 JSON 的客户归属中取每个子公司的归属销售。
+    （兼容旧位置：展示规则.json._销售拆分，存在时作为回退。）
     """
     global _SALES_SPLIT
     if _SALES_SPLIT is not None:
@@ -30,13 +33,16 @@ def _load_sales_split(base_dir: Path | None = None) -> dict[str, dict[str, str]]
     split: dict[str, dict[str, str]] = {}
     try:
         import json
-        rules_path = root / "config" / "前端渲染" / "展示规则.json"
         ownership_path = root / "config" / "清洗配置" / "客户销售归属.json"
-        if rules_path.exists() and ownership_path.exists():
-            rules = json.load(open(rules_path, "r", encoding="utf-8"))
+        rules_path = root / "config" / "前端渲染" / "展示规则.json"
+        if ownership_path.exists():
             ownership = json.load(open(ownership_path, "r", encoding="utf-8"))
-            split_cfg = rules.get("_销售拆分", {}).get("客户矩阵", [])
             ownership_groups = ownership.get("客户归属", {})
+            split_cfg = ownership.get("_销售拆分", {}).get("客户矩阵", [])
+            if not split_cfg and rules_path.exists():
+                # 兼容回退：旧位置（展示规则.json._销售拆分.客户矩阵）
+                rules = json.load(open(rules_path, "r", encoding="utf-8"))
+                split_cfg = rules.get("_销售拆分", {}).get("客户矩阵", [])
             for parent in split_cfg:
                 group = ownership_groups.get(parent, {})
                 sub_sales: dict[str, str] = {}

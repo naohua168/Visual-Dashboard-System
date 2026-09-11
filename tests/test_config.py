@@ -185,6 +185,7 @@ def test_current_config_uses_static_mode():
     """当前 cleaning_config.json 的时间范围必须使用手动模式（用户偏好）
 
     2026-07-31 起明确：所有时间范围手动配置，不使用 dynamic 推导。
+    （具体日期由用户按结算周期手动维护，测试不硬编码月份。）
     """
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         config = json.load(f)
@@ -193,5 +194,6 @@ def test_current_config_uses_static_mode():
         spec = time_range[key]
         assert spec.get("_mode") != "dynamic", f"{key} 不应使用 dynamic 模式"
         assert "start_date" in spec and "end_date" in spec
-    assert time_range["月度数据"]["start_date"] == "2026-08-01"
-    assert time_range["季度累计筛选"]["start_date"] == "2026-07-01"
+    # 结算模式：月底结算 / 常规（决定 当年累计/季度累计 是否叠加财务端）
+    settle = time_range.get("结算模式", {})
+    assert settle.get("值") in ("月底结算", "常规"), "结算模式值应为 月底结算 或 常规"

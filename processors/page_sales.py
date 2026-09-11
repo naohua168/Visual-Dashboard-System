@@ -34,7 +34,7 @@ class SalesPage(BaseRenderer):
                 f'<div style="display:flex;justify-content:flex-end;margin:10px 0 4px">'
                 f'<button class="pending-trigger-btn" onclick="openPendingModal()">'
                 f'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>'
-                f'待确认客户 <b>{d.pending_count}</b> 家 · {fmt_wan(d.pending_total_inc + d.pending_total_pay)} 万</button>'
+                f'待确认客户 <b>{d.pending_cust_n}</b> 家 · {fmt_wan(d.pending_total_inc + d.pending_total_pay)} 万</button>'
                 f'</div>'
                 f'<style>.pending-trigger-btn{{display:inline-flex;align-items:center;padding:7px 16px;font-size:13px;font-weight:600;color:#fff;background:linear-gradient(135deg,#fbbf24,#f59e0b);border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 8px rgba(245,158,11,.35);transition:all .15s}}.pending-trigger-btn:hover{{transform:translateY(-1px);box-shadow:0 4px 14px rgba(245,158,11,.45)}}.pending-trigger-btn b{{font-size:15px;margin:0 2px}}</style>'
             )

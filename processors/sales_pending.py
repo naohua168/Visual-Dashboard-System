@@ -65,7 +65,7 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
 
     # ── 渲染子模块 ──
     # cust_n_unique 已在 ① KPI 计算阶段声明（unique 客户数；按法人主体展开后行数可能 > 客户数）
-    kpi_html = _render_kpi_row(cust_n_unique, grand_total, pending_total_inc, pending_total_pay, avg_per_cust, match_n)
+    kpi_html = _render_kpi_row(cust_n_unique, pending_count, grand_total, pending_total_inc, pending_total_pay, avg_per_cust, match_n)
     dept_html = _render_dept_dist(dist=dept_dist, grand_total=grand_total, max_dept=max_dept)
     type_html = _render_type_buckets(buckets=type_buckets, grand_total=grand_total)
     quad_html = _render_quad(quad=quad, grand_total=grand_total)
@@ -264,14 +264,14 @@ document.addEventListener('keydown',function(e){{
 
 # ── 渲染函数 ──
 
-def _render_kpi_row(pending_count, grand_total, pending_total_inc, pending_total_pay, avg_per_cust, match_n):
-    """顶部 KPI 指标条"""
+def _render_kpi_row(cust_n_unique, pending_count, grand_total, pending_total_inc, pending_total_pay, avg_per_cust, match_n):
+    """顶部 KPI 指标条 · "客户数" 用去重客户数, "行数/明细" 才用 pending_count"""
     items = [
-        (f"{pending_count}", "客户数", "#f59e0b"),
+        (f"{cust_n_unique}", "客户数", "#f59e0b"),
         (fmt_wan(grand_total), "总金额 (万)", "#dc2626"),
         (fmt_wan(pending_total_inc), "总收入 (万)", "#3b82f6"),
         (fmt_wan(pending_total_pay), "总回款 (万)", "#10b981"),
-        (f"{match_n}/{pending_count}", "双向匹配", "#8b5cf6"),
+        (f"{match_n}/{cust_n_unique}", "双向匹配", "#8b5cf6"),
     ]
     return "".join(
         f'<div class="pnd-kpi-item">'
