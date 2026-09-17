@@ -88,6 +88,18 @@ KPI_PAGES = ["年度达成", "月度达成", "季度达成"]
 KPI_METRICS = ["收入", "回款"]
 KPI_HEADERS = ["页面", "指标", "值(万元)", "说明"]
 
+# 字段映射 sheet（清洗列名映射的编辑层，2026-09-17 新增）
+try:  # 直接以脚本方式运行时（python scripts/config_excel_to_json.py）
+    from column_mapping_sheet import (
+        MAP_SHEET_NAME, attach_mapping_sheet, excel_to_column_mapping,
+        read_latest_hits, refresh_mapping_sheet, update_column_mapping,
+    )
+except ImportError:  # 以包形式导入时（如单元测试）
+    from scripts.column_mapping_sheet import (  # type: ignore[no-redef]
+        MAP_SHEET_NAME, attach_mapping_sheet, excel_to_column_mapping,
+        read_latest_hits, refresh_mapping_sheet, update_column_mapping,
+    )
+
 
 # ──────────────────────────────────────────────────────────────
 # Excel 读取 → 时间配置 dict
@@ -968,12 +980,32 @@ def init_excel_template():
         ["   - 改销售归属: 在「销售归属」sheet 直接改对应行的 销售 / 比例"],
         ["   - 拆分多销售: 把一行复制成多行，各填不同销售和比例（合计需=1）"],
         [""],
-        ["6. 校验失败时生成器拒绝写回并提示原因，JSON 保持原样。"],
+        ["7. 「字段映射」sheet 列说明（清洗时的字段↔列名匹配，2026-09-17 新增）："],
+        ["   - 数据源: 财务端 / 运营端（勿改）"],
+        ["   - 来源: 收入 / 回款 / 广东公司 / 湖南公司 / 南方韶关（勿改）"],
+        ["   - 标准字段: 系统内部字段名（勿改）"],
+        ["   - 候选1..候选N: 按优先级从左到右尝试匹配源文件列名；留空 = 不参与"],
+        ["     · 匹配规则是【全名精确匹配】（仅忽略首尾空白），不是关键词匹配"],
+        ["     · 源文件列名改了，把新列名加到候选里保存即可，无需改 JSON/代码"],
+        ["     · 同一字段内候选不能重复；每个字段至少保留 1 个候选"],
+        ["   - 当前命中(只读): 上次清洗实际命中的列，写回时被忽略，仅供参考"],
+        ["   - 说明: 备注（可选）"],
+        ["   - 注意: 本 sheet 只控制「列映射」；文件名/引擎/金额除数/过客户白名单等仍在 JSON 里改"],
+        [""],
+        ["8. 校验失败时生成器拒绝写回并提示原因，JSON 保持原样。"],
+        ["   字段映射写回后 cleaning_config.json 会统一为标准 2 空格缩进格式（写前自动备份到 logs/）。"],
     ]
     for row in lines:
         ws2.append(row)
     ws2.column_dimensions["A"].width = 100
     ws2["A1"].font = Font(bold=True, size=14)
+
+    # ── Sheet 6: 字段映射（清洗列名映射的编辑层；「当前命中」由 logs/column_hits_*.txt 回填）──
+    attach_mapping_sheet(
+        wb,
+        json.loads(CLEANING_CFG.read_text(encoding="utf-8")),
+        read_latest_hits(),
+    )
 
     wb.save(EXCEL_PATH)
     print(f"✅ 已生成模板: {EXCEL_PATH.relative_to(BASE_DIR)}")
@@ -985,10 +1017,16 @@ def init_excel_template():
 def main():
     args = sys.argv[1:]
     init = "--init" in args
+    init_map = "--init-map" in args
     dry_run = "--dry-run" in args
 
     if init:
         init_excel_template()
+        return 0
+
+    if init_map:
+        path = refresh_mapping_sheet()
+        print(f"✅ 已刷新「{MAP_SHEET_NAME}」sheet（其余 sheet 未改动）: {path.relative_to(BASE_DIR)}")
         return 0
 
     if not EXCEL_PATH.exists():
@@ -1059,6 +1097,24 @@ def main():
             print(f"✅ 已更新 客户销售归属.json：{len(att)} 母公司 / {n_subs} 子公司")
     else:
         print("⚠️  Excel 缺少「销售归属」sheet，跳过")
+
+    # 5) 字段映射 → cleaning_config.json 的 数据源.*.列映射
+    if MAP_SHEET_NAME in wb.sheetnames:
+        cfg_now = json.loads(CLEANING_CFG.read_text(encoding="utf-8"))
+        mapping, warns = excel_to_column_mapping(wb[MAP_SHEET_NAME], cfg_now)
+        for w in warns:
+            print(f"  ⚠️ {w}")
+        _, changed = update_column_mapping(mapping, dry_run=dry_run)
+        if dry_run:
+            print("【DRY-RUN】列映射将发生变更：")
+            for c in (changed or ["（无变更）"]):
+                print(f"  - {c}")
+        elif changed:
+            print(f"✅ 已更新 cleaning_config.json 的「列映射」：{len(changed)} 个来源变更 → {', '.join(changed)}")
+        else:
+            print("✅ 字段映射与 JSON 一致（无需变更）")
+    else:
+        print(f"⚠️  Excel 缺少「{MAP_SHEET_NAME}」sheet，跳过")
 
     return 0
 

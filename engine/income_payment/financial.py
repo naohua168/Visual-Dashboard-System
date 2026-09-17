@@ -78,6 +78,7 @@ def clean_guangdong(config, matcher, time_range, file_type):
     df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"])
 
     df = extract_columns(df, src_config["列映射"])
+    print_hit_columns(df, f"广东{file_type}")
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"广东{file_type}", f"日期筛选后: {len(df)}行")
 
@@ -103,6 +104,7 @@ def clean_hunan(config, matcher, time_range, file_type):
     df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"])
 
     df = extract_columns(df, src_config["列映射"])
+    print_hit_columns(df, f"湖南{file_type}")
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"湖南{file_type}", f"日期筛选后: {len(df)}行")
 
