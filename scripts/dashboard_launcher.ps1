@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # ============================================================
 #  Visual Dashboard System — 图形化运行控制台 (v5 · WPF)
 #  采用 WPF(XAML) + PowerShell 加载,完全免安装免编译。

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .utils import fmt_wan, safe_float
+from .utils import fmt_wan, safe_float, wrap_name
 
 DEPT_COLORS = {"检测": "#2563eb", "信息": "#8b5cf6", "能源": "#f59e0b", "海外": "#0d9488"}
 
@@ -398,7 +398,7 @@ def _render_detail(pending, pending_total_inc, pending_total_pay, grand_total, c
         ent_disp = entity if entity and entity not in ("nan", "None", "") else "—"
         rows += (
             f'<tr>'
-            f'<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{cust}">{cust}</td>'
+            f'<td style="min-width:180px" title="{cust}">{wrap_name(cust)}</td>'
             f'<td style="text-align:center;font-weight:600;color:{dcolor};font-size:11px">{dept}</td>'
             f'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#64748b" title="{ent_disp}">{ent_disp}</td>'
             f'<td style="text-align:right">{fmt_wan(inc_v)}</td>'

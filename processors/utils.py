@@ -72,6 +72,50 @@ def safe_float(v) -> float:
         return 0.0
 
 
+# ──────────────────────────────────────────────────────────────
+# 长名称折行（客户矩阵 / 明细表的名称列）
+# ──────────────────────────────────────────────────────────────
+
+# 折行优先断点：这些字符归「上一行结尾」
+_BREAK_AFTER = "、，,；;）)】」》 　·-—_/"
+# 折行优先断点：这些字符归「下一行开头」（左括号类不应悬在行尾）
+_BREAK_BEFORE = "（(【「《"
+
+
+def wrap_name(name, width: int = 20) -> str:
+    """长名称按「每行最多 width 字」折行，返回带 <br> 的 HTML 片段
+
+    - 优先在自然断点（顿号/逗号/括号/空格/连字符）处折行，找不到断点则按 width 硬切
+    - 每行字符数 ≤ width；名称本身不超过 width 时原样返回
+    - 仅供**展示**：点击事件/弹窗参数等仍应传原始名称（不要传本函数结果）
+    """
+    s = "" if name is None else str(name)
+    s = s.strip()
+    if len(s) <= width:
+        return s
+
+    lines: list[str] = []
+    rest = s
+    while len(rest) > width:
+        window = rest[:width]
+        cut = -1
+        # 从右往左找最近的断点（不早于窗口 1/3，兼顾"行不太短"与"优先自然断点"）
+        for idx in range(len(window) - 1, max(len(window) // 3, 1) - 1, -1):
+            ch = window[idx]
+            if ch in _BREAK_AFTER:
+                cut = idx + 1
+                break
+            if ch in _BREAK_BEFORE:
+                cut = idx
+                break
+        if cut <= 0:
+            cut = width
+        lines.append(rest[:cut])
+        rest = rest[cut:]
+    lines.append(rest)
+    return "<br>".join(lines)
+
+
 def extract_date_range(df, col: str = "日期") -> str:
     """从 DataFrame 日期列提取起止日期
 

@@ -328,10 +328,10 @@ function __sc3Build(parents) {{
         if (subRowData.length === 1) {{
             // 母子公司 1:1 — 只显示子公司行（四部门详情），不显示母公司行
             const sr = subRowData[0];
-            body += '<tr class="row-data row-sub" style="color:#475569" title="' + _tooltip + '"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">1</span>' + sr.name + '</td>' + sr.cells.join("") + '</tr>';
+            body += '<tr class="row-data row-sub" style="color:#475569" title="' + _tooltip + '"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">1</span>' + wrapName(sr.name) + '</td>' + sr.cells.join("") + '</tr>';
         }} else {{
             // 母子公司 1:N — 母公司合计行（母公司名 合计 + 四部门详情）
-            let pSumRow = [`<td class="td-name" style="font-weight:800;color:#0f172a;background:#eef2ff" title="${{_tooltip}}">${{p}} 合计</td>`];
+            let pSumRow = [`<td class="td-name" style="font-weight:800;color:#0f172a;background:#eef2ff" title="${{_tooltip}}">${{wrapName(p)}} 合计</td>`];
             deps.forEach((d, di) => {{
                 pSumRow.push(__sc3Cell(parentDepsAct[di], parentDepsTgt[di], false));
             }});
@@ -340,7 +340,7 @@ function __sc3Build(parents) {{
 
             // 子公司明细行（在母公司合计之下缩进显示）
             subRowData.forEach((sr, i) => {{
-                body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">' + (i + 1) + '</span>' + sr.name + '</td>' + sr.cells.join("") + '</tr>';
+                body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">' + (i + 1) + '</span>' + wrapName(sr.name) + '</td>' + sr.cells.join("") + '</tr>';
             }});
         }}
         // 每个母公司块结束后插入空行作为视觉分隔
@@ -702,10 +702,10 @@ def _sales_modal_html() -> str:
             if (subRowData.length === 1) {{
                 // 母子公司 1:1 — 只显示子公司行（四部门详情），不显示母公司行
                 const sr = subRowData[0];
-                body += '<tr class="row-data row-sub" style="color:#475569" title="' + _tooltip + '"><td class="td-name" style="padding-left:16px">' + sr.name + '</td>' + sr.cells.join('') + '</tr>';
+                body += '<tr class="row-data row-sub" style="color:#475569" title="' + _tooltip + '"><td class="td-name" style="padding-left:16px">' + wrapName(sr.name) + '</td>' + sr.cells.join('') + '</tr>';
             }} else {{
                 // 母子公司 1:N — 母公司合计行（母公司名 合计 + 四部门详情）
-                let pSumRow = [`<td class="td-name" style="font-weight:700;background:#eef2ff" title="${{_tooltip}}">${{p}} 合计</td>`];
+                let pSumRow = [`<td class="td-name" style="font-weight:700;background:#eef2ff" title="${{_tooltip}}">${{wrapName(p)}} 合计</td>`];
                 _DEPS.forEach((d, di) => {{
                     pSumRow.push(_modalCell(depActs[di], depTgts[di]));
                 }});
@@ -714,7 +714,7 @@ def _sales_modal_html() -> str:
 
                 // 子公司明细行
                 subRowData.forEach((sr, i) => {{
-                    body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:16px">' + sr.name + '</td>' + sr.cells.join('') + '</tr>';
+                    body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:16px">' + wrapName(sr.name) + '</td>' + sr.cells.join('') + '</tr>';
                 }});
             }}
 

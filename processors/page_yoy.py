@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .base import BaseRenderer
-from .utils import fmt_wan, range_banner_html
+from .utils import fmt_wan, range_banner_html, wrap_name
 from .page_data import prepare_yoy_data, DEPARTMENTS
 from .static.icons import icon
 
@@ -244,7 +244,7 @@ class YoyPage(BaseRenderer):
         # 数据行
         rows = ""
         for i, c in enumerate(top, 1):
-            cs = [f'<td class="td-name"><span class="row-num">{i}</span>{c}</td>']
+            cs = [f'<td class="td-name"><span class="row-num">{i}</span>{wrap_name(c)}</td>']
             for dpt in DEPARTMENTS:
                 cv = float(cp.loc[c, dpt]) if c in cp.index and dpt in cp.columns else 0
                 pv = float(pp.loc[c, dpt]) if pp is not None and c in pp.index and dpt in pp.columns else 0
@@ -257,7 +257,7 @@ class YoyPage(BaseRenderer):
         rest_rows = ""
         if rest:
             for i, c in enumerate(rest, len(top)+1):
-                cs = [f'<td class="td-name"><span class="row-num">{i}</span>{c}</td>']
+                cs = [f'<td class="td-name"><span class="row-num">{i}</span>{wrap_name(c)}</td>']
                 for dpt in DEPARTMENTS:
                     cv = float(cp.loc[c, dpt]) if c in cp.index and dpt in cp.columns else 0
                     pv = float(pp.loc[c, dpt]) if pp is not None and c in pp.index and dpt in pp.columns else 0

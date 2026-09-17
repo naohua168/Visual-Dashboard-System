@@ -7,25 +7,47 @@ from datetime import datetime
 import pandas as pd
 from ..core.column_resolver import extract_columns, print_hit_columns
 from ..core.utils import log_step, standardize_output, read_excel_with_fallback
-from ..core.config import get_data_path
+from ..core.config import get_data_path, get_annual_time_range
 
 
-# 运营端数据年份（当前年，日期解析以此为年）
+# 月份标签归属年份的兜底值（仅当调用方未传 year 时使用）
+# 生产路径由 clean_operations_single 传入「时间范围.年度累计」配置的年份，
+# 保证跨年后标签年份与年度窗口一致，不再依赖"跑批当天是哪一年"。
 OPS_YEAR = datetime.now().year
 
 
-def _parse_ops_date(s):
-    """解析运营端日期："1-4月" → 2026-01-01, "5月" → 2026-05-01"""
+def _parse_ops_date(s, year=None):
+    """解析运营端日期
+
+    支持三种写法（运营端同一列可能混用）：
+      - "1-4月" → {year}-04-01（取末月，保证季度筛选正确分账）
+      - "5月"   → {year}-05-01
+      - 真实日期 "2026-06-30 00:00:00" → 2026-06-30（2026-09-17 补：原先未兜底，
+        会把真实日期整行丢给 fillna 的兜底日期，导致期间归属错误）
+
+    Args:
+        s: 原始日期值
+        year: 月份标签归属的年份；缺省用 OPS_YEAR（当前年）
+    """
     if pd.isna(s):
         return None
+    year = year or OPS_YEAR
     s = str(s).strip()
     m = re.match(r"(\d{1,2})-(\d{1,2})月?$", s)  # "1-4月" → 取末月（用于季度筛选正确分账）
     if m:
-        return pd.Timestamp(year=OPS_YEAR, month=int(m.group(2)), day=1)
+        return pd.Timestamp(year=year, month=int(m.group(2)), day=1)
     m = re.match(r"(\d{1,2})月?$", s)             # "5月" → 5月
     if m:
-        return pd.Timestamp(year=OPS_YEAR, month=int(m.group(1)), day=1)
-    return None
+        return pd.Timestamp(year=year, month=int(m.group(1)), day=1)
+    # 真实日期兜底（Excel datetime / "YYYY-MM-DD" 字符串）
+    if not s:
+        return None
+    try:
+        ts = pd.Timestamp(s)
+    except (ValueError, TypeError):
+        return None
+    # pd.Timestamp("") / 无效值会返回 NaT（不抛异常），必须显式判空
+    return None if pd.isna(ts) else ts.normalize()
 
 
 def clean_operations_single(config, mapper, matcher, file_type):
@@ -64,18 +86,26 @@ def clean_operations_single(config, mapper, matcher, file_type):
         if candidate in df.columns:
             date_col_found = candidate
             break
+    # 日期归属年份与兜底日期均以「时间范围.年度累计」配置为准（不再硬编码，跨年自动跟随）
+    annual_range = get_annual_time_range(config)
+    ops_year = pd.Timestamp(annual_range["start_date"]).year
+    fallback_date = pd.Timestamp(annual_range["start_date"])
+
     if date_col_found:
-        df["日期"] = df[date_col_found].apply(_parse_ops_date)
-        # 无法解析的 fallback 到年初
+        df["日期"] = df[date_col_found].apply(lambda v: _parse_ops_date(v, ops_year))
+        # 无法解析的 → 回退到年度起始日（落在年度窗口内）
         fallback_count = df["日期"].isna().sum()
-        df["日期"] = df["日期"].fillna(pd.Timestamp("2026-01-01"))
+        df["日期"] = df["日期"].fillna(fallback_date)
         if fallback_count > 0:
-            log_step(f"运营端{file_type}", f"日期来源: 列'{date_col_found}' ({len(df)-fallback_count}行解析成功, {fallback_count}行回退固定日期)")
+            log_step(f"运营端{file_type}",
+                     f"日期来源: 列'{date_col_found}' ({len(df)-fallback_count}行解析成功, "
+                     f"{fallback_count}行回退年度起始日 {fallback_date.date()})")
         else:
-            log_step(f"运营端{file_type}", f"日期来源: 列'{date_col_found}' (全部解析成功)")
+            log_step(f"运营端{file_type}",
+                     f"日期来源: 列'{date_col_found}' (全部解析成功, 年份={ops_year})")
     else:
-        df["日期"] = pd.Timestamp("2026-01-01")
-        log_step(f"运营端{file_type}", f"日期赋值: 无真实日期列, 默认2026-01-01")
+        df["日期"] = fallback_date
+        log_step(f"运营端{file_type}", f"日期赋值: 无真实日期列, 默认年度起始日 {fallback_date.date()}")
 
     # 客户筛选 + 公司类型（仅统计，不添加列）
     accounting_col = None

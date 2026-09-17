@@ -1126,7 +1126,8 @@ table.ann-matrix thead tr.detail-row th,
 table.ann-matrix .th-name, .ann-matrix .th-name{text-align:center;min-width:160px;font-weight:800;}
 /* 客户名列 */
 table.ann-matrix .td-name, .ann-matrix .td-name{
-  text-align:left;font-weight:600;color:#0f172a;font-size:18px;white-space:nowrap;
+  text-align:left;font-weight:600;color:#0f172a;font-size:18px;
+  white-space:normal;line-height:1.35;vertical-align:middle;
 }
 table.ann-matrix .td-name .row-num, .ann-matrix .td-name .row-num{
   display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;
@@ -1324,7 +1325,7 @@ table.yoy-matrix-table tbody tr:hover{background:#bfdbfe !important;box-shadow:i
 table.yoy-matrix-table tbody tr:hover td.mx-yoy-cell{background:transparent!important;}
 table.yoy-matrix-table tbody tr:hover td.mx-yoy-cell .mx-badge{box-shadow:0 2px 8px rgba(0,0,0,0.25);}
 /* 客户名称 */
-table.yoy-matrix-table td.td-name{text-align:left;font-size:13px;color:#334155;padding-left:12px;}
+table.yoy-matrix-table td.td-name{text-align:left;font-size:13px;color:#334155;padding-left:12px;line-height:1.45;vertical-align:middle;}
 table.yoy-matrix-table .row-num{display:inline-block;width:22px;height:22px;line-height:22px;
   text-align:center;background:#dbeafe;color:#1d4ed8;border-radius:50%;
   font-size:11px;font-weight:800;margin-right:8px;flex-shrink:0;}

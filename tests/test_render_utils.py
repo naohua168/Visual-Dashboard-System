@@ -2,7 +2,7 @@
 import math
 import pytest
 
-from processors.utils import fmt_wan, fmt_pct, fmt_yoy, safe_float
+from processors.utils import fmt_wan, fmt_pct, fmt_yoy, safe_float, wrap_name
 
 
 class TestFmtWan:
@@ -69,3 +69,38 @@ class TestSafeFloat:
 
     def test_invalid(self):
         assert safe_float("abc") == 0.0
+
+
+class TestWrapName:
+    """长名称折行 — 每行最多 20 字，优先自然断点"""
+
+    def test_short_name_unchanged(self):
+        assert wrap_name("深圳市科卫泰实业发展有限公司") == "深圳市科卫泰实业发展有限公司"
+
+    def test_exact_width_unchanged(self):
+        s = "一" * 20
+        assert wrap_name(s) == s
+
+    def test_none_and_empty(self):
+        assert wrap_name(None) == ""
+        assert wrap_name("") == ""
+
+    def test_every_line_within_width(self):
+        s = "一" * 45
+        lines = wrap_name(s).split("<br>")
+        assert all(len(x) <= 20 for x in lines)
+        assert "".join(lines) == s
+
+    def test_split_at_natural_break(self):
+        s = "新丰县发展和改革局（新丰县粮食和物资储备局、新丰县国防动员办公室）"
+        lines = wrap_name(s).split("<br>")
+        assert lines[0] == "新丰县发展和改革局"
+        assert all(len(x) <= 20 for x in lines)
+        assert "".join(lines) == s
+
+    def test_custom_width(self):
+        assert wrap_name("一" * 10, width=4) == "一一一一<br>一一一一<br>一一"
+
+    def test_content_preserved_no_chars_lost(self):
+        s = "中汽院智能网联汽车检测中心（湖南）有限公司"
+        assert "".join(wrap_name(s).split("<br>")) == s

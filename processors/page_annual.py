@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .base import BaseRenderer, hero_rings_html
-from .utils import fmt_wan, range_banner_html
+from .utils import fmt_wan, range_banner_html, wrap_name
 from .components import (
     cell_bg_html, cust_tab_bar, hidden_dept_card_wrapper, dept_card_html,
     children_modal_html, children_modal_js,
@@ -105,11 +105,11 @@ class AnnualPage(BaseRenderer):
                         f'onclick="{uid}_show(this,\'{c}\')" '
                         f'title="点击查看 {shown}/{total} 家子公司（实际有数据/配置总数）" '
                         f'style="cursor:pointer;color:var(--accent)">'
-                        f'<span class="row-num">{start_idx+i+1}</span>{c} '
+                        f'<span class="row-num">{start_idx+i+1}</span>{wrap_name(c)} '
                         f'<span class="expand-hint">{hint_text}</span></td>'
                     )
                 else:
-                    cust_html = f'<td class="td-name"><span class="row-num">{start_idx+i+1}</span>{c}</td>'
+                    cust_html = f'<td class="td-name"><span class="row-num">{start_idx+i+1}</span>{wrap_name(c)}</td>'
                 cs = [cust_html]
                 for d in DEPARTMENTS:
                     a = float(piv.loc[c, d]) if c in piv.index and d in piv.columns else 0

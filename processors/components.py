@@ -309,7 +309,7 @@ def children_modal_js(uid: str, sub_detail_json: str, left_data_json: str = "[]"
         f'var b="";'
         # ① 母公司合计行置顶（1:1 时省略，底部不再重复）
         f'if(!isSingle){{'
-        f'b+="<tr class=\\"row-total row-total-top\\"><td class=\\"td-sub-name\\">▸ "+name+" 合计</td>"+{uid}_DEPS.map(d=>{uid}_cell(total[d].act,total[d].tgt)).join("")+"</tr>";'
+        f'b+="<tr class=\\"row-total row-total-top\\"><td class=\\"td-sub-name\\">▸ "+wrapName(name)+" 合计</td>"+{uid}_DEPS.map(d=>{uid}_cell(total[d].act,total[d].tgt)).join("")+"</tr>";'
         f'}}'
         # ② 母公司本部行（原始数据中直接挂母公司名下、未拆给子公司的金额）
         f'if(headOffice){{'
@@ -319,7 +319,7 @@ def children_modal_js(uid: str, sub_detail_json: str, left_data_json: str = "[]"
         f'}}'
         # ③ 子公司明细行（带序号 + data-sub 供左侧列表联动定位）
         f'subList.forEach(function(s,i){{'
-        f'var row=data[s];b+="<tr data-sub=\\""+s+"\\"><td class=\\"td-sub-name\\"><span class=\\"sub-idx\\">"+(i+1)+".</span>"+s+"</td>";'
+        f'var row=data[s];b+="<tr data-sub=\\""+s+"\\"><td class=\\"td-sub-name\\"><span class=\\"sub-idx\\">"+(i+1)+".</span>"+wrapName(s)+"</td>";'
         f'{uid}_DEPS.forEach(function(d){{var cell=row[d]||{{act:0,tgt:0}};b+={uid}_cell(cell.act,cell.tgt);}});'
         f'b+="</tr>";'
         f'}});'
