@@ -111,6 +111,83 @@ def _expand_children_map(children_map: dict[str, list[str]]) -> dict[str, list[s
     return expanded
 
 
+# ══════════════════════════════════════════════════════════════
+# 南方韶关：母公司行（年/月/季度达成页，2026-09-20 用户口径）
+# 规则 —— **按行判定，不需要维护客户名单**：
+#   · 法人主体 == 南方（韶关）… 且 该行（客户 × 该口径 × 部门）**无销售归属**
+#     → 客户名改为母公司「南方韶关」聚合展示
+#   · 有销售归属的韶关行 → 保持原客户行（走销售）
+#   · 法人主体 ≠ 南方（韶关）→ 不归拢（走销售，即使客户在"南方自有"清单里）
+# ══════════════════════════════════════════════════════════════
+SG_PARENT = "南方韶关"
+SG_LEGAL_ENTITY = "南方（韶关）智能网联新能源汽车试验检测中心有限公司"
+
+_ATTRIBUTION_FLAT: dict | None = None
+# 被归入「南方韶关」的客户名（本次渲染累计，供抽屉/弹窗展示明细）
+_SG_CHILDREN_SEEN: list[str] = []
+
+
+def _load_attribution_flat() -> dict:
+    """客户销售归属.json → {客户: {父组: {收入/回款: {部门: {销售: 比例}}}}}
+
+    与 engine/sales/run.py::_load_attribution 同口径，用于判断"该行是否有销售归属"。
+    """
+    global _ATTRIBUTION_FLAT
+    if _ATTRIBUTION_FLAT is not None:
+        return _ATTRIBUTION_FLAT
+    import json
+    path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
+    flat: dict = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for parent, group in data.get("客户归属", {}).items():
+            for sub, sub_data in group.get("子公司", {}).items():
+                flat.setdefault(sub.strip(), {})[parent] = sub_data or {}
+    except Exception:
+        flat = {}
+    _ATTRIBUTION_FLAT = flat
+    return flat
+
+
+def _has_sales_attribution(cust, dept: str, metric: str, attr: dict | None = None) -> bool:
+    """该客户在「该口径（收入/回款）+ 该部门」下是否配置了销售比例"""
+    groups = (attr if attr is not None else _load_attribution_flat()).get(str(cust).strip())
+    if not groups:
+        return False
+    return any((sd.get(metric, {}) or {}).get(dept) for sd in groups.values())
+
+
+def filter_sg_by_legal(df: pd.DataFrame, metric: str):
+    """法人主体=南方（韶关）… 且该行无销售归属 → 客户名改为母公司「南方韶关」
+
+    Returns:
+        (处理后的 df, 被归入的客户名列表)；无命中时原样返回、列表为空
+
+    metric: "收入" / "回款"（对应客户销售归属.json 的口径键）
+    """
+    if df is None or len(df) == 0:
+        return df, []
+    if not {"客户", "法人主体", "事业部"} <= set(df.columns):
+        return df, []
+    sg_rows = df[df["法人主体"].astype(str).str.strip() == SG_LEGAL_ENTITY]
+    if len(sg_rows) == 0:
+        return df, []
+
+    attr = _load_attribution_flat()
+    idx = [
+        i
+        for i, row in sg_rows.iterrows()
+        if not _has_sales_attribution(row["客户"], str(row["事业部"]).strip(), metric, attr)
+    ]
+    if not idx:
+        return df, []
+    absorbed = list(dict.fromkeys(str(df.at[i, "客户"]).strip() for i in idx))
+    out = df.copy()
+    out.loc[idx, "客户"] = SG_PARENT
+    return out, absorbed
+
+
 def _load_sub_to_parent() -> dict[str, str]:
     """加载 子公司→母公司 映射（跳过1:1：子公司名=母公司名的不映射，随便展示哪个都行）"""
     import json
@@ -141,6 +218,12 @@ def _load_children_map() -> dict[str, list[str]]:
         for sub in group.get("子公司", {}):
             s = sub.strip()
             children.setdefault(parent, []).append(s)
+    # 南方韶关：注入被归入的子客户（动态，来自 _consolidate_customers）
+    if _SG_CHILDREN_SEEN:
+        bucket = children.setdefault(SG_PARENT, [])
+        for c in _SG_CHILDREN_SEEN:
+            if c not in bucket:
+                bucket.append(c)
     return children
 
 
@@ -227,8 +310,13 @@ def filter_gd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
-    """将子公司名替换为母公司名（3+子公司时聚合，或客户本身就是母公司）"""
+def _consolidate_customers(df: pd.DataFrame, metric: str | None = None) -> pd.DataFrame:
+    """将子公司名替换为母公司名（3+子公司时聚合，或客户本身就是母公司）
+
+    metric: "收入" / "回款" 时额外执行南方韶关归拢
+            （法人主体=南方（韶关）… 且该行无销售归属 → 母公司「南方韶关」）；
+            总览/同比等不传 → 不做该归拢。
+    """
     global _SUB_TO_PARENT
     if _SUB_TO_PARENT is None:
         _SUB_TO_PARENT = _load_sub_to_parent()
@@ -236,6 +324,13 @@ def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
     # 广东自有客户组中"多组配置"子公司按法人过滤（法人=广东汽车检测中心→广东自有组，否则→其他组）
     # 统一所有页面（数据总览/年度/月度/季度/销售/同比）口径，与销售拆分引擎一致
     df = filter_gd_by_legal(df)
+    # 南方韶关：法人主体=南方（韶关）且无销售归属的行 → 归入母公司「南方韶关」
+    # （有销售归属的韶关行走销售；法人非南方韶关的不归拢。仅年/月/季度页传 metric）
+    if metric:
+        df, absorbed = filter_sg_by_legal(df, metric)
+        for c in absorbed:
+            if c not in _SG_CHILDREN_SEEN:
+                _SG_CHILDREN_SEEN.append(c)
     SUFFIXES = ('有限公司', '科技', '股份有限公司', '有限责任公司', '公司')
 
     def _strip(s):
@@ -438,6 +533,22 @@ def _build_subs_detail(
                 if c and dpt:
                     actual.setdefault(c, {})[dpt] = safe_float(row["金额_万"])
 
+    # 南方韶关：子客户金额只统计「法人主体=南方（韶关）」的行
+    # （保证弹窗子行合计 = 矩阵母公司行；避免同名客户在其他来源/法人的金额混入）
+    sg_children = set(_SG_CHILDREN_SEEN)
+    sg_actual: dict[str, dict[str, float]] = {}
+    if (sg_children and raw_actual is not None and len(raw_actual)
+            and "法人主体" in raw_actual.columns):
+        sdf = _add_wan(raw_actual.copy())
+        sdf = sdf[sdf["法人主体"].astype(str).str.strip() == SG_LEGAL_ENTITY]
+        if len(sdf) and "客户" in sdf.columns and "事业部" in sdf.columns:
+            g2 = sdf.groupby(["客户", "事业部"], as_index=False, dropna=False)["金额_万"].sum()
+            for _, r2 in g2.iterrows():
+                c2 = str(r2["客户"]).strip()
+                dpt2 = str(r2["事业部"]).strip()
+                if c2 and dpt2:
+                    sg_actual.setdefault(c2, {})[dpt2] = safe_float(r2["金额_万"])
+
     target: dict[str, dict[str, float]] = {}
     # 按 (客户, 销售) 拆分的目标：拆分母公司的"本部"行需按销售取各自目标（如 科技公司+王海龙）
     target_by_sales: dict[tuple[str, str], dict[str, float]] = {}
@@ -500,8 +611,9 @@ def _build_subs_detail(
             row = {}
             total_act = total_tgt = 0.0
             has_data = has_tgt = False
+            src = sg_actual if s in sg_children else actual
             for dpt in DEPARTMENTS:
-                act = actual.get(s, {}).get(dpt, 0.0)
+                act = src.get(s, {}).get(dpt, 0.0)
                 tgt = target.get(s, {}).get(dpt, 0.0)
                 if act != 0:
                     has_data = True

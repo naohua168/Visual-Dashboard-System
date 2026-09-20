@@ -152,8 +152,9 @@ class AnnualData:
 def prepare_annual_data(data, base_dir: Path) -> AnnualData:
     d = AnnualData()
 
-    df_inc = _consolidate_customers(_add_wan(data.income.copy()))
-    df_pay = _consolidate_customers(_add_wan(data.payment.copy()))
+    # 南方韶关母公司行：法人主体=南方（韶关）且无销售归属的行 → 归入「南方韶关」
+    df_inc = _consolidate_customers(_add_wan(data.income.copy()), "收入")
+    df_pay = _consolidate_customers(_add_wan(data.payment.copy()), "回款")
     inc_tgt = _consolidate_target(data.annual_income_targets.copy())
     pay_tgt = _consolidate_target(data.annual_payment_targets.copy())
 
@@ -272,8 +273,9 @@ def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
     if raw_pay is None:
         raw_pay = pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
 
-    df_inc = _consolidate_customers(_add_wan(raw_inc.copy()))
-    df_pay = _consolidate_customers(_add_wan(raw_pay.copy()))
+    # 南方韶关母公司行：法人主体=南方（韶关）且无销售归属的行 → 归入「南方韶关」
+    df_inc = _consolidate_customers(_add_wan(raw_inc.copy()), "收入")
+    df_pay = _consolidate_customers(_add_wan(raw_pay.copy()), "回款")
     inc_tgt = _consolidate_target(data.monthly_income_targets.copy())
     pay_tgt = _consolidate_target(data.monthly_payment_targets.copy())
 
@@ -417,8 +419,9 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
         q_inc_raw = data.income.copy()
         q_pay_raw = data.payment.copy()
 
-    q_inc = _consolidate_customers(_add_wan(q_inc_raw.copy()))
-    q_pay = _consolidate_customers(_add_wan(q_pay_raw.copy()))
+    # 南方韶关母公司行：法人主体=南方（韶关）且无销售归属的行 → 归入「南方韶关」
+    q_inc = _consolidate_customers(_add_wan(q_inc_raw.copy()), "收入")
+    q_pay = _consolidate_customers(_add_wan(q_pay_raw.copy()), "回款")
 
     latest_date = pd.to_datetime(q_inc["日期"].max(), errors="coerce")
     d.quarter = int(latest_date.quarter) if pd.notna(latest_date) else 2
