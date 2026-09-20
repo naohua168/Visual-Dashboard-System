@@ -111,34 +111,6 @@ def _expand_children_map(children_map: dict[str, list[str]]) -> dict[str, list[s
     return expanded
 
 
-# ── 南方韶关：母公司行（子客户清单由清洗层动态生成，不写死在配置里） ──
-# 见 engine/income_payment/financial.py::_tag_sg_unattributed
-# ⚠️ 仅「月度达成」页展示（2026-09-20 用户口径）：在 prepare_monthly_data 里显式调用
-#    filter_sg_by_legal()，不放进 _consolidate_customers（否则年度/季度/总览/同比也会出现）
-SG_PARENT = "南方韶关"
-SG_LEGAL_ENTITY = "南方（韶关）智能网联新能源汽车试验检测中心有限公司"
-SG_CACHE_FILE = Path(__file__).parent.parent / "data" / "mappings" / "南方韶关" / "无归属客户.json"
-
-
-def _load_sg_children() -> list[str]:
-    """读取「南方韶关」无销售归属客户清单（收入+回款并集，按文件顺序去重）"""
-    import json
-    try:
-        if not SG_CACHE_FILE.exists():
-            return []
-        with open(SG_CACHE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return []
-    names: list[str] = []
-    for metric in ("收入", "回款"):
-        for n in ((data.get(metric, {}) or {}).get("客户", []) or []):
-            s = str(n).strip()
-            if s and s not in names:
-                names.append(s)
-    return names
-
-
 def _load_sub_to_parent() -> dict[str, str]:
     """加载 子公司→母公司 映射（跳过1:1：子公司名=母公司名的不映射，随便展示哪个都行）"""
     import json
@@ -155,8 +127,6 @@ def _load_sub_to_parent() -> dict[str, str]:
                 continue  # 1:1 自引用，跳过，随便展示哪个都行
             if s not in raw:
                 raw[s] = parent
-    # ⚠️ 南方韶关不在此做客户名全局映射（会把运营端/主表的同名客户一并吸入「南方韶关」）；
-    #    改为 filter_sg_by_legal() 按「法人主体 + 动态清单」逐行重映射，且仅月度页调用
     return raw
 
 
@@ -171,13 +141,6 @@ def _load_children_map() -> dict[str, list[str]]:
         for sub in group.get("子公司", {}):
             s = sub.strip()
             children.setdefault(parent, []).append(s)
-    # 南方韶关：动态注入子客户（抽屉/弹窗明细）
-    sg = _load_sg_children()
-    if sg:
-        bucket = children.setdefault(SG_PARENT, [])
-        for c in sg:
-            if c not in bucket:
-                bucket.append(c)
     return children
 
 
@@ -264,28 +227,6 @@ def filter_gd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def filter_sg_by_legal(df: pd.DataFrame) -> pd.DataFrame:
-    """南方韶关来源（法人主体=南方（韶关）…）且无销售归属的行 → 客户名改为母公司「南方韶关」
-
-    ⚠️ 只按**行**（法人主体）重映射，不做客户名全局映射——避免同名客户在
-    运营端/财务主表的数据被误并入「南方韶关」（否则年度回款会把运营端同名客户一起吸走）。
-    子客户清单来自清洗层动态生成的 data/mappings/南方韶关/无归属客户.json。
-    """
-    children = set(_load_sg_children())
-    if not children or df is None or len(df) == 0:
-        return df
-    if "客户" not in df.columns or "法人主体" not in df.columns:
-        return df
-    legal = df["法人主体"].astype(str).str.strip()
-    cust = df["客户"].astype(str).str.strip()
-    mask = (legal == SG_LEGAL_ENTITY) & cust.isin(children)
-    if not mask.any():
-        return df
-    df = df.copy()
-    df.loc[mask, "客户"] = SG_PARENT
-    return df
-
-
 def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
     """将子公司名替换为母公司名（3+子公司时聚合，或客户本身就是母公司）"""
     global _SUB_TO_PARENT
@@ -295,8 +236,6 @@ def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
     # 广东自有客户组中"多组配置"子公司按法人过滤（法人=广东汽车检测中心→广东自有组，否则→其他组）
     # 统一所有页面（数据总览/年度/月度/季度/销售/同比）口径，与销售拆分引擎一致
     df = filter_gd_by_legal(df)
-    # 注：南方韶关的归拢（filter_sg_by_legal）**不在这里**，只在月度达成页显式调用
-    # （2026-09-20 用户口径：只有月度页出现「南方韶关」母公司行）
     SUFFIXES = ('有限公司', '科技', '股份有限公司', '有限责任公司', '公司')
 
     def _strip(s):
@@ -345,9 +284,6 @@ def _consolidate_customers(df: pd.DataFrame) -> pd.DataFrame:
     # 配置了销售拆分的母公司：即使当月/当季数据中只出现 <3 家子公司也聚合按销售拆分
     # （如月度回款 科技公司 当月仅 2 家有数据，否则会被 _group_by_parent 退回母公司名，两位销售数据混在一起）
     consolidate |= set(_load_sales_split().keys())
-    # 南方韶关：子客户可能只有 1 家（如回款仅科卫泰 1 行），仍需聚合成「南方韶关」母公司行
-    if SG_PARENT in parent_children:
-        consolidate.add(SG_PARENT)
 
     def _smart_map(c):
         p = _map(c)
@@ -502,22 +438,6 @@ def _build_subs_detail(
                 if c and dpt:
                     actual.setdefault(c, {})[dpt] = safe_float(row["金额_万"])
 
-    # 南方韶关：子客户金额只取韶关来源（法人主体=南方（韶关）…），与月度矩阵母公司行口径一致
-    # （避免同名客户在财务主表/广东/湖南的金额被算进「南方韶关」的子客户明细）
-    sg_children = set(_load_sg_children())
-    sg_actual: dict[str, dict[str, float]] = {}
-    if (sg_children and raw_actual is not None and len(raw_actual)
-            and "法人主体" in raw_actual.columns):
-        sdf = _add_wan(raw_actual.copy())
-        sdf = sdf[sdf["法人主体"].astype(str).str.strip() == SG_LEGAL_ENTITY]
-        if len(sdf) and "客户" in sdf.columns and "事业部" in sdf.columns:
-            g2 = sdf.groupby(["客户", "事业部"], as_index=False, dropna=False)["金额_万"].sum()
-            for _, r2 in g2.iterrows():
-                c2 = str(r2["客户"]).strip()
-                dpt2 = str(r2["事业部"]).strip()
-                if c2 and dpt2:
-                    sg_actual.setdefault(c2, {})[dpt2] = safe_float(r2["金额_万"])
-
     target: dict[str, dict[str, float]] = {}
     # 按 (客户, 销售) 拆分的目标：拆分母公司的"本部"行需按销售取各自目标（如 科技公司+王海龙）
     target_by_sales: dict[tuple[str, str], dict[str, float]] = {}
@@ -580,9 +500,8 @@ def _build_subs_detail(
             row = {}
             total_act = total_tgt = 0.0
             has_data = has_tgt = False
-            src = sg_actual if s in sg_children else actual
             for dpt in DEPARTMENTS:
-                act = src.get(s, {}).get(dpt, 0.0)
+                act = actual.get(s, {}).get(dpt, 0.0)
                 tgt = target.get(s, {}).get(dpt, 0.0)
                 if act != 0:
                     has_data = True

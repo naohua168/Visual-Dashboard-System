@@ -141,98 +141,6 @@ def _read_shaoguan_raw(src_config, file_path, sheet_name):
     return read_excel_with_fallback(file_path, [sheet_name], engine), False
 
 
-# ──────────────────────────────────────────────────────────────
-# 南方韶关：无销售归属客户登记（动态，供看板「南方韶关」母公司行归拢）
-# ──────────────────────────────────────────────────────────────
-SG_PARENT_NAME = "南方韶关"
-
-
-def _sg_cache_path():
-    from pathlib import Path
-    return Path(__file__).resolve().parent.parent.parent / "data" / "mappings" / "南方韶关" / "无归属客户.json"
-
-
-def _load_attribution_groups() -> dict:
-    """加载 客户销售归属.json → {客户: {父组: {收入/回款: {部门: {销售: 比例}}}}}
-
-    与 engine/sales/run.py::_load_attribution 同口径，供清洗层判定"有/无销售归属"。
-    """
-    import json
-    from pathlib import Path
-    path = Path(__file__).resolve().parent.parent.parent / "config" / "清洗配置" / "客户销售归属.json"
-    if not path.exists():
-        return {}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return {}
-    flat: dict = {}
-    for parent, group in data.get("客户归属", {}).items():
-        for sub, sub_data in group.get("子公司", {}).items():
-            flat.setdefault(sub.strip(), {})[parent] = sub_data
-    return flat
-
-
-def _update_sg_cache(metric: str, names: list, rows: int, amount: float) -> None:
-    """写/更新「南方韶关」无归属客户清单（保留另一口径的数据）"""
-    import json
-    from datetime import datetime
-    path = _sg_cache_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        data = {}
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        data[metric] = {
-            "客户": names,
-            "行数": int(rows),
-            "金额": round(float(amount), 2),
-            "生成时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        log_step(f"南方韶关{metric}", f"⚠️ 无归属客户清单写入失败: {e}", "WARN")
-
-
-def _tag_sg_unattributed(out, file_type, dept="检测"):
-    """记录「该口径 + dept（韶关固定=检测）」下查不到销售归属的客户
-
-    ⚠️ 不修改 df（客户名保持原样，看板弹窗仍能按子公司展开明细）；
-    只把清单写入 data/mappings/南方韶关/无归属客户.json，
-    由 processors/page_data_utils 读取后把母公司显示为「南方韶关」。
-    """
-    metric = "收入" if file_type == "收入" else "回款"
-    groups = _load_attribution_groups()
-
-    def _attributed(cust):
-        g = groups.get(str(cust).strip())
-        if not g:
-            return False
-        return any((sd.get(metric, {}) or {}).get(dept) for sd in g.values())
-
-    names, rows, amount = [], 0, 0.0
-    for cust, grp in out.groupby("客户", sort=False):
-        if _attributed(cust):
-            continue
-        names.append(str(cust).strip())
-        rows += len(grp)
-        amount += float(grp["金额"].sum())
-
-    _update_sg_cache(metric, names, rows, amount)
-    if names:
-        log_step(
-            f"南方韶关{file_type}",
-            f"无销售归属 → 归入母公司「{SG_PARENT_NAME}」: {rows}行 / {amount:,.2f}元, "
-            f"客户{len(names)}家: {'、'.join(names)}",
-        )
-    else:
-        log_step(f"南方韶关{file_type}", f"全部客户均有销售归属，无需归入「{SG_PARENT_NAME}」")
-    return out
-
-
 def clean_shaoguan(config, matcher, time_range, file_type):
     """清洗南方韶关公司数据
 
@@ -292,10 +200,6 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     out = _filter_by_whitelist(out, matcher, src_config, f"南方韶关{file_type}")
 
     out = standardize_output(out)
-
-    # 无销售归属的客户 → 登记为「南方韶关」的子公司（动态清单，看板归拢展示用；不改客户名）
-    _tag_sg_unattributed(out, file_type, str(src_config.get("事业部固定", "检测")))
-
     log_step(f"南方韶关{file_type}", f"最终: {len(out)}行, 金额合计: {out['金额'].sum():,.2f}（已转万元→元）", "OK")
     return out
 

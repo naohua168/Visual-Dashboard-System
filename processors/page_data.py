@@ -16,7 +16,6 @@ from .utils import safe_float, get_config_range
 from .config_loader import CustomerFilter
 from .page_data_utils import (
     _add_wan, _build_subs_detail, _build_subs_with_data,
-    filter_sg_by_legal,
     _consolidate_customers, _consolidate_target, _customer_pivot,
     _data_max_month, _dept_target_sum, _expand_children_map,
     _get_yearly_year, _group_by_parent, _kpi_target, _load_children_map,
@@ -273,10 +272,8 @@ def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
     if raw_pay is None:
         raw_pay = pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
 
-    # 南方韶关母公司行：仅本页（月度达成）生效 —— 韶关来源且无销售归属的行归入「南方韶关」
-    # （年度/季度/总览/同比不归拢，保持原客户行）
-    df_inc = _consolidate_customers(filter_sg_by_legal(_add_wan(raw_inc.copy())))
-    df_pay = _consolidate_customers(filter_sg_by_legal(_add_wan(raw_pay.copy())))
+    df_inc = _consolidate_customers(_add_wan(raw_inc.copy()))
+    df_pay = _consolidate_customers(_add_wan(raw_pay.copy()))
     inc_tgt = _consolidate_target(data.monthly_income_targets.copy())
     pay_tgt = _consolidate_target(data.monthly_payment_targets.copy())
 
