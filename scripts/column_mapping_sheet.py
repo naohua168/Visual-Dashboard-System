@@ -167,7 +167,12 @@ def excel_to_column_mapping(sheet, cfg: dict) -> tuple[dict, list[str]]:
         got = set(mapping.get(src, {}).get(name, {}))
         lost = fields - got
         if lost:
-            raise ValueError(f"「{MAP_SHEET_NAME}」{src}/{name} 缺少原有标准字段: {sorted(lost)}（不允许删除）")
+            raise ValueError(
+                f"「{MAP_SHEET_NAME}」{src}/{name} 缺少原有标准字段: {sorted(lost)}（不允许删除）\n"
+                f"    若这些字段是刚在 JSON 里新增的，请先刷新 sheet：\n"
+                f"      python scripts/config_excel_to_json.py --init-map\n"
+                f"    （只刷新「{MAP_SHEET_NAME}」sheet，再用 run_all.bat 同步）"
+            )
         added = got - fields
         if added:
             warnings.append(f"{src}/{name} 新增字段 {sorted(added)} —— 请确认源文件里确实存在这些列，否则清洗会报 KeyError")

@@ -33,32 +33,57 @@ def find_column(df, candidates):
     )
 
 
-def extract_columns(df, column_mapping):
+def find_column_safe(df, candidates):
+    """同 find_column，但全部候选都未命中时返回 None（不抛异常）
+
+    用于「可选字段」：源文件没有该列时静默跳过，而不是中断整个清洗。
+    """
+    try:
+        return find_column(df, candidates)
+    except KeyError:
+        return None
+
+
+def extract_columns(df, column_mapping, optional_fields=None):
     """
     按列映射配置提取列，支持冗余
 
     Args:
         df: 原始 DataFrame
         column_mapping: 列映射配置，如 {"日期": ["创建时间", "创建日期"], "客户": ["客户.名称"]}
+        optional_fields: 可选字段名集合（如 {"收款日期"}）；这些字段的候选全部未命中时
+            **跳过而不报错**，字段名记入 attrs["_missing_optional"]
 
     Returns:
         提取后的 DataFrame (列名为标准字段名)，并在 attrs 中附带命中信息：
-          _hit_columns:    {标准字段: 实际命中的源列名}
-          _hit_candidates: {标准字段: [候选列名...]}（用于判断是主候选还是降级命中）
+          _hit_columns:      {标准字段: 实际命中的源列名}
+          _hit_candidates:   {标准字段: [候选列名...]}（用于判断是主候选还是降级命中）
+          _missing_optional: [未命中的可选字段名...]
     """
     result = pd.DataFrame()
     hits: dict[str, str] = {}
     hit_candidates: dict[str, list[str]] = {}
+    missing_optional: list[str] = []
+    optional = {str(f) for f in (optional_fields or [])}
+
     for std_name, candidates in column_mapping.items():
         if std_name.startswith("_"):
             continue
-        actual_col = find_column(df, candidates)
+        if std_name in optional:
+            actual_col = find_column_safe(df, candidates)
+            if actual_col is None:
+                missing_optional.append(std_name)
+                continue
+        else:
+            actual_col = find_column(df, candidates)
         result[std_name] = df[actual_col]
         hits[std_name] = str(actual_col)
         hit_candidates[std_name] = [str(c) for c in candidates]
+
     # 一次性写 attrs（避免逐列 setdefault 依赖 pandas 的 attrs 传播行为）
     result.attrs["_hit_columns"] = hits
     result.attrs["_hit_candidates"] = hit_candidates
+    result.attrs["_missing_optional"] = missing_optional
     return result
 
 
@@ -67,9 +92,13 @@ def print_hit_columns(df, source_name, write_log: bool = True):
 
     - 命中次序 > 1 的会在日志里标为「⚠️ 降级命中」（第一候选在源文件中不存在，
       靠后备候选兜住），便于识别脆弱点
+    - 可选字段未命中时打 WARN（依赖该字段的筛选会被跳过）
     - 落盘失败（如无写权限）不影响清洗主流程
     """
     hits = df.attrs.get("_hit_columns", {})
+    missing_optional = df.attrs.get("_missing_optional") or []
+    if missing_optional:
+        print(f"  ⚠️ [{source_name}] 可选字段未命中，已跳过: {', '.join(missing_optional)}")
     if not hits:
         return
     candidates = df.attrs.get("_hit_candidates", {})

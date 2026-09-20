@@ -382,6 +382,121 @@ class TestBuildSubsDetailSplitParent:
 
 
 # ══════════════════════════════════════════════════════════════
+# 测试 _build_subs_detail 弹窗展示规则
+# （用户口径：只有"4 部门金额全为 0 且无指标"才隐藏，其余都展示）
+# ══════════════════════════════════════════════════════════════
+class TestBuildSubsDetailDisplayRule:
+    """2026-09-18 用户最终口径：**只要有数据（金额 ≠ 0，无论正负）或有指标就展示**；
+    唯一隐藏情形 = 4 部门金额全为 0 **且** 无任何指标（负数、正负抵消都算有数据）。
+    """
+
+    ACTUAL_COLS = ["客户", "事业部", "金额"]
+    TARGET_COLS = ["客户", "销售", "检测", "信息", "能源", "海外"]
+
+    def _build(self, monkeypatch, actual_rows, target_rows, subs):
+        """raw 金额单位为元（_add_wan 内部 ÷10000 转万元）"""
+        monkeypatch.setattr(
+            "processors.page_data_utils._load_sales_split", lambda: {}
+        )
+        raw_actual = pd.DataFrame(actual_rows, columns=self.ACTUAL_COLS)
+        raw_target = pd.DataFrame(target_rows, columns=self.TARGET_COLS)
+        children_map = {"母公司": ["母公司", *subs]}
+        result = _build_subs_detail(raw_actual, raw_target, children_map, ["母公司"])
+        return result.get("母公司", {})
+
+    def test_positive_actual_without_target_is_shown(self, monkeypatch):
+        """正数金额、无指标 → 展示"""
+        detail = self._build(
+            monkeypatch, [("子公司A", "检测", 1946100.0)], [], ["子公司A"]
+        )
+        assert "子公司A" in detail
+        assert detail["子公司A"]["检测"]["act"] == pytest.approx(194.61)
+        assert detail["子公司A"]["合计"]["tgt"] == 0
+
+    def test_negative_actual_without_target_is_shown(self, monkeypatch):
+        """负数金额（红冲/退款）且无指标 → 展示（有数据无论正负都展示）"""
+        detail = self._build(
+            monkeypatch, [("子公司A", "检测", -814300.0)], [], ["子公司A"]
+        )
+        assert "子公司A" in detail
+        assert detail["子公司A"]["检测"]["act"] == pytest.approx(-81.43)
+        assert detail["子公司A"]["合计"]["act"] == pytest.approx(-81.43)
+        assert detail["子公司A"]["合计"]["tgt"] == 0
+
+    def test_offsetting_actual_is_shown(self, monkeypatch):
+        """正负抵消（检测 +100 / 信息 −100，合计 0）且无指标 → 仍展示（部门有数据）"""
+        detail = self._build(
+            monkeypatch,
+            [("子公司C", "检测", 1000000.0), ("子公司C", "信息", -1000000.0)],
+            [],
+            ["子公司C"],
+        )
+        assert "子公司C" in detail
+        assert detail["子公司C"]["合计"]["act"] == 0
+        assert detail["子公司C"]["检测"]["act"] == pytest.approx(100)
+        assert detail["子公司C"]["信息"]["act"] == pytest.approx(-100)
+
+    def test_negative_dept_but_positive_total_is_shown(self, monkeypatch):
+        """个别部门负数但合计 > 0 且无指标 → 展示"""
+        detail = self._build(
+            monkeypatch,
+            [("子公司E", "检测", 3000000.0), ("子公司E", "信息", -500000.0)],
+            [],
+            ["子公司E"],
+        )
+        assert "子公司E" in detail
+        assert detail["子公司E"]["合计"]["act"] == pytest.approx(250)
+
+    def test_negative_actual_with_target_is_shown(self, monkeypatch):
+        """负数金额但有指标 → 展示"""
+        detail = self._build(
+            monkeypatch,
+            [("子公司D", "检测", -500000.0)],
+            [("子公司D", "", 100.0, 0.0, 0.0, 0.0)],
+            ["子公司D"],
+        )
+        assert "子公司D" in detail
+        assert detail["子公司D"]["检测"]["act"] == pytest.approx(-50)
+        assert detail["子公司D"]["检测"]["tgt"] == 100
+
+    def test_zero_actual_with_target_is_shown(self, monkeypatch):
+        """金额全为 0 但有指标 → 展示"""
+        detail = self._build(
+            monkeypatch, [], [("子公司B", "", 100.0, 40.0, 0.0, 0.0)], ["子公司B"]
+        )
+        assert "子公司B" in detail
+        assert detail["子公司B"]["合计"]["act"] == 0
+        assert detail["子公司B"]["合计"]["tgt"] == 140
+
+    def test_all_zero_without_target_is_hidden(self, monkeypatch):
+        """唯一隐藏情形：4 部门金额全为 0 且无任何指标"""
+        detail = self._build(
+            monkeypatch, [("母公司", "检测", 0.0)], [], ["子公司A"]
+        )
+        assert "子公司A" not in detail
+        assert "母公司（本部）" not in detail
+
+    def test_head_office_follows_same_rule(self, monkeypatch):
+        """本部行同规则：正数、负数都展示；全 0 且无指标才隐藏"""
+        shown = self._build(
+            monkeypatch, [("母公司", "能源", 50000.0)], [], ["子公司A"]
+        )
+        assert "母公司（本部）" in shown
+        assert shown["母公司（本部）"]["合计"]["act"] == pytest.approx(5)
+
+        neg = self._build(
+            monkeypatch, [("母公司", "能源", -50000.0)], [], ["子公司A"]
+        )
+        assert "母公司（本部）" in neg
+        assert neg["母公司（本部）"]["合计"]["act"] == pytest.approx(-5)
+
+        empty = self._build(
+            monkeypatch, [("母公司", "能源", 0.0)], [], ["子公司A"]
+        )
+        assert "母公司（本部）" not in empty
+
+
+# ══════════════════════════════════════════════════════════════
 # 测试 _group_by_parent (需要 base_dir mock)
 # ══════════════════════════════════════════════════════════════
 class TestGroupByParent:

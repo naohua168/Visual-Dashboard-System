@@ -35,13 +35,21 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     total_in = len(df)
     log_step(f"财务端{file_type}", f"原始数据: {total_in}行 x {len(df.columns)}列")
 
-    # 列名提取（冗余）
-    df = extract_columns(df, src_config["列映射"])
+    # 列名提取（冗余）；「可选字段」缺失时不报错，只记入 attrs 并打 WARN
+    df = extract_columns(df, src_config["列映射"], optional_fields=src_config.get("可选字段"))
     print_hit_columns(df, f"财务端{file_type}")
 
-    # 日期筛选
-    df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
-    log_step(f"财务端{file_type}", f"日期筛选后: {len(df)}行 (排除{total_in - len(df)}行)")
+    # 日期筛选：`日期字段组` 内所有字段都必须落在时间范围内
+    # （回款 = 业务日期 AND 收款日期 都在窗口内才收录，2026-09-18 口径）
+    for f in src_config.get("日期字段组", ["日期"]):
+        if f not in df.columns:
+            log_step(f"财务端{file_type}",
+                     f"⚠️ 日期字段「{f}」不可用（可选字段未命中），跳过该日期筛选", "WARN")
+            continue
+        before = len(df)
+        df = filter_by_date(df, f, time_range["start_date"], time_range["end_date"])
+        log_step(f"财务端{file_type}", f"日期筛选[{f}]: {len(df)}行 (排除{before - len(df)}行)")
+    log_step(f"财务端{file_type}", f"日期筛选后合计: {len(df)}行 (原始 {total_in}行)")
     if len(df) == 0:
         log_step(f"财务端{file_type}", "无数据（时间范围内无匹配记录），跳过", "WARN")
         return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])

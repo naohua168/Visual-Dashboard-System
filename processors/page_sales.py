@@ -299,20 +299,21 @@ function __sc3Build(parents) {{
         let parentDepsTgt = deps.map(() => 0);
         let subRowData = [];
         subKeys.forEach((c, i) => {{
-            let rAct = 0, rTgt = 0;
+            let rAct = 0, rTgt = 0, hasData = false;
             let cells = [];
             deps.forEach((d, di) => {{
                 const v = subs[c] && subs[c][metric] ? (subs[c][metric][d] || 0) : 0;
                 const cT = __sc3CustTgt(c, metric);
                 const t = (cT && cT[d]) || 0;
+                if (v !== 0 || t !== 0) hasData = true;
                 cells.push(__sc3Cell(v, t, false));
                 rAct += v; rTgt += t;
                 parentDepsAct[di] += v;
                 parentDepsTgt[di] += t;
             }});
             cells.push(__sc3Cell(rAct, rTgt, true));
-            // 4部门实际+目标全为0的子公司不展示
-            if (rAct === 0 && rTgt === 0) return;
+            // 只要有数据无论正负都展示（仅 4 部门金额全为 0 且无指标 → 不展示）
+            if (!hasData) return;
             subRowData.push({{ name: c, cells: cells }});
             parentTotalAct += rAct;
             parentTotalTgt += rTgt;
@@ -673,20 +674,21 @@ def _sales_modal_html() -> str:
             let subRowData = [];
             let pActAll = 0, pTgtAll = 0;
             subKeys.forEach((c, i) => {{
-                let rAct = 0, rTgt = 0;
+                let rAct = 0, rTgt = 0, hasData = false;
                 let cells = [];
                 const cT = _custTgt(c, _curMetric);
                 _DEPS.forEach((d, di) => {{
                     const v = subs[c] && subs[c][_curMetric] ? (subs[c][_curMetric][d] || 0) : 0;
                     const t = (cT && cT[d]) || 0;
+                    if (v !== 0 || t !== 0) hasData = true;
                     cells.push(_modalCell(v, t));
                     rAct += v; rTgt += t;
                     depActs[di] += v;
                     depTgts[di] += t;
                 }});
                 cells.push(_modalCell(rAct, rTgt, true));
-                // 4部门实际+目标全为0的子公司不展示
-                if (rAct === 0 && rTgt === 0) return;
+                // 只要有数据无论正负都展示（仅 4 部门金额全为 0 且无指标 → 不展示）
+                if (!hasData) return;
                 subRowData.push({{ name: c, cells: cells }});
                 pActAll += rAct;
                 pTgtAll += rTgt;
@@ -767,7 +769,7 @@ def _sales_modal_html() -> str:
                     sA += subs[c] && subs[c][_curMetric] ? (subs[c][_curMetric][d] || 0) : 0;
                     sT += (cT && cT[d]) || 0;
                 }});
-                if (sA > 0 || sT > 0) nSubs++;
+                if (sA !== 0 || sT > 0) nSubs++;
             }});
             // 该母公司无任何有数据子公司 → 圆环跳过
             if (nSubs === 0) return;

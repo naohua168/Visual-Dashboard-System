@@ -375,7 +375,8 @@ def _build_subs_with_data(
             continue
         if "金额" in df.columns:
             g = df.groupby("客户")["金额"].sum()
-            actual_custs.update(str(c).strip() for c in g[g > 0].index)
+            # 金额非 0（无论正负）都算"有数据"（2026-09-18 用户口径）
+            actual_custs.update(str(c).strip() for c in g[g != 0].index)
         else:
             actual_custs.update(str(c).strip() for c in df["客户"].unique())
 
@@ -464,7 +465,8 @@ def _build_subs_detail(
         sales_map = split_map.get(parent_name, {}) if sales is not None else {}
 
         # 1) 母公司本部（原始数据中直接挂在母公司名下、未拆分给任何子公司的金额）
-        # 过滤：4部门全为0且无目标数据时不展示
+        # 展示规则（2026-09-18 用户最终口径）：**只要有数据无论正负都展示**；
+        # 仅"4 部门金额全为 0 且无任何指标"才隐藏。负数（红冲/退款）、正负抵消都算有数据。
         # 拆分键（如 科技公司·王海龙）：本部目标只取该销售名下的目标，避免两位销售互相混入
         parent_act_data = actual.get(parent_name, {})
         if sales is not None:
@@ -473,7 +475,9 @@ def _build_subs_detail(
             parent_tgt_data = target.get(parent_name, {})
         parent_act_total = sum(parent_act_data.get(d, 0.0) for d in DEPARTMENTS)
         parent_tgt_total = sum(parent_tgt_data.get(d, 0.0) for d in DEPARTMENTS)
-        if parent_act_total > 0 or parent_tgt_total > 0:
+        parent_has_data = any(parent_act_data.get(d, 0.0) != 0 for d in DEPARTMENTS)
+        parent_has_tgt = any(parent_tgt_data.get(d, 0.0) != 0 for d in DEPARTMENTS)
+        if parent_has_data or parent_has_tgt:
             row: dict[str, dict[str, float]] = {}
             total_act = total_tgt = 0.0
             for dpt in DEPARTMENTS:
@@ -485,7 +489,9 @@ def _build_subs_detail(
             row["合计"] = {"act": total_act, "tgt": total_tgt}
             sub_detail[f"{parent_name}（本部）"] = row
 
-        # 2) 子公司明细（过滤：4部门act全为0的子公司不展示，仅当年累计有数据的）
+        # 2) 子公司明细
+        # 展示规则（2026-09-18 用户最终口径）：**只要有数据无论正负都展示**（逐部门看金额 ≠ 0）；
+        # 仅"4 部门金额全为 0 且无任何指标"才隐藏（负数、正负抵消同样视为有数据）。
         all_subs = children_map.get(parent_name, [])
         subs = [s for s in all_subs if s != parent_name]
         if sales is not None:
@@ -493,15 +499,19 @@ def _build_subs_detail(
         for s in subs:
             row = {}
             total_act = total_tgt = 0.0
+            has_data = has_tgt = False
             for dpt in DEPARTMENTS:
                 act = actual.get(s, {}).get(dpt, 0.0)
                 tgt = target.get(s, {}).get(dpt, 0.0)
+                if act != 0:
+                    has_data = True
+                if tgt != 0:
+                    has_tgt = True
                 row[dpt] = {"act": act, "tgt": tgt}
                 total_act += act
                 total_tgt += tgt
             row["合计"] = {"act": total_act, "tgt": total_tgt}
-            # 仅展示有实际金额（4部门不全为0）或当年累计有目标的子公司
-            if total_act > 0 or total_tgt > 0:
+            if has_data or has_tgt:
                 sub_detail[s] = row
 
         if sub_detail:
