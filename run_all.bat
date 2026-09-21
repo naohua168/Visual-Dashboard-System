@@ -70,18 +70,23 @@ echo.
 
 echo ═══ 预检 ═══
 "%PYTHON%" main.py --dry-run
-if %ERRORLEVEL% neq 0 (
-    echo.
-    echo [错误] 预检失败，请检查以下项目：
-    echo   ▪ data\raw\财务端数据\   原始 Excel（收入/回款）
-    echo   ▪ data\raw\运营端数据\   原始 Excel（收入/回款）
-    echo   ▪ data\raw\往年收入数据\ 往年收入基线 Excel
-    echo   ▪ data\raw\往年回款数据\ 往年回款基线 Excel
-    echo   ▪ data\mappings\         部门事业部映射 / 客户名单
-    echo   ▪ config\清洗配置\       cleaning_config.json
-    pause
-    exit /b %ERRORLEVEL%
-)
+if errorlevel 1 goto :preflight_bad
+goto :preflight_ok
+
+:preflight_bad
+echo.
+echo [错误] 预检失败，请检查以下项目：
+echo   - data\raw\财务端数据\   原始 Excel（收入/回款）
+echo   - data\raw\运营端数据\   原始 Excel（收入/回款）
+echo   - data\raw\往年收入数据\ 往年收入基线 Excel
+echo   - data\raw\往年回款数据\ 往年回款基线 Excel
+echo   - data\mappings\         部门事业部映射 / 客户名单
+echo   - config\清洗配置\       cleaning_config.json
+echo.
+pause
+exit /b 2
+
+:preflight_ok
 echo.
 
 REM ============================================
@@ -97,26 +102,28 @@ echo   提示: 请先在 config\配置编辑器.xlsx 更新配置（时间/结�
 echo.
 echo ═══ 主流程（由 main.py 调度）═══
 "%PYTHON%" main.py
-if %ERRORLEVEL% neq 0 (
-    echo.
-    echo [错误] 主流程中断（详见上方输出或 logs\ 目录日志）
-    echo.
-    echo   续跑方式（按失败步骤选择）：
-    echo     "%PYTHON%" main.py --from=config    配置同步(Excel-^>JSON)
-    echo     "%PYTHON%" main.py --from=yearly    年基线清洗
-    echo     "%PYTHON%" main.py --from=clean     收入/回款清洗
-    echo     "%PYTHON%" main.py --from=split     销售拆分
-    echo     "%PYTHON%" main.py --from=render    渲染看板
-    echo.
-    pause
-    exit /b %ERRORLEVEL%
-)
+set "MAIN_RC=%ERRORLEVEL%"
+if "%MAIN_RC%"=="0" goto :main_ok
+echo.
+echo [错误] 主流程中断（main.py 退出码 = %MAIN_RC%，详见上方输出或 logs\ 目录日志）
+echo.
+echo   续跑方式（按失败步骤选择）：
+echo     "%PYTHON%" main.py --from=config    配置同步（Excel 到 JSON）
+echo     "%PYTHON%" main.py --from=yearly    年基线清洗
+echo     "%PYTHON%" main.py --from=clean     收入/回款清洗
+echo     "%PYTHON%" main.py --from=split     销售拆分
+echo     "%PYTHON%" main.py --from=render    渲染看板
+echo.
+pause
+exit /b %MAIN_RC%
+
+:main_ok
 
 REM ============================================
 echo ═══ Phase 5: 生成销售完成度汇总表 ═══
 if exist "scripts\sales_summary_report.py" (
     "%PYTHON%" scripts\sales_summary_report.py
-    if !ERRORLEVEL! neq 0 (
+    if errorlevel 1 (
         echo [警告] 销售完成度汇总表生成失败！
     )
 ) else (
@@ -128,7 +135,7 @@ REM ============================================
 echo ═══ Phase 6: 看板质量验证 ═══
 if exist "scripts\verify_dashboard.py" (
     "%PYTHON%" scripts\verify_dashboard.py
-    if %ERRORLEVEL% neq 0 (
+    if errorlevel 1 (
         echo [警告] 看板验证发现问题，请检查 JS 语法或函数绑定！
     )
 ) else (

@@ -38,6 +38,15 @@ CONFIG_EXCEL = "config/配置编辑器.xlsx"
 
 STEPS = [
     {
+        "key": "scan",
+        "name": "配置预扫描: 广东自有客户自动归入",
+        "script": "scripts/scan_gd_owned.py",
+        "script_args": ["--write"],
+        "optional": True,
+        "description": "扫描 运营端/广东公司 中 法人=广东汽车检测中心 且无任何销售归属的客户 → 追加到 配置编辑器.xlsx"
+                       "「销售归属」（广东自有客户 / 黎国键）。必须排在配置同步之前，才能被 Excel→JSON 带进去",
+    },
+    {
         "key": "config",
         "name": "配置同步: 配置编辑器.xlsx → JSON",
         "script": "scripts/config_excel_to_json.py",
@@ -138,7 +147,7 @@ def preflight_check() -> list[str]:
 def build_command(step: dict, file_type: str | None) -> list[str]:
     """构造步骤命令：script 型（如配置同步）直接跑脚本，module 型跑 python -m"""
     if step.get("script"):
-        return [sys.executable, step["script"]]
+        return [sys.executable, step["script"], *step.get("script_args", [])]
     cmd = [sys.executable, "-m", step["module"]]
     if file_type:
         cmd.append(f"--type={file_type}")

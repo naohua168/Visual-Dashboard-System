@@ -235,6 +235,18 @@ def run_split(file_type, config=None):
         legal_entity = str(row.get("法人主体", "")).strip()
         parent_name, cust_data = _select_parent_group(cust_groups, legal_entity)
 
+        # 「广东自有客户」门控（2026-09-21 用户口径）：
+        #   该组只收 法人主体 = 广东汽车检测中心有限公司 的行。
+        #   同一客户在其它法人（如 南方韶关）下的行不归销售 → 保持"待确认"，
+        #   否则会出现"韶关的行业绩算给了广东自有销售"的口径错配。
+        if parent_name == GD_PARENT_GROUP and legal_entity != GD_LEGAL_ENTITY:
+            row_dict = row.to_dict()
+            row_dict["销售"] = "待确认"
+            row_dict["母公司"] = parent_name
+            results.append(row_dict)
+            unmatched += 1
+            continue
+
         # 取收入/回款的部门比例
         metric_ratios = cust_data.get(metric_key, {})
         dept_ratios = metric_ratios.get(department, {})
