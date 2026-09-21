@@ -196,8 +196,13 @@ def prepare_annual_data(data, base_dir: Path) -> AnnualData:
     d.pay_piv, d.pay_tgt_grouped, all_pay = _group_by_parent(
         d.pay_piv, d.pay_tgt_grouped, d.pay_customers + d.pay_rest, base_dir
     )
-    d.inc_customers, d.inc_rest = _resplit_priority(all_inc, base_dir, annual_filter)
-    d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, annual_filter)
+    # 非指标客户一律折叠到「查看全部」（2026-09-21 用户口径）→ 传归拢后的指标表，与优先展示无关
+    d.inc_customers, d.inc_rest = _resplit_priority(
+        all_inc, base_dir, annual_filter, tgt=d.inc_tgt_grouped
+    )
+    d.pay_customers, d.pay_rest = _resplit_priority(
+        all_pay, base_dir, annual_filter, tgt=d.pay_tgt_grouped
+    )
     d.customers = d.inc_customers
 
     # 弹窗：构建"有数据"的子公司列表（去重合并 inc/pay 客户表）
@@ -343,8 +348,13 @@ def prepare_monthly_data(data, base_dir: Path) -> MonthlyData:
     d.pay_piv, d.pay_tgt_grouped, all_pay = _group_by_parent(
         d.pay_piv, d.pay_tgt_grouped, d.pay_customers + d.pay_rest, base_dir
     )
-    d.inc_customers, d.inc_rest = _resplit_priority(all_inc, base_dir, monthly_filter)
-    d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, monthly_filter)
+    # 非指标客户一律折叠到「查看全部」（2026-09-21 用户口径）
+    d.inc_customers, d.inc_rest = _resplit_priority(
+        all_inc, base_dir, monthly_filter, tgt=d.inc_tgt_grouped
+    )
+    d.pay_customers, d.pay_rest = _resplit_priority(
+        all_pay, base_dir, monthly_filter, tgt=d.pay_tgt_grouped
+    )
     d.customers = d.inc_customers
 
     # 弹窗：构建"有数据"的子公司列表（含销售拆分键，如 科技公司·王海龙 → 只列该销售子公司）
@@ -479,8 +489,13 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d.pay_piv, d.pay_tgt_grouped, all_pay = _group_by_parent(
         d.pay_piv, d.pay_tgt_grouped, d.pay_customers + d.pay_rest, base_dir
     )
-    d.inc_customers, d.inc_rest = _resplit_priority(all_inc, base_dir, quarterly_filter)
-    d.pay_customers, d.pay_rest = _resplit_priority(all_pay, base_dir, quarterly_filter)
+    # 非指标客户一律折叠到「查看全部」（2026-09-21 用户口径）
+    d.inc_customers, d.inc_rest = _resplit_priority(
+        all_inc, base_dir, quarterly_filter, tgt=d.inc_tgt_grouped
+    )
+    d.pay_customers, d.pay_rest = _resplit_priority(
+        all_pay, base_dir, quarterly_filter, tgt=d.pay_tgt_grouped
+    )
     d.customers = d.inc_customers
 
     # 弹窗：构建"有数据"的子公司列表（用原始未 consolidate 数据，保留子公司独立行；

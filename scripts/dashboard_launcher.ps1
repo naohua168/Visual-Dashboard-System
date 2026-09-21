@@ -719,14 +719,20 @@ $controls.BtnSwitchHelp.add_Click( { Switch-Page 'help' })
 $controls.BtnSwitchFAQ.add_Click(  { Switch-Page 'faq' })
 
 # ---------- 阶段定义(供步骤进度 + 进度识别) ----------
+# 说明:
+#   · Pattern     → 会被 [regex]::Escape 转义后按【字面量子串】匹配（不要写正则转义符）
+#   · DonePattern → 直接当【正则】用（含 + 等特殊字符必须转义）
+#   流程顺序（与 main.py / run_all.bat 一致）：
+#     预检 → 配置同步(Excel→JSON) → Phase 0 年基线 → Phase 1+2 清洗
+#          → Phase 3 拆分 → Phase 4 渲染 → Phase 5/6 汇总与验证
 $script:Phases = @(
-    @{ Name='预检';         Pattern='═══ 预检 ═══';                       DonePattern='✅';           Weight=1 },
-    @{ Name='配置同步';      Pattern='═══ 配置同步 ═══';                    DonePattern='\[跳过\]|\[系统\]'; Weight=1 },
-    @{ Name='年基线清洗';    Pattern='═══ Phase 0: 年基线清洗 ═══';        DonePattern='Phase 1\+2';     Weight=1 },
-    @{ Name='收入/回款清洗'; Pattern='═══ Phase 1\+2: 收入/回款清洗 ═══'; DonePattern='Phase 3';        Weight=2 },
-    @{ Name='销售拆分';      Pattern='═══ Phase 3: 销售拆分 ═══';          DonePattern='Phase 4';        Weight=2 },
-    @{ Name='渲染看板';      Pattern='═══ Phase 4: 渲染看板';              DonePattern='Phase 5|生成销售完成度'; Weight=2 },
-    @{ Name='汇总与验证';    Pattern='═══ Phase 5|Phase 6|全部完成';        DonePattern='✅ 全部完成';     Weight=1 }
+    @{ Name='预检';         Pattern='═══ 预检 ═══';      DonePattern='═══ 配置同步|═══ Phase 0'; Weight=1 },
+    @{ Name='配置同步';      Pattern='═══ 配置同步';       DonePattern='═══ Phase 0';              Weight=1 },
+    @{ Name='年基线清洗';    Pattern='═══ Phase 0';        DonePattern='═══ Phase 1';              Weight=1 },
+    @{ Name='收入/回款清洗'; Pattern='═══ Phase 1+2';      DonePattern='═══ Phase 3';              Weight=2 },
+    @{ Name='销售拆分';      Pattern='═══ Phase 3';        DonePattern='═══ Phase 4';              Weight=2 },
+    @{ Name='渲染看板';      Pattern='═══ Phase 4';        DonePattern='═══ Phase 5';              Weight=2 },
+    @{ Name='汇总与验证';    Pattern='═══ Phase 5';        DonePattern='✅ 全部完成';               Weight=1 }
 )
 
 # ---------- 动态生成阶段 chip ----------

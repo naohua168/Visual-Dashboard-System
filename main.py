@@ -33,13 +33,24 @@ LOGS_DIR = BASE_DIR / "logs"
 # ──────────────────────────────────────────────────────────────
 # 步骤定义
 # ──────────────────────────────────────────────────────────────
-# 每个步骤对应一个 subprocess 命令（python -m engine.xxx.run [--type=...])
+# 每个步骤对应一个 subprocess 命令（python -m engine.xxx.run [--type=...] 或 python scripts/xxx.py）
+CONFIG_EXCEL = "config/配置编辑器.xlsx"
+
 STEPS = [
+    {
+        "key": "config",
+        "name": "配置同步: 配置编辑器.xlsx → JSON",
+        "script": "scripts/config_excel_to_json.py",
+        "requires_excel": True,
+        "description": "把 config/配置编辑器.xlsx（时间配置/结算模式/展示规则/KPI/销售归属/字段映射）写回 JSON；"
+                       "Excel 是唯一编辑入口、JSON 是生成物 —— 必须先同步，再清洗",
+    },
     {
         "key": "yearly",
         "name": "Phase 0: 年基线清洗",
         "module": "engine.yearly_baseline.run",
-        "description": "读取往年收入数据/往年回款数据，清洗为往年收入/往年回款标准表",
+        "optional": True,
+        "description": "读取往年收入数据/往年回款数据，清洗为往年收入/往年回款标准表（失败仅影响年度同比）",
     },
     {
         "key": "clean",
@@ -124,11 +135,37 @@ def preflight_check() -> list[str]:
 # ──────────────────────────────────────────────────────────────
 # 步骤执行
 # ──────────────────────────────────────────────────────────────
-def run_step(step: dict, file_type: str | None, logger: Logger, dry_run: bool) -> bool:
-    """用 subprocess 执行单个步骤，返回是否成功"""
+def build_command(step: dict, file_type: str | None) -> list[str]:
+    """构造步骤命令：script 型（如配置同步）直接跑脚本，module 型跑 python -m"""
+    if step.get("script"):
+        return [sys.executable, step["script"]]
     cmd = [sys.executable, "-m", step["module"]]
     if file_type:
         cmd.append(f"--type={file_type}")
+    return cmd
+
+
+def step_available(step: dict) -> tuple[bool, str]:
+    """检查步骤前置条件；返回 (是否可执行, 不可执行原因)"""
+    if step.get("script"):
+        if not (BASE_DIR / step["script"]).exists():
+            return False, f"脚本不存在: {step['script']}"
+        if step.get("requires_excel") and not (BASE_DIR / CONFIG_EXCEL).exists():
+            return False, f"配置编辑器不存在: {CONFIG_EXCEL}（跳过配置同步）"
+    return True, ""
+
+
+def run_step(step: dict, file_type: str | None, logger: Logger, dry_run: bool) -> bool:
+    """用 subprocess 执行单个步骤，返回是否成功（前置条件不满足 → 跳过并视为通过）"""
+    ok, reason = step_available(step)
+    if not ok:
+        logger.log(f"  [跳过] {step['name']} —— {reason}", "WARN")
+        return True
+
+    cmd = build_command(step, file_type)
+
+    # 阶段横幅 —— 图形控制台 dashboard_launcher.ps1 依赖此行推进阶段进度，勿改格式
+    print(f"\n═══ {step['name']} ═══", flush=True)
 
     logger.log(f"启动: {step['name']}")
     logger.log(f"  命令: {' '.join(cmd)}")
@@ -151,6 +188,12 @@ def run_step(step: dict, file_type: str | None, logger: Logger, dry_run: bool) -
 
     if result.returncode == 0:
         logger.log(f"  ✅ 完成: {step['name']}", "OK")
+        return True
+    if step.get("optional"):
+        logger.log(
+            f"  ⚠️ 失败（可选步骤，继续后续）: {step['name']} (退出码 {result.returncode})",
+            "WARN",
+        )
         return True
     else:
         logger.log(
@@ -181,6 +224,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--from", dest="from_step", choices=STEP_KEYS, help="起始步骤（区间执行）")
     p.add_argument("--to", dest="to_step", choices=STEP_KEYS, help="结束步骤（区间执行）")
     p.add_argument("--dry-run", action="store_true", help="预检模式，不执行实际命令")
+    p.add_argument("--no-config", dest="no_config", action="store_true",
+                   help="跳过配置同步（Excel → JSON），用于直接改 JSON 的场景")
     p.add_argument("--list", dest="list_steps", action="store_true", help="列出所有可用步骤")
     return p
 
@@ -214,6 +259,8 @@ def main(argv=None) -> int:
         return 0
 
     steps_to_run = resolve_steps(args)
+    if args.no_config:
+        steps_to_run = [s for s in steps_to_run if s["key"] != "config"]
     if not steps_to_run:
         print("无步骤可执行（检查 --from/--to 顺序）")
         return 1
@@ -230,8 +277,7 @@ def main(argv=None) -> int:
         print("\n✅ 预检通过（dry-run 模式，不执行实际命令）")
         print("\n将执行以下步骤：")
         for s in steps_to_run:
-            t = f" --type={args.type}" if args.type else ""
-            print(f"  - python -m {s['module']}{t}")
+            print(f"  - {' '.join(build_command(s, args.type))}")
         return 0
 
     # 启动日志
@@ -245,6 +291,8 @@ def main(argv=None) -> int:
     logger.log(f"  工作目录: {BASE_DIR}")
     logger.log(f"  日志文件: {log_path.relative_to(BASE_DIR)}")
     logger.log(f"  执行步骤: {[s['key'] for s in steps_to_run]}")
+    if any(s["key"] == "config" for s in steps_to_run):
+        logger.log("  提示: 配置请改 config/配置编辑器.xlsx（本流程第 1 步自动同步为 JSON）")
     if args.type:
         logger.log(f"  表类型: {args.type}")
     logger.log("#" * 60)

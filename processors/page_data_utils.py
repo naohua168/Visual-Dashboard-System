@@ -798,14 +798,26 @@ def _group_by_parent(piv: pd.DataFrame, tgt_g: pd.DataFrame, customers: list[str
 
 def _resplit_priority(all_custs: list[str], base_dir: Path,
                       filt: CustomerFilter,
-                      piv: pd.DataFrame | None = None) -> tuple[list[str], list[str]]:
-    """母公司归拢后重新拆分优先/其余
+                      piv: pd.DataFrame | None = None,
+                      tgt: pd.DataFrame | None = None) -> tuple[list[str], list[str]]:
+    """母公司归拢后重新拆分「主表 / 折叠（查看全部）」
 
-    - 有优先展示配置 → 优先名单在前、其余折叠在"查看全部"
-    - 无优先展示配置 → 按 max_rows 截断（当年 pivot 合计降序），被截断的进入 rest
+    **规则优先级（2026-09-21 用户口径）**：
+    1. **有「优先展示」配置** → 按优先展示折叠：名单内进主表（含非指标客户），其余折叠
+    2. **无「优先展示」配置** → 按指标折叠：**非指标客户（该口径指标合计=0）一律折叠**，
+       主表 = 指标客户（顺序 = 指标表行序）；`max_rows>0` 只截断指标客户（销售拆分键不截断）
+    3. 未传 tgt（无指标数据）且无优先展示 → 退化为 max_rows 截断（按 piv 金额降序），0 = 不折叠
     """
-    if not filt.has_priority():
-        if filt.max_rows > 0 and piv is not None and len(all_custs) > filt.max_rows:
+    # ── ① 优先展示优先 ──
+    if filt is not None and filt.has_priority():
+        parent_map = _build_cust_parent_map(base_dir)
+        pri_parents = {parent_map.get(s, s) for s in filt.get_priority_names(base_dir)}
+        return ([c for c in all_custs if c in pri_parents],
+                [c for c in all_custs if c not in pri_parents])
+
+    # ── ② 无优先展示 → 非指标客户折叠 ──
+    if tgt is None or len(tgt) == 0:
+        if filt is not None and filt.max_rows > 0 and piv is not None and len(all_custs) > filt.max_rows:
             cs = list(all_custs)
             cs.sort(
                 key=lambda c: (float(piv.loc[c, "合计"]) if c in piv.index else 0),
@@ -820,9 +832,22 @@ def _resplit_priority(all_custs: list[str], base_dir: Path,
                     top_n.append(k)
             return top_n, rest
         return all_custs, []
-    parent_map = _build_cust_parent_map(base_dir)
-    pri_parents = {parent_map.get(s, s) for s in filt.get_priority_names(base_dir)}
-    return [c for c in all_custs if c in pri_parents], [c for c in all_custs if c not in pri_parents]
+
+    has_tgt = {
+        c for c in all_custs
+        if c in tgt.index and float(tgt.loc[c, "合计"]) > 0
+    }
+    main = [c for c in all_custs if c in has_tgt]
+    rest = [c for c in all_custs if c not in has_tgt]
+    if filt is not None and filt.max_rows > 0 and len(main) > filt.max_rows:
+        split_keys = [c for c in main if _sales_from_key(c) is not None]
+        top_n = main[: filt.max_rows]
+        moved = [c for c in main[filt.max_rows :] if c not in split_keys]
+        for k in split_keys:
+            if k not in top_n:
+                top_n.append(k)
+        return top_n, moved + rest
+    return main, rest
 
 
 def _sorted_customers(tgt_p: pd.DataFrame,
