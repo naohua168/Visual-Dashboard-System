@@ -4,7 +4,9 @@
   · 法人主体 = 广东汽车检测中心有限公司（运营端看的 法人主体/核算单位/所属单位 列；
     财务端「广东公司.xlsx」整表视为该法人）
   · **不属于任何销售**：客户名在 `客户销售归属.json` 的所有父组里都没出现过（公司级判定）
-  · 排除内部交易（运营端 `是否属于内部单位/内部款项` == 是）
+  · **公司级**排除内部交易（2026-09-22 用户口径）：只要该公司在运营端有**任意一行**内部交易标记
+    （`是否属于内部单位/内部款项` == 是），或出现在内部交易排除名单
+    （`部门事业部映射.json → excluded_internal_companies`）→ **整家公司不进入候选**
   → 追加到 `config/配置编辑器.xlsx` 的「销售归属」sheet：
      母公司=广东自有客户 / 指标=收入,回款 / 部门=检测,信息,能源,海外 / 销售=黎国键 / 比例=1
 
@@ -94,8 +96,28 @@ def _pick_col(cols, candidates):
 # 候选收集
 # ──────────────────────────────────────────────────────────────
 def collect_from_operations(cfg) -> dict[str, dict]:
-    """运营端 收入.xls / 回款.xls：法人（或核算单位）=广东 且非内部交易"""
+    """运营端 收入.xls / 回款.xls：法人（或核算单位）=广东 的公司
+
+    ⚠️ 2026-09-22 用户口径 —— **公司级**排除内部交易：
+       只要该公司在运营端有**任意一行**内部交易标记（`是否属于内部单位/内部款项` 等 == 是），
+       或该公司名出现在内部交易排除名单里
+       （`data/mappings/部门事业部映射/部门事业部映射.json → excluded_internal_companies`，
+         与清洗层 `mapper.is_excluded` / 销售引擎 `_load_excluded_companies` 同一份）
+       → **整家公司不进入候选**（而不是只丢掉内部交易那几行）。
+    """
+    # 内部交易公司排除名单（与 engine/sales/run.py::_load_excluded_companies 同源）
+    excluded: set[str] = set()
+    try:
+        p = BASE_DIR / "data" / "mappings" / "部门事业部映射" / "部门事业部映射.json"
+        raw = json.loads(p.read_text(encoding="utf-8")).get("excluded_internal_companies", {})
+        items = raw if isinstance(raw, list) else raw.get("companies", [])
+        excluded = {str(x).strip() for x in items}
+    except Exception:
+        excluded = set()
+
     found: dict[str, dict] = {}
+    internal_companies: set[str] = set()
+
     for ft in ["收入", "回款"]:
         conf = cfg["数据源"]["运营端"][ft]
         for sh in conf["Sheet"]:
@@ -108,9 +130,15 @@ def collect_from_operations(cfg) -> dict[str, dict]:
             if not legal or not cust:
                 continue
             sub = df[df[legal].astype(str).str.strip() == GD_LEGAL].copy()
+            if sub.empty:
+                continue
             int_col = _pick_col(df.columns, INT_COLS)
-            if int_col is not None and len(sub):
-                sub = sub[~sub[int_col].astype(str).str.strip().isin(INTERNAL_VALUES)]
+            if int_col is not None:
+                flag = sub[int_col].astype(str).str.strip().isin(INTERNAL_VALUES)
+                # ① 公司级：只要出现过内部交易标记 → 整家公司排除
+                internal_companies |= set(sub.loc[flag, cust].astype(str).str.strip())
+                # ② 行级：内部交易行本身也不计入行数/金额
+                sub = sub[~flag]
             if sub.empty:
                 continue
             amt = pd.to_numeric(sub.get("金额"), errors="coerce").fillna(0) if "金额" in sub.columns else 0
@@ -122,6 +150,12 @@ def collect_from_operations(cfg) -> dict[str, dict]:
                 rec["来源"].append(f"运营端-{ft}")
                 rec["行数"] += len(g)
                 rec["金额"] += float(g["_amt"].sum())
+
+    drop = (internal_companies | excluded) & set(found)
+    for name in sorted(drop):
+        print("  ⏭️  公司级排除（内部交易/排除名单）: %s" % name)
+    for name in drop:
+        found.pop(name, None)
     return found
 
 

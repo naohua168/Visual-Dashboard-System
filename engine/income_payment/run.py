@@ -71,11 +71,23 @@ def _filter_by_date_range(df: pd.DataFrame, start: str, end: str) -> pd.DataFram
 
 
 def _write_output(df: pd.DataFrame, output_key: str, config: dict, label: str):
-    """写入输出文件"""
+    """写入输出文件
+
+    ⚠️ 输出 Excel 若正被 Excel/WPS 打开 → PermissionError（WinError 13）。
+    这里给出明确提示并以退出码 3 终止，避免抛裸异常让人难定位。
+    """
     path = get_output_path(config, output_key)
     path.parent.mkdir(parents=True, exist_ok=True)
     df = df.fillna("")
-    df.to_excel(path, index=False)
+    try:
+        df.to_excel(path, index=False)
+    except PermissionError as e:
+        log_step(
+            label,
+            f"❌ 写入失败：{path} 正被 Excel/WPS 等程序占用 → 请关闭该文件后重跑",
+            "ERROR",
+        )
+        raise SystemExit(3) from e
     log_step(label, f"写入: {path} ({len(df)}行, 金额{df['金额'].sum():,.2f})", "OK")
 
 
