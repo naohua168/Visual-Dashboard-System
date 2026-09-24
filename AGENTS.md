@@ -31,5 +31,6 @@
 - **运行**：双击 `启动系统.bat`（图形控制台）或 `run_all.bat`；命令行 `python main.py`
 - **流程（固定顺序）**：配置预扫描（广东自有自动归入）→ 配置同步（Excel→JSON）→ 年基线 → 收入/回款清洗 → 销售拆分 → 渲染
 - **指标表口径（2026-09-24）**：月度/季度 4 张表**无销售列**，同名客户一行；拆分母公司（`科技公司`）按销售拆行，客户列直接写 `母公司·销售`（分隔符 `· - － / 、 :` 空格… 任意，`split_key_parts()` 自动归一化）。年度表保留销售列（销售达成页只读年度表）
-- **代码署名**：新增/改动的 `.py / .bat / .ps1 / .vbs` 文件首行（或头部注释块内）保留 `Author: naohua168 <bai_bai168@qq.com>`
+- **代码署名**：新增/改动的 `.py / .pyw / .bat / .ps1` 文件首行（或头部注释块内）保留 `Author: naohua168 <bai_bai168@qq.com>`
+- **启动链（抗杀软误报，2026-09-24）**：`启动系统.bat` → `pythonw scripts/launcher.pyw` → `powershell -NoProfile -STA -ExecutionPolicy RemoteSigned -File scripts/dashboard_launcher.ps1`；找不到 Python 时回退直接跑 PowerShell。**不要新增 VBS / `-WindowStyle Hidden` / `-ExecutionPolicy Bypass`**（这是 360/火绒误判木马的主因；旧 `scripts/_launch_hidden.vbs` 已删除）。杀软误报处理见 `docs/部署指南.md` 第八节
 - **详细说明**：`README.md`、`docs/部署指南.md`、`docs/维护指南.md`、`docs/数据清洗展示逻辑.md`

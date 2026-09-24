@@ -468,6 +468,9 @@ Write-BootLog 'dispatcher handler ready'
                   <TextBlock Text="Q6: 日志提示 退出码 N (非 0)?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
                              Text="往上滚动看 [错误] 段,通常原因:原始 Excel 缺列、列名变化、JSON 损坏、磁盘空间不足。把日志发给开发者。"/>
+                  <TextBlock Text="Q7: 杀软报脚本是木马?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
+                  <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
+                             Text="属启发式误报:1) 交付目录添加信任区;2) 解压后「解除锁定」;3) 用 run_all.bat 命令行入口;4) 全部脚本源码在 scripts/ 与 main.py 内可查,不含网络下载/注册表/计划任务行为。详见 docs/部署指南.md → 杀软误报处理。"/>
                 </StackPanel>
               </Border>
             </StackPanel>
