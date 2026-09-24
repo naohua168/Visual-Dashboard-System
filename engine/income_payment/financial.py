@@ -10,6 +10,46 @@ from ..core.utils import log_step, filter_by_date, standardize_output, read_exce
 from ..core.config import get_data_path
 
 
+# ── 排除标记（2026-09-24 用户口径）────────────────────────────────
+# 源表「初始化 / 是否初始化」= √ 的行是**期初/历史单据迁移**（单据编号内嵌 2021/2023 年，
+# 创建时间集中在同一次导入），不计入当月收入/回款。
+# 配置驱动，候选列名可在「配置编辑器.xlsx → 字段映射」sheet 维护：
+#   数据源.财务端.<来源>.列映射.排除标记 = ["初始化", "是否初始化"]
+#   数据源.财务端.<来源>.排除标记值      = ["√", "是", "Y", ...]
+_DEFAULT_EXCLUDE_VALUES = ("√", "是", "Y", "y", "1", "true", "True", "TRUE")
+
+
+def _exclude_marked_rows(df, src_config, label):
+    """剔除「排除标记」列命中的行（如 初始化=√ 的期初/历史迁移行）
+
+    - 候选列名取 `列映射.排除标记`；**任一**候选列命中「排除标记值」即剔除（多列取并集）
+    - 未配置该字段 / 源表无这些列 → 原样返回（不报错）
+    """
+    candidates = [str(c).strip() for c in (src_config.get("列映射", {}).get("排除标记") or [])]
+    if not candidates or df is None or len(df) == 0:
+        return df
+    values = {str(v).strip() for v in (src_config.get("排除标记值") or _DEFAULT_EXCLUDE_VALUES)}
+    hit_cols = [c for c in candidates if c in df.columns]
+    if not hit_cols:
+        log_step(label, f"排除标记: 源表无 {'/'.join(candidates)} 列，跳过")
+        return df
+    flag = pd.Series(False, index=df.index)
+    for c in hit_cols:
+        flag |= df[c].astype(str).str.strip().isin(values)
+    n = int(flag.sum())
+    if n == 0:
+        log_step(label, f"排除标记: 命中列 {'/'.join(hit_cols)}，无标记行")
+        return df
+    # 金额统计（此时仍是源表列名，用「列映射.金额」的候选去命中；取不到就记 0）
+    amt = 0.0
+    for c in (src_config.get("列映射", {}).get("金额") or []):
+        if c in df.columns:
+            amt = float(pd.to_numeric(df.loc[flag, c], errors="coerce").fillna(0).sum())
+            break
+    log_step(label, f"排除标记: 命中列 {'/'.join(hit_cols)} → 剔除 {n} 行 / {amt:,.2f}（期初/历史迁移行）", "WARN")
+    return df[~flag]
+
+
 def _filter_by_whitelist(df, matcher, src_config, label):
     """按来源配置决定是否过客户白名单
 
@@ -35,6 +75,9 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     df = read_excel_with_fallback(file_path, src_config["Sheet"], src_config["引擎"])
     total_in = len(df)
     log_step(f"财务端{file_type}", f"原始数据: {total_in}行 x {len(df.columns)}列")
+
+    # 排除标记行（如 初始化=√ 的期初/历史迁移数据）—— 须在列提取前按源列名过滤
+    df = _exclude_marked_rows(df, src_config, f"财务端{file_type}")
 
     # 列名提取（冗余）；「可选字段」缺失时不报错，只记入 attrs 并打 WARN
     df = extract_columns(df, src_config["列映射"], optional_fields=src_config.get("可选字段"))
@@ -86,6 +129,7 @@ def clean_guangdong(config, matcher, time_range, file_type):
     log_step(f"广东{file_type}", f"读取 {file_path.name}[{sheet_name}]")
     df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"])
 
+    df = _exclude_marked_rows(df, src_config, f"广东{file_type}")
     df = extract_columns(df, src_config["列映射"])
     print_hit_columns(df, f"广东{file_type}")
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
@@ -112,6 +156,7 @@ def clean_hunan(config, matcher, time_range, file_type):
     log_step(f"湖南{file_type}", f"读取 {file_path.name}[{sheet_name}]")
     df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"])
 
+    df = _exclude_marked_rows(df, src_config, f"湖南{file_type}")
     df = extract_columns(df, src_config["列映射"])
     print_hit_columns(df, f"湖南{file_type}")
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
@@ -165,6 +210,8 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     if df is None or len(df) == 0:
         log_step(f"南方韶关{file_type}", f"无数据（空 Sheet）", "WARN")
         return empty_df
+
+    df = _exclude_marked_rows(df, src_config, f"南方韶关{file_type}")
 
     if is_no_header:
         # 按列位置提取（列名可能是 Unnamed: 0/1/2）
