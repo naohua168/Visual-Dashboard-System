@@ -98,7 +98,7 @@ package.bat
 ### 一次性配置（三步）
 
 1. **放数据** → 原始 Excel 放入 `data/raw/` 对应目录（文件名固定）—— 字段清单见 [数据系统设计 · 原始数据](docs/数据系统设计.md#二原始数据dataraw)
-2. **维护指标** → 6 张目标表放 `data/sheets/手动维护/`（列结构：`客户/销售/检测/信息/能源/海外`，单位万元）
+2. **维护指标** → 6 张目标表放 `data/sheets/手动维护/`（列结构：`客户/检测/信息/能源/海外`，单位万元；`销售` 列为**可选** —— 月/季表不需销售列，拆分母公司客户名直接写 `母公司·销售`，如 `科技公司·王海龙`）
 3. **配置时间** → 打开 `config/配置编辑器.xlsx` → 「时间配置」sheet 改日期 → 保存
 
 ### 日常运行（一步）
@@ -467,7 +467,7 @@ Visual Dashboard_system/
 │   ├── sales_pending.py              #   待确认客户弹窗
 │   ├── components.py / config_loader.py / base.py / hero.py / utils.py
 │   └── static/                       #   CSS/JS/图标/Chart.js（含 icons.py、chart.umd.min.js）
-├── tests/                            # 16 文件，147 passed（含 conftest.py）
+├── tests/                            # 24 文件，276 passed（含 conftest.py）
 ├── docs/                             # 数据系统设计 / 字段映射 / 部署指南 / 维护指南
 ├── output/                           # ★ 看板输出（不上传 Git）
 │   ├── 看板/看板_YYYYMMDD.html        #   6 页可视化看板
@@ -511,7 +511,7 @@ python -m processors.run
 ### 3. 运行测试
 
 ```bash
-python -m pytest tests/ -v              # 147 passed
+python -m pytest tests/ -v              # 276 passed
 python -m pytest tests/ -k "splitter"   # 按关键字
 ```
 

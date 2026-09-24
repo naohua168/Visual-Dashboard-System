@@ -1,4 +1,5 @@
 @echo off
+REM Author: naohua168 <bai_bai168@qq.com>
 chcp 65001 >nul
 setlocal enabledelayedexpansion
 
@@ -81,6 +82,8 @@ echo   - data\raw\运营端数据\   原始 Excel（收入/回款）
 echo   - data\raw\往年收入数据\ 往年收入基线 Excel
 echo   - data\raw\往年回款数据\ 往年回款基线 Excel
 echo   - data\mappings\         部门事业部映射 / 客户名单
+echo   - data\sheets\手动维护\  6 张指标表（年度/季度/月度 × 收入/回款）
+echo   - config\配置编辑器.xlsx 配置编辑层（时间/展示规则/KPI/销售归属）
 echo   - config\清洗配置\       cleaning_config.json
 echo.
 pause
@@ -99,6 +102,7 @@ REM   ⑤ Phase 4    渲染看板 + 数据总表
 REM   由 main.py 统一调度，与「启动系统.bat」图形控制台走同一条链路
 REM ============================================
 echo   提示: 请先在 config\配置编辑器.xlsx 更新配置（时间/结算模式/展示规则/KPI/销售归属），保存后再运行
+echo   指标表: data\sheets\手动维护\ 6 张表；月度/季度表无销售列，客户名直接写 母公司·销售（分隔符任意）
 echo.
 echo ═══ 主流程（由 main.py 调度）═══
 "%PYTHON%" main.py
