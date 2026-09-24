@@ -7,12 +7,6 @@
 from __future__ import annotations
 
 
-# ──────────────────────────────────────────────────────────────
-# 色阶常量
-# ──────────────────────────────────────────────────────────────
-_fill_class = {"achieved": "fg", "": "fo", " low": "fl", "gray": "fy"}
-
-
 def _rate_color(rate: float) -> tuple[str, str]:
     """返回 (pct_class, fill_class) 基于达成率色阶"""
     if rate >= 1:

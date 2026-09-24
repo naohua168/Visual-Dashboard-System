@@ -58,17 +58,6 @@ class DashboardData:
             return False
         return True
 
-    @property
-    def has_quarterly_data(self) -> bool:
-        """季度数据是否就绪"""
-        return (
-            self.quarterly_income is not None
-            and len(self.quarterly_income) > 0
-            and self.quarterly_payment is not None
-            and len(self.quarterly_payment) > 0
-        )
-
-
 def _read_optional(path: Path) -> pd.DataFrame | None:
     """读取可选文件，不存在返回 None"""
     if not path.exists():

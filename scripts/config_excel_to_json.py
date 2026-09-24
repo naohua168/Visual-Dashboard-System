@@ -873,12 +873,12 @@ def init_excel_template():
     for i, w in enumerate(a_widths, 1):
         ws_a.column_dimensions[get_column_letter(i)].width = w
 
-    # 数据验证：指标 / 部门 / 比例
+    # 数据验证：指标 / 部门（取值来自文件顶部 METRIC_VALUES / DEPT_VALUES，避免重复硬编码）
     from openpyxl.worksheet.datavalidation import DataValidation
-    dv_metric = DataValidation(type="list", formula1='"收入,回款,收入,回款"', allow_blank=True)
+    dv_metric = DataValidation(type="list", formula1='"' + ",".join(METRIC_VALUES) + '"', allow_blank=True)
     dv_metric.add(f"C2:C{att_row + 50}")
     ws_a.add_data_validation(dv_metric)
-    dv_dept = DataValidation(type="list", formula1='"检测,信息,能源,海外"', allow_blank=True)
+    dv_dept = DataValidation(type="list", formula1='"' + ",".join(DEPT_VALUES) + '"', allow_blank=True)
     dv_dept.add(f"D2:D{att_row + 50}")
     ws_a.add_data_validation(dv_dept)
 
