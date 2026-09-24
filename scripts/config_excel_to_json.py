@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """配置编辑器 — Excel → JSON 生成器
 
 把 config/配置编辑器.xlsx 中的配置写回对应的 JSON 配置文件。

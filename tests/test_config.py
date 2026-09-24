@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试配置加载 — cleaning_config.json 和映射/规则文件可读"""
 import json
 from datetime import datetime

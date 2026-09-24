@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """Hero 圆环组件 + 工具函数 — 从 base.py 拆分
 
 包含: rate_cls, completion_html, ring_svg_html, hero_rings_html, yoy_html

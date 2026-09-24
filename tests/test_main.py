@@ -1,9 +1,8 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试顶层调度器 main.py — 参数解析与预检"""
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 BASE_DIR = Path(__file__).parent.parent
 MAIN_PY = BASE_DIR / "main.py"

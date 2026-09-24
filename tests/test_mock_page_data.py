@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """Mock 测试 — 使用合成 DataFrame 测试数据层核心函数，无需真实 Excel 文件
 
 覆盖:
@@ -26,8 +27,6 @@ from processors.page_data_utils import (
     _dept_target_sum,
     _group_by_parent,
     _kpi_target,
-    _parse_month_range,
-    _resplit_priority,
     _sorted_customers,
     _yoy_from_yearly,
     _yoy_rate,

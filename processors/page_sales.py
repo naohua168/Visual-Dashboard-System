@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """销售达成页 — 3 卡片 × 收入/回款 双视图（纯视图层）
 """
 from __future__ import annotations

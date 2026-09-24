@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """配置编辑器「字段映射」sheet — 清洗列名映射的 Excel 编辑层
 
 场景：源文件列名变化导致清洗报 KeyError 时，不必改 JSON/代码，

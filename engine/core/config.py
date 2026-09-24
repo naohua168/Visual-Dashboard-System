@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """
 配置加载器 — 读取 cleaning_config.json 和映射文件
 """
@@ -74,13 +75,6 @@ def get_yearly_baseline_path(config, file_type: str) -> Path:
     folder = BASE_DIR / src["文件夹"]
     filepath = folder / src["文件名"]
     return filepath
-
-
-def get_customer_list_path(config) -> Path:
-    """获取客户白名单文件路径"""
-    src = config["客户名单"]
-    folder = BASE_DIR / src["文件夹"]
-    return folder / src["文件名"]
 
 
 # ──────────────────────────────────────────────────────────────

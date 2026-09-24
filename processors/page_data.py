@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """数据层 — 纯数据计算，零 HTML
 
 每个 prepare_*_data() 接收 DashboardData + base_dir，返回一个 typed dataclass。
@@ -592,7 +593,6 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
     特殊规则（比亚迪法人 override、比例拆分、跨父组法人选组、销售拆行键等）均由
     引擎层完成；销售页不二次判断"该客户该不该归某个销售"。
     """
-    from .sales_pending import build_pending_modal
     d = SalesData()
 
     d.sales_range = get_config_range(base_dir, "年度累计") or ""

@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """待确认客户数据分析模块 — 从 page_sales.py 独立
 
 提供待确认客户明细的 6 区块数据分析 + 右侧滑入面板渲染。

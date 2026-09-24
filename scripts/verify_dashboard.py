@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """看板 HTML 全面验证：提取 <script> 用 node --check 校验语法，并核对 onclick 函数定义。
 
 用法: python scripts/verify_dashboard.py [html_path]

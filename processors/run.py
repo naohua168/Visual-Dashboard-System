@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """渲染主入口 — 6页数据看板"""
 from __future__ import annotations
 
@@ -41,12 +42,6 @@ def _chartjs_snippet() -> str:
         "})();\n"
         "</script>"
     )
-
-
-def _load_config() -> dict:
-    cfg_path = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
-    with open(cfg_path, "r", encoding="utf-8") as f:
-        return json.load(f)
 
 
 def _load_frontend_config() -> dict:

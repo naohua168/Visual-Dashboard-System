@@ -1,7 +1,7 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试渲染引擎 — 端到端生成 HTML"""
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 

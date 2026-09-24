@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """渲染器基类 — 重新导出所有 CSS/JS/组件常量（向后兼容）
 
 各模块已拆分为:

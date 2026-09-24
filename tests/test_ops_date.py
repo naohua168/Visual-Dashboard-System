@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
+# Author: naohua168 <bai_bai168@qq.com>
 """运营端日期解析测试 — 月份标签 / 真实日期 / 年份归属"""
 import pandas as pd
-import pytest
 
 from engine.income_payment.operations import OPS_YEAR, _parse_ops_date
 

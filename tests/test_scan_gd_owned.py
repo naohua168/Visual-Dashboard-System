@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """「广东自有客户」自动归入扫描 —— 候选判定逻辑测试（2026-09-21 用户口径）
 
 规则：法人=广东汽车检测中心 且 **不属于任何销售**（公司级）→ 自动归入 广东自有客户/黎国键；
@@ -7,8 +8,6 @@
 """
 import importlib.util
 from pathlib import Path
-
-import pytest
 
 _SPEC = importlib.util.spec_from_file_location(
     "scan_gd_owned", Path(__file__).parent.parent / "scripts" / "scan_gd_owned.py"

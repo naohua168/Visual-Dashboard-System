@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """pytest 共享辅助 — 统一"数据就绪"检查，避免各测试文件复制路径逻辑
 
 三个数据依赖型测试文件（test_data_loader / test_page_renderers / test_render）

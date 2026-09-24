@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """共享 HTML 组件构建器 — cell-bg 填充格 / mini-rate 进度条 / Tab 容器
 
 为 annual / monthly / quarterly / sales 四页提供统一的低级 HTML 构建函数，

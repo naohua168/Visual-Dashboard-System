@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """
 通用工具函数
 """

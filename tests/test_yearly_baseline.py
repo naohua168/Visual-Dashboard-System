@@ -1,7 +1,7 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试年基线清洗模块"""
 from pathlib import Path
 import pandas as pd
-import pytest
 BASE_DIR = Path(__file__).parent.parent
 
 def test_parse_yearly_date_single_month():

@@ -1,7 +1,6 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试通用工具函数"""
 import pandas as pd
-import pytest
-
 from engine.core.utils import filter_by_date, standardize_output, log_step, infer_company_type
 
 

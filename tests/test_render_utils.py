@@ -1,7 +1,5 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试渲染辅助工具"""
-import math
-import pytest
-
 from processors.utils import fmt_wan, fmt_pct, fmt_yoy, safe_float, wrap_name
 
 

@@ -1,10 +1,10 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试比亚迪子公司按法人主体区分销售的 override 逻辑
 仅当配置中同时配置黄浩浩 + 周涵林（销售重合）的公司才触发法人区分；
 单边配置的公司保持原拆分结果不动。
 """
 from pathlib import Path
 import pandas as pd
-import pytest
 
 BASE_DIR = Path(__file__).parent.parent
 

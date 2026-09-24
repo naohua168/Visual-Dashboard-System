@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """扫描「广东自有客户」应自动归入的公司，并写回配置编辑器（Excel）
 
 口径（2026-09-21 用户确认）：
@@ -156,37 +157,6 @@ def collect_from_operations(cfg) -> dict[str, dict]:
         print("  ⏭️  公司级排除（内部交易/排除名单）: %s" % name)
     for name in drop:
         found.pop(name, None)
-    return found
-
-
-def collect_from_guangdong(cfg) -> dict[str, dict]:
-    """财务端 广东公司.xlsx：整表视为广东法人（该文件无 法人主体 列）"""
-    found: dict[str, dict] = {}
-    conf = cfg["数据源"]["财务端"]["广东公司"]
-    try:
-        path = get_data_path(cfg, "财务端", "广东公司")
-    except Exception:
-        return found
-    for ft in ["收入", "回款"]:
-        sh = (conf["Sheet"].get(ft) or [None])[0]
-        if not sh:
-            continue
-        try:
-            df = pd.read_excel(path, sheet_name=sh, engine=conf.get("引擎", "openpyxl"))
-        except Exception:
-            continue
-        cust = _pick_col(df.columns, CUST_COLS)
-        if not cust:
-            continue
-        amt = pd.to_numeric(df.get("金额"), errors="coerce").fillna(0) * 10000 if "金额" in df.columns else 0
-        df = df.assign(_amt=amt)
-        for name, g in df.groupby(df[cust].astype(str).str.strip()):
-            if not name:
-                continue
-            rec = found.setdefault(name, {"来源": [], "行数": 0, "金额": 0.0})
-            rec["来源"].append(f"广东公司-{ft}")
-            rec["行数"] += len(g)
-            rec["金额"] += float(g["_amt"].sum())
     return found
 
 

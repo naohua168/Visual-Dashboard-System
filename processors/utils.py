@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """渲染辅助工具 — 金额格式化、百分比计算"""
 from __future__ import annotations
 
@@ -116,27 +117,6 @@ def wrap_name(name, width: int = 20) -> str:
     return "<br>".join(lines)
 
 
-def extract_date_range(df, col: str = "日期") -> str:
-    """从 DataFrame 日期列提取起止日期
-
-    返回: "YYYY-MM-DD ~ YYYY-MM-DD" 或空字符串
-    """
-    import pandas as pd
-    if df is None or df.empty or col not in df.columns:
-        return ""
-    try:
-        dts = pd.to_datetime(df[col], errors="coerce").dropna()
-        if len(dts) == 0:
-            return ""
-        d_min = dts.min().strftime("%Y-%m-%d")
-        d_max = dts.max().strftime("%Y-%m-%d")
-        if d_min == d_max:
-            return d_min
-        return f"{d_min} ~ {d_max}"
-    except Exception:
-        return ""
-
-
 def get_config_range(base_dir, key: str) -> str:
     """从 cleaning_config.json 读取配置的时间范围
 
@@ -144,7 +124,6 @@ def get_config_range(base_dir, key: str) -> str:
     返回: "YYYY-MM-DD ~ YYYY-MM-DD" 或空字符串
     """
     import json
-    from pathlib import Path
     config_path = base_dir / "config" / "清洗配置" / "cleaning_config.json"
     try:
         with open(config_path, "r", encoding="utf-8") as f:

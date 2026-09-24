@@ -1,9 +1,11 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """数据层共享工具 — 从 page_data.py 拆分
 
 提供所有 prepare_*_data() 共用的辅助函数，不依赖 DashboardData。
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -82,15 +84,71 @@ def _sub_to_sales_key(c: str, parent: str) -> str | None:
     return f"{parent}·{sales}"
 
 
-def _sales_from_key(key: str, split_map: dict[str, dict[str, str]] | None = None) -> str | None:
-    """从 '母公司·销售' 键提取销售名；非拆分键返回 None"""
-    if "·" not in key:
+# ── 拆分键分隔符容错（2026-09-24 用户口径）──────────────────────
+# 手填指标表时 '母公司·销售' 中间的分隔符可能打成 - / － / 空格 / 斜杠 / 顿号…
+# → 统一归一化为系统标准键 '母公司·销售'，避免"名字对得上、只是分隔符不同"导致目标挂空
+_SPLIT_SEP = (
+    r"\s_\u00b7\u2022\u2027\u30fb\u2010-\u2015\u2212\-\uFF0D/\uFF0F\\|\uFF5C"
+    r",，、;；:：.。~\uFF5E"
+)
+# 母公司集合 → 已编译的 '母公司 + 分隔符 + 销售' 匹配器（按集合缓存，避免逐格重复编译）
+_SPLIT_KEY_RE_CACHE: dict[tuple[str, ...], re.Pattern | None] = {}
+
+
+def _split_key_regex(parents: tuple[str, ...]) -> re.Pattern | None:
+    """构建 `^(母公司A|母公司B)(分隔符+)(销售)$` 匹配器（按 parents 缓存）"""
+    if parents in _SPLIT_KEY_RE_CACHE:
+        return _SPLIT_KEY_RE_CACHE[parents]
+    names = sorted({str(p).strip() for p in parents if str(p).strip()},
+                   key=len, reverse=True)
+    pattern = (
+        re.compile(
+            rf"^(?P<parent>{'|'.join(re.escape(n) for n in names)})"
+            rf"[{_SPLIT_SEP}]+(?P<sales>.+)$"
+        )
+        if names else None
+    )
+    _SPLIT_KEY_RE_CACHE[parents] = pattern
+    return pattern
+
+
+def split_key_parts(c, parents=None) -> tuple[str, str] | None:
+    """解析 '母公司<任意分隔符>销售' → (母公司, 销售)；不是拆分键则 None
+
+    分隔符容忍：· • ・ － - – — − ／ / \\ | , ， 、 ; ； : ： . 。 ~ 空格…
+    parents: 允许的母公司集合；默认取配置里的销售拆分母公司（_销售拆分.客户矩阵）
+    """
+    s = str(c).strip()
+    if not s:
         return None
-    parent, sales = key.split("·", 1)
+    plist = tuple(parents) if parents is not None else tuple(_load_sales_split().keys())
+    pattern = _split_key_regex(plist)
+    if pattern is None:
+        return None
+    m = pattern.match(s)
+    if not m:
+        return None
+    sales = m.group("sales").strip()
+    return (m.group("parent"), sales) if sales else None
+
+
+def normalize_split_cust(c) -> str:
+    """客户名归一化：'科技公司-王海龙' / '科技公司 王海龙' → '科技公司·王海龙'"""
+    parts = split_key_parts(c)
+    return f"{parts[0]}·{parts[1]}" if parts else str(c).strip()
+
+
+def _parent_from_key(key: str, split_map: dict | None = None) -> str:
+    """'母公司·销售' → 母公司（分隔符容错）；非拆分键 → 原样返回"""
+    parts = split_key_parts(key, split_map.keys() if split_map else None)
+    return parts[0] if parts else str(key)
+
+
+def _sales_from_key(key: str, split_map: dict[str, dict[str, str]] | None = None) -> str | None:
+    """从 '母公司·销售' 键提取销售名（分隔符容错）；非拆分键返回 None"""
     split_map = split_map or _load_sales_split()
-    if parent in split_map:
-        return sales
-    return None
+    parts = split_key_parts(key, split_map.keys())
+    return parts[1] if parts else None
 
 
 def _expand_children_map(children_map: dict[str, list[str]]) -> dict[str, list[str]]:
@@ -381,6 +439,10 @@ def _consolidate_customers(df: pd.DataFrame, metric: str | None = None) -> pd.Da
     consolidate |= set(_load_sales_split().keys())
 
     def _smart_map(c):
+        # 已经是（或近似）'母公司·销售' 复合键 → 归一化分隔符后原样返回，不再做子公司映射
+        parts = split_key_parts(c)
+        if parts:
+            return f"{parts[0]}·{parts[1]}"
         p = _map(c)
         if p in consolidate:
             # 配置了销售拆分的母公司：子公司映射为 '母公司·销售'，矩阵按销售拆行
@@ -433,6 +495,9 @@ def _consolidate_target(tgt_df: pd.DataFrame) -> pd.DataFrame:
         return tgt_df
     df = tgt_df.copy()
     split_parents = set(_load_sales_split().keys())
+    # 客户名归一化：'科技公司-王海龙' / '科技公司 王海龙' → '科技公司·王海龙'（分隔符容错）
+    if "客户" in df.columns:
+        df["客户"] = df["客户"].map(normalize_split_cust)
     if "销售" in df.columns:
         sub_sales_to_parent = _load_sub_sales_to_parent()
         for idx, row in df.iterrows():
@@ -453,7 +518,9 @@ def _consolidate_target(tgt_df: pd.DataFrame) -> pd.DataFrame:
     dept_cols = [c for c in DEPARTMENTS if c in df.columns]
     if dept_cols:
         # sort=False 保留指标表原始行序（聚合后的公司顺序 = 指标表首次出现顺序）
-        df = df.groupby(["客户", "销售"], as_index=False, dropna=False, sort=False)[dept_cols].sum()
+        # 销售列可缺省（2026-09-24 用户口径：客户列直接写 '母公司·销售' 时不需要销售列）
+        keys = ["客户"] + (["销售"] if "销售" in df.columns else [])
+        df = df.groupby(keys, as_index=False, dropna=False, sort=False)[dept_cols].sum()
     return df
 
 
@@ -482,7 +549,7 @@ def _build_subs_with_data(
     for df in raw_targets:
         if df is None or len(df) == 0 or "客户" not in df.columns:
             continue
-        for c, grp in df.groupby(df["客户"].astype(str).str.strip()):
+        for c, grp in df.groupby(df["客户"].map(normalize_split_cust)):
             if any(safe_float(grp[d].sum()) > 0 for d in dept_cols if d in df.columns):
                 target_custs.add(str(c))
 
@@ -495,7 +562,7 @@ def _build_subs_with_data(
         # 销售拆分键：'母公司·销售' → 只取该销售名下的子公司
         sales = _sales_from_key(p, split_map)
         if sales is not None:
-            parent_name = p.split("·")[0]
+            parent_name = _parent_from_key(p, split_map)
             sales_map = split_map.get(parent_name, {})
             subs = [s for s in subs if sales_map.get(s) == sales]
         if subs:
@@ -555,14 +622,23 @@ def _build_subs_detail(
     if raw_target is not None and len(raw_target) and "客户" in raw_target.columns:
         dept_cols = [c for c in DEPARTMENTS if c in raw_target.columns]
         for _, row in raw_target.iterrows():
-            c = str(row["客户"]).strip()
+            c = normalize_split_cust(row["客户"])
             if c:
                 t = target.setdefault(c, {dpt: 0.0 for dpt in dept_cols})
                 for dpt in dept_cols:
                     t[dpt] += safe_float(row[dpt])
+                # 目标归属键：客户列写 '母公司·销售' → (母公司, 销售)；
+                # 客户列写 母公司 + 销售列 → (母公司, 销售)。两种写法口径一致
+                parts = split_key_parts(c)
                 sales = str(row.get("销售", "")).strip()
-                if sales and sales not in ("待确认", "", "nan"):
-                    ts = target_by_sales.setdefault((c, sales), {dpt: 0.0 for dpt in dept_cols})
+                if parts:
+                    by_key = parts
+                elif sales and sales not in ("待确认", "", "nan"):
+                    by_key = (c, sales)
+                else:
+                    by_key = None
+                if by_key:
+                    ts = target_by_sales.setdefault(by_key, {dpt: 0.0 for dpt in dept_cols})
                     for dpt in dept_cols:
                         ts[dpt] += safe_float(row[dpt])
 
@@ -572,7 +648,7 @@ def _build_subs_detail(
         sub_detail: dict[str, dict[str, dict[str, float]]] = {}
         # 销售拆分键：'母公司·销售' → 只统计该销售名下子公司的数据
         sales = _sales_from_key(p, split_map)
-        parent_name = p.split("·")[0] if sales is not None else p
+        parent_name = _parent_from_key(p, split_map) if sales is not None else p
         sales_map = split_map.get(parent_name, {}) if sales is not None else {}
 
         # 1) 母公司本部（原始数据中直接挂在母公司名下、未拆分给任何子公司的金额）
@@ -581,7 +657,9 @@ def _build_subs_detail(
         # 拆分键（如 科技公司·王海龙）：本部目标只取该销售名下的目标，避免两位销售互相混入
         parent_act_data = actual.get(parent_name, {})
         if sales is not None:
-            parent_tgt_data = target_by_sales.get((parent_name, sales), {})
+            # ① (母公司, 销售) 目标（客户列=母公司+销售列 或 客户列=母公司·销售 均已登记）；
+            # ② 回退：客户列本身写成复合键的行
+            parent_tgt_data = target_by_sales.get((parent_name, sales)) or target.get(p, {})
         else:
             parent_tgt_data = target.get(parent_name, {})
         parent_act_total = sum(parent_act_data.get(d, 0.0) for d in DEPARTMENTS)

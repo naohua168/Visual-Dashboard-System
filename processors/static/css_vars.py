@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """看板全局 CSS 常量 — 从 base.py 拆分
 
 包含: CSS_CORE, CSS_COMPONENTS, CSS_RESPONSIVE, CSS_ANIMATIONS, GLOBAL_CSS

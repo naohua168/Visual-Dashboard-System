@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """
 渲染处理器 — 从已清洗数据表生成 HTML 可视化看板
 

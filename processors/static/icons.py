@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """Lucide 内联 SVG 图标库 — 零外部依赖，统一尺寸/线宽/颜色
 
 用法:

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Author: naohua168 <bai_bai168@qq.com>
 """字段映射 Excel 编辑层测试 — scripts/column_mapping_sheet.py
 
 覆盖 2026-09-17 新增能力：让「配置编辑器.xlsx → 字段映射」sheet 控制清洗列名映射

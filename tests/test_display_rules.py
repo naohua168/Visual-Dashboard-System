@@ -1,14 +1,13 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试展示规则加载 + 组名展开 + 客户筛选引擎 — 2026-08-04 新增
 """
 import pandas as pd
-import pytest
 from pathlib import Path
 
 from processors.config_loader import (
     CustomerFilter,
     expand_to_customer_names,
     get_value,
-    get_page_config,
 )
 from processors.page_data import _sorted_customers
 

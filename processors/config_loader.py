@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """展示规则加载器 — 读取 config/前端渲染/展示规则.json + 客户销售归属.json
 
 提供统一的客户筛选/排序/行数控制 API，所有 page_data 函数调用此模块。

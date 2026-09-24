@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """测试渲染页面模块 — 6 页看板"""
 import pytest
 from tests.conftest import BASE_DIR, has_sheets

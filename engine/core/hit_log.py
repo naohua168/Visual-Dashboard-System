@@ -1,3 +1,4 @@
+# Author: naohua168 <bai_bai168@qq.com>
 """清洗列名命中日志 — 追加写入 logs/column_hits_YYYYMMDD.txt
 
 作用：把「哪个标准字段实际命中了源文件的哪一列」落盘，供事后追溯。
