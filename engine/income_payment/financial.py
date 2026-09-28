@@ -121,7 +121,7 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
 
 
 # ── 金额乘数：源表金额 → 元（2026-09-28）──────────────────────────
-# 广东/湖南=10000（万元），南方韶关按 Sheet 区分（收入已改「元」=1、回款仍「万元」=10000）
+# 广东/湖南 = 10000（万元）；南方韶关 = 1（整文件已是「元」，收入+回款）
 _DEFAULT_AMOUNT_MULT = 10000.0
 
 
@@ -217,7 +217,7 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     两种格式：
       - 有表头（当前）: 列映射 客户/日期/金额
       - 无表头（历史兼容）: 配置 "无表头": true + "列位置" {客户:0, 日期:1, 金额:2}
-    金额按 `金额乘数` 换算为元（按 Sheet 分别配置：2026-09-28 起 收入=1「元」、回款=10000「万元」）；
+    金额按 `金额乘数` 换算为元（2026-09-28 起**整文件已是「元」**→ 乘数 1；按 Sheet 分列配置的字典写法仍支持）；
     回款 Sheet 可能为空，返回空 DataFrame 即可。
     """
     src_config = config["数据源"]["财务端"]["南方韶关"]
@@ -266,7 +266,7 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     log_step(f"南方韶关{file_type}", f"日期筛选后: {len(out)}行")
 
     # 金额换算为元：倍数由配置 `金额乘数` 决定
-    # （2026-09-28 起 收入 Sheet 已是「元」→ ×1；回款 Sheet 仍为「万元」→ ×10000）
+    # （2026-09-28 起整个文件已是「元」→ ×1；改成按 Sheet 的字典可支持单 Sheet 万元）
     mult = _amount_multiplier(src_config, file_type)
     out["金额"] = pd.to_numeric(out["金额"], errors="coerce").fillna(0.0) * mult
     out["事业部"] = src_config["事业部固定"]
