@@ -24,10 +24,21 @@ import shutil
 from pathlib import Path
 
 try:
+    import openpyxl
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 except ImportError:  # pragma: no cover
     raise SystemExit("缺少 openpyxl，请先安装: pip install openpyxl")
+
+# 统一样式（横幅/表头/可编辑底色/只读灰底/表头行定位）
+try:
+    from sheet_style import (
+        TAB_COLORS, banner, data_cell, finish, header_row, locate_header_row, set_widths,
+    )
+except ImportError:  # 以包形式导入时（如单元测试）
+    from scripts.sheet_style import (  # type: ignore[no-redef]
+        TAB_COLORS, banner, data_cell, finish, header_row, locate_header_row, set_widths,
+    )
 
 BASE_DIR = Path(__file__).parent.parent
 EXCEL_PATH = BASE_DIR / "config" / "配置编辑器.xlsx"
@@ -96,7 +107,11 @@ def excel_to_column_mapping(sheet, cfg: dict) -> tuple[dict, list[str]]:
     rows = list(sheet.iter_rows(values_only=True))
     if not rows:
         raise ValueError(f"「{MAP_SHEET_NAME}」sheet 为空")
-    headers = [_cell(h) for h in rows[0]]
+    # 兼容带顶部横幅的布局：表头行在 1~4 行内按必需列名定位；
+    # 找不到就按「第 1 行即表头」处理（历史文件），交给下面的缺列校验报错
+    hi = max(locate_header_row(rows, KEY_COLS, max_scan=4), 0)
+    headers = [_cell(h) for h in rows[hi]]
+    rows = rows[hi:]
 
     missing = [c for c in KEY_COLS if c not in headers]
     if missing:
@@ -300,35 +315,26 @@ def attach_mapping_sheet(wb, cfg: dict, hits: dict | None = None):
         del wb[MAP_SHEET_NAME]
     ws = wb.create_sheet(MAP_SHEET_NAME)
 
-    thin = Side(style="thin", color="B0B7C3")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    header_fill = PatternFill("solid", fgColor="1F4E78")
-    header_font = Font(bold=True, color="FFFFFF", size=11)
+    banner(ws, "源表列名变了就在这里加候选列名（从左到右按序尝试）→ 保存后运行 run_all.bat。"
+               "「候选1..N」= 可填；「当前命中(只读)」= 上次清洗实际命中的列，仅供参考。",
+           len(MAP_HEADERS))
+    header_row(ws, MAP_HEADERS, row=2)
 
-    for row in build_mapping_rows(cfg, hits):
-        ws.append(row)
+    rows = build_mapping_rows(cfg, hits)
+    for r_off, row in enumerate(rows[1:], start=3):
+        for col, val in enumerate(row, 1):
+            head = MAP_HEADERS[col - 1] if col <= len(MAP_HEADERS) else ""
+            data_cell(
+                ws, r_off, col, val,
+                editable=head.startswith("候选"),
+                readonly=head in KEY_COLS or head == HIT_COL,
+                wrap=(head in (HIT_COL, NOTE_COL)),
+            )
 
-    for col in range(1, len(MAP_HEADERS) + 1):
-        c = ws.cell(row=1, column=col)
-        c.fill = header_fill
-        c.font = header_font
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border = border
-
-    for r in range(2, ws.max_row + 1):
-        for col in range(1, len(MAP_HEADERS) + 1):
-            c = ws.cell(row=r, column=col)
-            c.border = border
-            c.alignment = Alignment(vertical="center", wrap_text=(col == len(MAP_HEADERS)))
-            if MAP_HEADERS[col - 1] in KEY_COLS:
-                c.fill = PatternFill("solid", fgColor="F2F7FF")
-            elif MAP_HEADERS[col - 1] == HIT_COL:
-                c.fill = PatternFill("solid", fgColor="F5F5F5")
-
-    widths = [10, 12, 12] + [22] * CAND_MAX + [24, 46]
-    for i, w in enumerate(widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-    ws.freeze_panes = "D2"
+    set_widths(ws, [10, 12, 12] + [22] * CAND_MAX + [24, 46])
+    ws.auto_filter.ref = f"A2:{get_column_letter(len(MAP_HEADERS))}2"
+    ws.freeze_panes = "D3"
+    ws.sheet_properties.tabColor = TAB_COLORS.get(MAP_SHEET_NAME, TAB_COLORS["说明"])
     return ws
 
 

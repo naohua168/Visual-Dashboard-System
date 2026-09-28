@@ -35,11 +35,19 @@ from pathlib import Path
 
 try:
     import openpyxl
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
 except ImportError:  # pragma: no cover
     raise SystemExit("缺少 openpyxl，请先安装: pip install openpyxl")
+
+# 统一样式（横幅 / 表头 / 段标题 / 可编辑底色 / 斑马纹 / 冻结筛选）
+try:  # 直接以脚本方式运行时
+    from sheet_style import (
+        TAB_COLORS, banner, data_cell, finish, header_row, section_row, set_widths,
+    )
+except ImportError:  # 以包形式导入时（如单元测试）
+    from scripts.sheet_style import (  # type: ignore[no-redef]
+        TAB_COLORS, banner, data_cell, finish, header_row, section_row, set_widths,
+    )
 
 BASE_DIR = Path(__file__).parent.parent
 EXCEL_PATH = BASE_DIR / "config" / "配置编辑器.xlsx"
@@ -448,13 +456,8 @@ def excel_to_display_rules(sheet) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────
-# 生成 / 刷新「展示规则」sheet
+# 生成 / 刷新「展示规则」sheet（样式统一走 scripts/sheet_style.py）
 # ──────────────────────────────────────────────────────────────
-def _thin_border() -> Border:
-    thin = Side(style="thin", color="B0B7C3")
-    return Border(left=thin, right=thin, top=thin, bottom=thin)
-
-
 def attach_rules_sheet(wb, rules: dict):
     """在 workbook 中创建/替换「展示规则」sheet（原地修改，需调用方 save）
 
@@ -464,29 +467,14 @@ def attach_rules_sheet(wb, rules: dict):
         if name in wb.sheetnames:
             del wb[name]
 
-    header_fill = PatternFill("solid", fgColor="1F4E78")
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    border = _thin_border()
     ws = wb.create_sheet(RULE_SHEET_NAME, 1)
 
     # ① 横幅提示
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(RULE_HEADERS))
-    b = ws.cell(row=1, column=1)
-    b.value = ("只改「值」列（浅黄底）；「可选值 / 填写规则」「说明」列是参考资料。"
-               "改完保存 → 运行 启动系统.bat / run_all.bat 自动同步生效。")
-    b.fill = PatternFill("solid", fgColor="EAF3FF")
-    b.font = Font(bold=True, size=11, color="1F4E78")
-    b.alignment = Alignment(vertical="center", horizontal="left")
-    ws.row_dimensions[1].height = 26
+    banner(ws, "只改「值」列（浅黄底）；「可选值 / 填写规则」「说明」列是参考资料。"
+               "改完保存 → 运行 启动系统.bat / run_all.bat 自动同步生效。", len(RULE_HEADERS))
 
     # ② 表头
-    for col, h in enumerate(RULE_HEADERS, 1):
-        c = ws.cell(row=2, column=col, value=h)
-        c.fill = header_fill
-        c.font = header_font
-        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        c.border = border
-    ws.row_dimensions[2].height = 22
+    header_row(ws, RULE_HEADERS, row=2)
 
     # ③ 数据行（段标题行 + 配置行）
     dv_rows: dict[str, list[int]] = {"int": [], "sort": [], "names": []}
@@ -494,33 +482,21 @@ def attach_rules_sheet(wb, rules: dict):
     row_idx = 3
     for row in build_rows(rules):
         seq, page, section, key, value, options, note = row
-        is_section = not key
-        vals = [seq, page, section, key, value, options, note]
-        for col, v in enumerate(vals, 1):
-            c = ws.cell(row=row_idx, column=col, value=v)
-            c.border = border
-            c.alignment = Alignment(
-                vertical="center", wrap_text=(col in (6, 7)),
-                horizontal="center" if col in (1, 2, 3, 4) else "left",
-            )
-        if is_section:
-            ws.merge_cells(start_row=row_idx, start_column=2, end_row=row_idx,
-                           end_column=len(RULE_HEADERS))
-            ws.cell(row=row_idx, column=2).font = Font(bold=True, color="1F4E78")
-            ws.cell(row=row_idx, column=2).fill = PatternFill("solid", fgColor="F2F7FF")
-            ws.row_dimensions[row_idx].height = 20
+        if not key:
+            data_cell(ws, row_idx, 1, None)
+            section_row(ws, row_idx, page, len(RULE_HEADERS), first_col=2)
         else:
-            ws.cell(row=row_idx, column=5).fill = PatternFill("solid", fgColor="FFF9E6")
-            ws.cell(row=row_idx, column=6).fill = PatternFill("solid", fgColor="F7F7F7")
+            for col, v in enumerate((seq, page, section, key, value, options, note), 1):
+                data_cell(ws, row_idx, col, v,
+                          editable=(col == 5), readonly=(col == 6),
+                          wrap=(col in (6, 7)), center=(col in (1, 2, 3, 4)))
             spec = spec_map.get((page, section, key))
             if spec:
                 dv_rows[spec["kind"]].append(row_idx)
         row_idx += 1
 
-    widths = [6, 12, 14, 14, 34, 38, 62]
-    for i, w in enumerate(widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-    ws.freeze_panes = "E3"
+    set_widths(ws, [6, 12, 14, 14, 34, 38, 62])
+    finish(ws, freeze="E3", tab_color=TAB_COLORS[RULE_SHEET_NAME])
 
     # ④ 数据验证（下拉）
     if dv_rows["sort"]:

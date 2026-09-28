@@ -200,6 +200,10 @@ cleaning_config.json / 展示规则.json / 客户销售归属.json (事实源)
 
 ## 配置指南（数据更新必读）
 
+> **配置编辑器表格设计（2026-09-28 统一）**：每张表 **第 1 行 = 蓝色提示**（这张表怎么用，先读它）、**第 2 行 = 表头**；
+> **浅黄底 = 可编辑列**（只改这些），浅灰底 = 只读/参考列；销售归属表按母公司分块浅蓝斑马纹；时间配置/销售归属/字段映射 表头带筛选、已冻结窗格；各表标签页颜色不同。
+> 下拉只给取值有限的项（模式 / 动态策略 / 指标 / 部门 / 排序），客户名等自由文本自己填。改完保存 → 运行 `启动系统.bat` / `run_all.bat` 自动生效。
+
 ### ⏱ 时间范围（Excel 编辑）
 
 **推荐**：`config/配置编辑器.xlsx` → 「时间配置」sheet，保存后运行 `run_all.bat` 自动生效。
@@ -478,7 +482,7 @@ Visual Dashboard_system/
 │   ├── sales_pending.py              #   待确认客户弹窗
 │   ├── components.py / config_loader.py / base.py / hero.py / utils.py
 │   └── static/                       #   CSS/JS/图标/Chart.js（含 icons.py、chart.umd.min.js）
-├── tests/                            # 25 文件，325 passed（含 conftest.py）
+├── tests/                            # 26 文件，342 passed（含 conftest.py）
 ├── docs/                             # 数据系统设计 / 字段映射 / 部署指南 / 维护指南
 ├── output/                           # ★ 看板输出（不上传 Git）
 │   ├── 看板/看板_YYYYMMDD.html        #   6 页可视化看板
@@ -522,7 +526,7 @@ python -m processors.run
 ### 3. 运行测试
 
 ```bash
-python -m pytest tests/ -v              # 325 passed
+python -m pytest tests/ -v              # 342 passed
 python -m pytest tests/ -k "splitter"   # 按关键字
 ```
 

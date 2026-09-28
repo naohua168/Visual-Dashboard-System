@@ -32,8 +32,7 @@ from pathlib import Path
 
 try:
     import openpyxl
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import Font, PatternFill
 except ImportError:
     print("缺少 openpyxl，请先安装: pip install openpyxl")
     sys.exit(1)
@@ -109,6 +108,18 @@ except ImportError:  # 以包形式导入时（如单元测试）
         excel_to_display_rules, refresh_rules_sheet,
     )
 
+# 表格统一样式（横幅/表头/可编辑底色/斑马纹/表头行定位）
+try:  # 直接以脚本方式运行时
+    from sheet_style import (
+        COLOR_BANNER_BG, COLOR_PRIMARY, TAB_COLORS, banner, data_cell, finish,
+        header_row, locate_header_row, set_widths,
+    )
+except ImportError:  # 以包形式导入时（如单元测试）
+    from scripts.sheet_style import (  # type: ignore[no-redef]
+        COLOR_BANNER_BG, COLOR_PRIMARY, TAB_COLORS, banner, data_cell, finish,
+        header_row, locate_header_row, set_widths,
+    )
+
 
 # ──────────────────────────────────────────────────────────────
 # Excel 读取 → 时间配置 dict
@@ -138,24 +149,39 @@ def _parse_month_range(raw: str) -> list[int]:
 
 
 def excel_to_time_config(sheet) -> dict:
-    """从 Excel「时间配置」sheet 构建 {键: 配置dict}"""
+    """从 Excel「时间配置」sheet 构建 {键: 配置dict}
+
+    兼容两种布局：带顶部横幅（表头在 1~4 行内）/ 历史文件（表头在第 1 行）；
+    列按**表头名**定位，因此列顺序调整也不影响解析。
+    """
+    rows = [tuple(r) for r in sheet.iter_rows(values_only=True)]
+    hi = locate_header_row(rows, ("配置名", "模式"), max_scan=4)
+    if hi < 0:
+        raise ValueError("「时间配置」sheet 找不到表头行（需含「配置名」「模式」列）")
+    headers = [str(v).strip() if v is not None else "" for v in rows[hi]]
+    idx = {h: i for i, h in enumerate(headers)}
+
+    def at(row, col: str) -> str:
+        i = idx.get(col, -1)
+        return _parse_cell(row[i]) if 0 <= i < len(row) else ""
+
     result: dict = {}
     seen: set[str] = set()
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        name = _parse_cell(row[0])
+    for row in rows[hi + 1:]:
+        name = at(row, "配置名")
         if not name:
             continue  # 空行跳过
         if name in seen:
             raise ValueError(f"时间配置存在重复键: {name}")
         seen.add(name)
 
-        mode = _parse_cell(row[1]) or "static"
-        strategy = _parse_cell(row[2])
-        start = _parse_cell(row[3])
-        end = _parse_cell(row[4])
-        year = _parse_cell(row[5])
-        month_range = _parse_cell(row[6])
-        note = _parse_cell(row[7])
+        mode = at(row, "模式") or "static"
+        strategy = at(row, "动态策略")
+        start = at(row, "开始日期")
+        end = at(row, "结束日期")
+        year = at(row, "年份")
+        month_range = at(row, "月份范围")
+        note = at(row, "说明")
 
         if name == "结算模式":
             # 特殊行：非日期范围，值为月底结算 / 常规（填在「模式」列）
@@ -444,10 +470,18 @@ def excel_to_kpi(sheet) -> dict:
     result: dict[str, dict[str, float | None]] = {
         page: {m: None for m in KPI_METRICS} for page in KPI_PAGES
     }
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        page = _parse_cell(row[0])
-        metric = _parse_cell(row[1])
-        value = row[2]
+    rows = [tuple(r) for r in sheet.iter_rows(values_only=True)]
+    hi = locate_header_row(rows, ("页面", "指标"), max_scan=4)
+    if hi < 0:
+        raise ValueError("「KPI指标」sheet 找不到表头行（需含「页面」「指标」列）")
+    headers = [str(v).strip() if v is not None else "" for v in rows[hi]]
+    i_page = headers.index("页面") if "页面" in headers else -1
+    i_metric = headers.index("指标") if "指标" in headers else -1
+    i_val = next((i for i, h in enumerate(headers) if h.startswith("值")), -1)
+    for row in rows[hi + 1:]:
+        page = _parse_cell(row[i_page]) if 0 <= i_page < len(row) else ""
+        metric = _parse_cell(row[i_metric]) if 0 <= i_metric < len(row) else ""
+        value = row[i_val] if 0 <= i_val < len(row) else None
         if not page:
             continue  # 空行
         if page not in KPI_PAGES:
@@ -472,16 +506,32 @@ def excel_to_attribution(sheet) -> dict:
 
     指标列取值：收入 / 回款 / 收入,回款（同时写入两个指标）
     """
-    # 读取行
+    # 读取行（兼容带横幅布局：表头行在 1~4 行内按列名定位）
+    raw = [tuple(r) for r in sheet.iter_rows(values_only=True)]
+    hi = locate_header_row(raw, ("母公司", "子公司"), max_scan=4)
+    if hi < 0:
+        raise ValueError("「销售归属」sheet 找不到表头行（需含「母公司」「子公司」列）")
+    headers = [str(v).strip() if v is not None else "" for v in raw[hi]]
+    i_parent = headers.index("母公司")
+    i_sub = headers.index("子公司")
+    i_metric = headers.index("指标") if "指标" in headers else -1
+    i_dept = headers.index("部门") if "部门" in headers else -1
+    i_sales = headers.index("销售") if "销售" in headers else -1
+    i_ratio = headers.index("比例") if "比例" in headers else -1
+    i_note = headers.index("说明") if "说明" in headers else -1
+
+    def at(row, i: int) -> str:
+        return _parse_cell(row[i]) if 0 <= i < len(row) else ""
+
     rows: list[dict] = []
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        parent = _parse_cell(row[0])
-        sub = _parse_cell(row[1])
-        metric = _parse_cell(row[2])
-        dept = _parse_cell(row[3])
-        sales = _parse_cell(row[4])
-        ratio = _parse_cell(row[5])
-        note = _parse_cell(row[6])
+    for row in raw[hi + 1:]:
+        parent = at(row, i_parent)
+        sub = at(row, i_sub)
+        metric = at(row, i_metric)
+        dept = at(row, i_dept)
+        sales = at(row, i_sales)
+        ratio = at(row, i_ratio)
+        note = at(row, i_note)
         if not parent and not sub:
             continue  # 空行
         if not parent or not sub or not metric or not dept or not sales:
@@ -571,20 +621,14 @@ def init_excel_template():
     # ── Sheet 1: 时间配置 ──
     ws = wb.active
     ws.title = "时间配置"
-    ws.append(HEADERS)
+    from openpyxl.worksheet.datavalidation import DataValidation
 
-    header_fill = PatternFill("solid", fgColor="1F4E78")
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    thin = Side(style="thin", color="B0B7C3")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    banner(ws, "改日期 → 保存 → 运行 启动系统.bat / run_all.bat 生效。"
+               "模式 static = 手填日期；dynamic = 自动取最近完整月/季度（填「动态策略」）；"
+               "「结算模式」行的值填在「模式」列。", len(HEADERS))
+    header_row(ws, HEADERS, row=2)
 
-    for col, h in enumerate(HEADERS, 1):
-        c = ws.cell(row=1, column=col)
-        c.fill = header_fill
-        c.font = header_font
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border = border
-
+    row_idx = 3
     for key in TIME_KEYS:
         spec = tr.get(key, {})
         fill_color = _cell_fill(key)
@@ -604,44 +648,42 @@ def init_excel_template():
                 spec.get("start_date", ""), spec.get("end_date", ""),
                 "", "", spec.get("_使用方", ""),
             ]
-        ws.append(values)
-        r = ws.max_row
-        for col in range(1, len(HEADERS) + 1):
-            c = ws.cell(row=r, column=col)
-            c.border = border
-            c.fill = PatternFill("solid", fgColor=fill_color)
-            c.alignment = Alignment(vertical="center", wrap_text=(col == 8))
+        for col, v in enumerate(values, 1):
+            c = data_cell(ws, row_idx, col, v,
+                          editable=col in (2, 3, 4, 5, 6, 7), readonly=(col == 8),
+                          wrap=(col == 8))
+            if col == 1:  # 配置名列保留按行的身份色（年度/月度/季度/年基线）
+                c.fill = PatternFill("solid", fgColor=fill_color)
+        row_idx += 1
 
     # 结算模式行（值填在「模式」列：月底结算 / 常规）
     settle = tr.get("结算模式", {})
     if settle:
-        ws.append([
+        values = [
             "结算模式", settle.get("值", "常规"), "",
             "", "", "", "",
             settle.get("_说明", "月底结算: 当年/季度累计=仅运营端; 常规: =财务端+运营端"),
-        ])
-        r = ws.max_row
-        for col in range(1, len(HEADERS) + 1):
-            c = ws.cell(row=r, column=col)
-            c.border = border
-            c.fill = PatternFill("solid", fgColor="FCE4D6")
-            c.alignment = Alignment(vertical="center", wrap_text=(col == 8))
+        ]
+        for col, v in enumerate(values, 1):
+            c = data_cell(ws, row_idx, col, v, editable=(col == 2), readonly=(col == 8),
+                          wrap=(col == 8))
+            if col == 1:
+                c.fill = PatternFill("solid", fgColor="FCE4D6")
+        row_idx += 1
 
-    # 列宽
-    widths = [16, 12, 20, 18, 26, 8, 12, 40]
-    for i, w in enumerate(widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = w
+    set_widths(ws, [16, 12, 20, 18, 26, 8, 12, 46])
 
-    # 数据验证：模式列下拉
-    from openpyxl.worksheet.datavalidation import DataValidation
-    dv_mode = DataValidation(type="list", formula1='"static,dynamic"', allow_blank=True)
-    dv_mode.add(f"B2:B{ws.max_row + 50}")
+    dv_mode = DataValidation(type="list", formula1='"static,dynamic"', allow_blank=True,
+                             promptTitle="怎么填",
+                             prompt="static = 手填开始/结束日期；dynamic = 自动算（再填「动态策略」）")
+    dv_mode.add(f"B3:B{row_idx + 50}")
     ws.add_data_validation(dv_mode)
-    dv_strat = DataValidation(type="list", formula1='"last_full_month,last_full_quarter"', allow_blank=True)
-    dv_strat.add(f"C2:C{ws.max_row + 50}")
+    dv_strat = DataValidation(type="list", formula1='"last_full_month,last_full_quarter"',
+                              allow_blank=True, promptTitle="怎么填",
+                              prompt="仅「模式=dynamic」时填：last_full_month 最近完整月 / last_full_quarter 最近完整季度")
+    dv_strat.add(f"C3:C{row_idx + 50}")
     ws.add_data_validation(dv_strat)
-
-    ws.freeze_panes = "A2"
+    finish(ws, freeze="A3", autofilter="A2:H2", tab_color=TAB_COLORS["时间配置"])
 
     # ── Sheet 2: 展示规则 ──
     # （2026-09-28 重做：序号/页面/区块/配置项/值/可选值/说明 + 下拉验证，见 display_rules_sheet.py）
@@ -651,17 +693,14 @@ def init_excel_template():
     # ── Sheet 3: 销售归属 ──
     att = json.loads(ATTRIBUTION_CFG.read_text(encoding="utf-8"))["客户归属"]
     ws_a = wb.create_sheet("销售归属")
-    ws_a.append(ATT_HEADERS)
-    for col, h in enumerate(ATT_HEADERS, 1):
-        c = ws_a.cell(row=1, column=col)
-        c.fill = header_fill
-        c.font = header_font
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border = border
+    banner(ws_a, "母公司 → 子公司 → 指标 → 部门 → 销售 → 比例（通常只改「销售」「比例」两列）。"
+                 "一家母公司一块浅蓝斑马纹；比例 = 全额填 1，拆分填 0.3 或 30%（同一子公司各销售比例合计 = 1）。",
+           len(ATT_HEADERS))
+    header_row(ws_a, ATT_HEADERS, row=2)
 
-    att_row = 2
-    att_fill = PatternFill("solid", fgColor="FFFFFF")
-    for parent, group in att.items():
+    att_row = 3
+    for group_i, (parent, group) in enumerate(att.items()):
+        band = (group_i % 2 == 1)
         for sub, sub_data in group.get("子公司", {}).items():
             # 判断收入/回款是否同构：同构 → 指标=收入,回款 一行
             inc = sub_data.get("收入", {})
@@ -673,10 +712,8 @@ def init_excel_template():
                         vals = [parent, sub, "收入,回款", dept, sales,
                                 f"{ratio:.15g}", note]
                         for c, v in enumerate(vals, 1):
-                            cell = ws_a.cell(row=att_row, column=c, value=v)
-                            cell.border = border
-                            cell.fill = att_fill
-                            cell.alignment = Alignment(vertical="center")
+                            data_cell(ws_a, att_row, c, v,
+                                      editable=c in (5, 6), band=band, wrap=(c == 7))
                         att_row += 1
             else:
                 # 结构不同：收入/回款分开行
@@ -689,42 +726,35 @@ def init_excel_template():
                             vals = [parent, sub, metric, dept, sales,
                                     f"{ratio:.15g}", note]
                             for c, v in enumerate(vals, 1):
-                                cell = ws_a.cell(row=att_row, column=c, value=v)
-                                cell.border = border
-                                cell.fill = att_fill
-                                cell.alignment = Alignment(vertical="center")
+                                data_cell(ws_a, att_row, c, v,
+                                          editable=c in (5, 6), band=band, wrap=(c == 7))
                             att_row += 1
-        if att_row > 2:
-            att_row += 1  # 母公司间空行
 
-    # 列宽
-    a_widths = [30, 40, 14, 10, 12, 10, 40]
-    for i, w in enumerate(a_widths, 1):
-        ws_a.column_dimensions[get_column_letter(i)].width = w
+    set_widths(ws_a, [26, 36, 14, 10, 12, 10, 30])
 
     # 数据验证：指标 / 部门（取值来自文件顶部 METRIC_VALUES / DEPT_VALUES，避免重复硬编码）
     from openpyxl.worksheet.datavalidation import DataValidation
-    dv_metric = DataValidation(type="list", formula1='"' + ",".join(METRIC_VALUES) + '"', allow_blank=True)
-    dv_metric.add(f"C2:C{att_row + 50}")
+    dv_metric = DataValidation(type="list", formula1='"' + ",".join(METRIC_VALUES) + '"',
+                               allow_blank=True, promptTitle="怎么填",
+                               prompt="收入 / 回款 / 收入,回款（收入与回款归属一致时填「收入,回款」一行搞定）")
+    dv_metric.add(f"C3:C{att_row + 50}")
     ws_a.add_data_validation(dv_metric)
-    dv_dept = DataValidation(type="list", formula1='"' + ",".join(DEPT_VALUES) + '"', allow_blank=True)
-    dv_dept.add(f"D2:D{att_row + 50}")
+    dv_dept = DataValidation(type="list", formula1='"' + ",".join(DEPT_VALUES) + '"',
+                             allow_blank=True, promptTitle="怎么填",
+                             prompt="检测 / 信息 / 能源 / 海外")
+    dv_dept.add(f"D3:D{att_row + 50}")
     ws_a.add_data_validation(dv_dept)
 
-    ws_a.freeze_panes = "A2"
+    finish(ws_a, freeze="C3", autofilter="A2:G2", tab_color=TAB_COLORS["销售归属"])
 
     # ── Sheet 4: KPI指标（Hero 圆环指标总数覆盖，万元）──
     rules_now = json.loads(DISPLAY_RULES_CFG.read_text(encoding="utf-8"))
     ws_k = wb.create_sheet("KPI指标")
-    ws_k.append(KPI_HEADERS)
-    for col, h in enumerate(KPI_HEADERS, 1):
-        c = ws_k.cell(row=1, column=col)
-        c.fill = header_fill
-        c.font = header_font
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border = border
+    banner(ws_k, "「值(万元)」留空 = 不覆盖（Hero 圆环按指标文件合计）；填数字 = 覆盖圆环上的指标总数。"
+                 "只影响 Hero 圆环，不改表格/矩阵里的明细指标。", len(KPI_HEADERS))
+    header_row(ws_k, KPI_HEADERS, row=2)
 
-    k_row = 2
+    k_row = 3
     k_notes = {
         "年度达成": "年度达成页 + 数据总览页的年度 KPI 指标总数",
         "月度达成": "月度达成页的 KPI 指标总数",
@@ -732,28 +762,24 @@ def init_excel_template():
     }
     for page in KPI_PAGES:
         page_kpi = rules_now.get(page, {}).get("KPI指标", {})
+        band = (KPI_PAGES.index(page) % 2 == 1)
         for metric in KPI_METRICS:
             v = page_kpi.get(metric)
             vals = [page, metric, v if v is not None else "", k_notes[page]]
             for c, vv in enumerate(vals, 1):
-                cell = ws_k.cell(row=k_row, column=c, value=vv)
-                cell.border = border
-                cell.alignment = Alignment(vertical="center", wrap_text=(c == 4))
+                data_cell(ws_k, k_row, c, vv, editable=(c == 3), band=band, wrap=(c == 4))
             k_row += 1
 
-    # 列宽
-    k_widths = [16, 12, 16, 46]
-    for i, w in enumerate(k_widths, 1):
-        ws_k.column_dimensions[get_column_letter(i)].width = w
+    set_widths(ws_k, [16, 12, 16, 52])
     # 数据验证：页面 / 指标 下拉
     from openpyxl.worksheet.datavalidation import DataValidation
     dv_kpage = DataValidation(type="list", formula1='"' + ",".join(KPI_PAGES) + '"', allow_blank=True)
-    dv_kpage.add(f"A2:A{ws_k.max_row + 50}")
+    dv_kpage.add(f"A3:A{ws_k.max_row + 50}")
     ws_k.add_data_validation(dv_kpage)
     dv_kmetric = DataValidation(type="list", formula1='"' + ",".join(KPI_METRICS) + '"', allow_blank=True)
-    dv_kmetric.add(f"B2:B{ws_k.max_row + 50}")
+    dv_kmetric.add(f"B3:B{ws_k.max_row + 50}")
     ws_k.add_data_validation(dv_kmetric)
-    ws_k.freeze_panes = "A2"
+    finish(ws_k, freeze="A3", tab_color=TAB_COLORS["KPI指标"])
 
     # ── Sheet 5: 说明 ──
     ws2 = wb.create_sheet("说明")
@@ -762,6 +788,9 @@ def init_excel_template():
         [""],
         ["1. 本 Excel 是「编辑层」，改完保存后运行生成器写回 JSON，系统读取 JSON。"],
         ["   运行: python scripts/config_excel_to_json.py"],
+        ["   统一设计(2026-09-28): 每张表 第1行=蓝色提示(这张表怎么用)、第2行=表头；【浅黄底=可编辑列】，浅灰底=只读/参考列。"],
+        ["   销售归属表按母公司分块浅蓝斑马纹；时间配置/销售归属/字段映射 表头带筛选按钮、已冻结窗格；各表标签页颜色区分。"],
+        ["   下拉只给取值有限的项（模式/动态策略/指标/部门/排序），客户名等自由文本自己填。"],
         [""],
         ["2. 「时间配置」sheet 列说明："],
         ["   - 配置名: 年度累计 / 月度数据 / 季度累计筛选 / 年基线数据（勿改）"],
@@ -819,8 +848,19 @@ def init_excel_template():
     ]
     for row in lines:
         ws2.append(row)
-    ws2.column_dimensions["A"].width = 100
-    ws2["A1"].font = Font(bold=True, size=14)
+    ws2.column_dimensions["A"].width = 110
+    ws2["A1"].font = Font(bold=True, size=14, color=COLOR_PRIMARY)
+    ws2["A1"].fill = PatternFill("solid", fgColor=COLOR_BANNER_BG)
+    ws2.row_dimensions[1].height = 28
+    # 分节标题（"1." / "2." … 开头的行）加粗 + 浅蓝底，便于扫读
+    for i in range(2, ws2.max_row + 1):
+        v = ws2.cell(row=i, column=1).value
+        if isinstance(v, str) and re.match(r"^\d+\.", v.strip()):
+            c = ws2.cell(row=i, column=1)
+            c.font = Font(bold=True, color=COLOR_PRIMARY, size=11.5)
+            c.fill = PatternFill("solid", fgColor=COLOR_BANNER_BG)
+            ws2.row_dimensions[i].height = 20
+    finish(ws2, tab_color=TAB_COLORS["说明"])
 
     # ── Sheet 6: 字段映射（清洗列名映射的编辑层；「当前命中」由 logs/column_hits_*.txt 回填）──
     attach_mapping_sheet(
@@ -828,6 +868,10 @@ def init_excel_template():
         json.loads(CLEANING_CFG.read_text(encoding="utf-8")),
         read_latest_hits(),
     )
+
+    # ── sheet 顺序整理：说明固定放最后 ──
+    if "说明" in wb.sheetnames and wb.sheetnames[-1] != "说明":
+        wb.move_sheet("说明", offset=len(wb.sheetnames) - 1 - wb.sheetnames.index("说明"))
 
     wb.save(EXCEL_PATH)
     try:
