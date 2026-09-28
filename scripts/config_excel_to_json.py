@@ -3,13 +3,20 @@
 
 把 config/配置编辑器.xlsx 中的配置写回对应的 JSON 配置文件。
 
-当前支持的 sheet：
-    - 时间配置：更新 cleaning_config.json 的「时间范围」部分
+当前支持的 sheet（2026-09-28）：
+    - 时间配置  → cleaning_config.json 的「时间范围」（含结算模式）
+    - 展示规则  → 前端渲染/展示规则.json（页面/区块/配置项/值，见 display_rules_sheet.py）
+    - 下拉选项  → 辅助 sheet：展示规则「值」列的下拉候选（自动生成，勿手改）
+    - KPI指标   → 前端渲染/展示规则.json 各页面的 `KPI指标` 区块
+    - 销售归属  → 清洗配置/客户销售归属.json
+    - 字段映射  → cleaning_config.json 各来源的「列映射」（见 column_mapping_sheet.py）
 
 用法:
-    python scripts/config_excel_to_json.py            # 生成并写回
-    python scripts/config_excel_to_json.py --init     # 首次创建 Excel 模板（从当前 JSON 导出）
-    python scripts/config_excel_to_json.py --dry-run  # 只读不改写（打印将生成的内容）
+    python scripts/config_excel_to_json.py              # 生成并写回（run_all.bat 第①步）
+    python scripts/config_excel_to_json.py --dry-run    # 只读不改写（打印将生成的内容）
+    python scripts/config_excel_to_json.py --init       # 首次创建 Excel 模板（从当前 JSON 导出）
+    python scripts/config_excel_to_json.py --init-map   # 只刷新「字段映射」sheet（其余 sheet 不动）
+    python scripts/config_excel_to_json.py --init-rules # 只刷新「展示规则」+「下拉选项」sheet
 
 设计原则：
     - Excel 是「编辑层」，JSON 是「事实源」（系统只读 JSON）
@@ -19,6 +26,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -45,34 +53,10 @@ DYNAMIC_STRATEGIES = ["last_full_month", "last_full_quarter"]
 
 HEADERS = ["配置名", "模式", "动态策略", "开始日期", "结束日期", "年份", "月份范围", "说明"]
 
-# 展示规则 sheet 列
-# 路径 = 从页面下到叶子的点路径，如：
-#   销售TopN                    页面下标量
-#   客户矩阵.最大行数             区块.标量
-#   部门卡.显示                  区块.布尔
-#   客户矩阵.优先展示.1           区块.数组.序号（数组项每行带序号）
-#   客户矩阵.客户筛选             空数组用「值」留空表示
-RULE_HEADERS = ["页面", "路径", "值", "说明"]
-
-# 展示规则：顶层页面键（固定顺序）
+# 展示规则：sheet 结构 / 解析 / 校验 / 下拉 全在 scripts/display_rules_sheet.py
+# （2026-09-28 重做 —— 旧「路径」结构仍可解析，但模板已改为 页面|区块|配置项|值|可选值|说明）
+# 顶层页面键（固定顺序，与看板导航一致）
 RULE_PAGES = ["数据总览", "年度达成", "月度达成", "季度达成", "销售达成", "年度同比"]
-
-# 数组型配置项：路径中以「路径.序号」形式出现 → JSON 数组
-ARRAY_KEYS = {"优先展示", "客户筛选"}
-
-# 页面 → 区块 层级定义（用于模板初始化时按序输出）
-# 值为区块名列表；空 [] 表示无区块（配置项直接在页面下）
-RULE_SECTIONS = {
-    "数据总览": [],
-    "年度达成": ["部门卡", "客户矩阵"],
-    "月度达成": ["部门卡", "客户矩阵"],
-    "季度达成": ["部门卡", "客户矩阵"],
-    "销售达成": [],
-    "年度同比": [],
-}
-
-# 布尔型配置项（Excel 值 true/false → JSON bool）
-BOOL_KEYS = {"显示"}
 
 # 销售归属 sheet 列
 ATT_HEADERS = ["母公司", "子公司", "指标", "部门", "销售", "比例", "说明"]
@@ -112,6 +96,18 @@ except ImportError:  # 以包形式导入时（如单元测试）
     from scripts.column_mapping_sheet import (  # type: ignore[no-redef]
         MAP_SHEET_NAME, attach_mapping_sheet, excel_to_column_mapping,
         read_latest_hits, refresh_mapping_sheet, update_column_mapping,
+    )
+
+# 展示规则 sheet（2026-09-28 重做：序号/页面/区块/配置项/值/可选值/说明 + 下拉）
+try:  # 直接以脚本方式运行时
+    from display_rules_sheet import (
+        RULE_NOTE_LINES, RULE_SHEET_NAME, attach_rules_sheet,
+        excel_to_display_rules, refresh_rules_sheet,
+    )
+except ImportError:  # 以包形式导入时（如单元测试）
+    from scripts.display_rules_sheet import (  # type: ignore[no-redef]
+        RULE_NOTE_LINES, RULE_SHEET_NAME, attach_rules_sheet,
+        excel_to_display_rules, refresh_rules_sheet,
     )
 
 
@@ -218,100 +214,9 @@ def excel_to_time_config(sheet) -> dict:
 
 # ──────────────────────────────────────────────────────────────
 # Excel 读取 → 展示规则 dict
+#   （2026-09-28 重做：结构/解析/校验/下拉全部在 scripts/display_rules_sheet.py，
+#     本文件只负责调用并写回 JSON；旧的「路径」结构仍由该模块兼容解析）
 # ──────────────────────────────────────────────────────────────
-def _type_cast(value: str):
-    """按字符串内容推断值类型：bool / int / float / str"""
-    v = value.strip()
-    low = v.lower()
-    if low in ("true", "false"):
-        return low == "true"
-    try:
-        return int(v)
-    except ValueError:
-        pass
-    try:
-        return float(v)
-    except ValueError:
-        pass
-    return v
-
-
-def _get_path_node(root: dict, parent_parts: list[str]) -> dict:
-    """沿路径深入 root，返回 parent_parts 处的容器 dict。
-
-    Args:
-        root: 页面 dict
-        parent_parts: 键之前的完整父路径（如 ["部门卡"] 表示在 部门卡 下写键）
-    """
-    node = root
-    for p in parent_parts:
-        if p not in node or not isinstance(node[p], dict):
-            node[p] = {}
-        node = node[p]
-    return node
-
-
-def excel_to_display_rules(sheet) -> dict:
-    """从 Excel「展示规则」sheet 构建展示规则 dict（路径列结构）
-
-    路径规则:
-        - "销售TopN"                  → 页面下 标量
-        - "客户矩阵.最大行数"           → 区块.标量
-        - "部门卡.显示"                → 区块.布尔
-        - "客户矩阵.优先展示"           → 区块.数组（空数组：值留空，无序号行）
-        - "客户矩阵.优先展示.1"         → 区块.数组.序号
-    """
-    result: dict = {}
-    # 暂存数组项: {page: {section: {arr_key: [(seq, value)]}}}
-    arrays: dict[str, dict[str, dict]] = {}
-
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        page = _parse_cell(row[0])
-        path = _parse_cell(row[1])
-        value = _parse_cell(row[2])
-        note = _parse_cell(row[3])
-        if not page or not path:
-            continue
-
-        parts = path.split(".")
-        # 数组项：路径最后一段是数字 且 倒数第二段是 ARRAY_KEYS
-        if len(parts) >= 2 and parts[-1].isdigit() and parts[-2] in ARRAY_KEYS:
-            section = ".".join(parts[:-2])
-            arr_key = parts[-2]
-            seq = int(parts[-1])
-            arrays.setdefault(page, {}).setdefault(section, {}).setdefault(arr_key, []).append((seq, value))
-            continue
-
-        # 判断是否数组键（无序号行 = 空数组占位 或 数组无项）
-        if parts[-1] in ARRAY_KEYS:
-            section = ".".join(parts[:-1])
-            # 值留空 → 空数组；否则后续有序号行
-            arrays.setdefault(page, {}).setdefault(section, {})[parts[-1]] = []
-            continue
-
-        # 普通标量/布尔：写入嵌套
-        section = ".".join(parts[:-1])
-        key = parts[-1]
-        node = _get_path_node(result.setdefault(page, {}), parts[:-1])
-        node[key] = _type_cast(value)
-        if note:
-            node[f"_{key}说明"] = note
-
-    # 合并数组项
-    for page, sections in arrays.items():
-        page_obj = result.setdefault(page, {})
-        for section, arr_map in sections.items():
-            node = _get_path_node(page_obj, section.split(".")) if section else page_obj
-            for arr_key, items in arr_map.items():
-                items_sorted = sorted(items, key=lambda x: x[0])
-                node[arr_key] = [v for _, v in items_sorted]
-
-    # 校验必备页面
-    for p in RULE_PAGES:
-        if p not in result:
-            raise ValueError(f"展示规则缺少页面: {p}")
-
-    return result
 
 
 # ──────────────────────────────────────────────────────────────
@@ -443,13 +348,21 @@ def update_cleaning_config(time_config: dict, dry_run: bool = False) -> dict:
 # ──────────────────────────────────────────────────────────────
 # 展示规则写回（保留头部说明字段，页面数据用标准格式重建）
 # ──────────────────────────────────────────────────────────────
+_STALE_NOTE_RE = re.compile(r"^_(.+)说明$")
+
+
 def _merge_notes(merged: dict, old: dict):
     """递归合并 _ 前缀说明字段：merged 为 Excel 结果，old 为原文件页面
 
     作用：Excel 不维护 _说明 等注释字段，写回时把原文件的说明补回，避免信息丢失。
+    例外（2026-09-28）：`_X说明` 对应的配置项 X 已被移除时一并丢弃，
+    避免 JSON 里留下指向已删项的"孤儿说明"。
     """
     for k, v in old.items():
         if isinstance(k, str) and k.startswith("_"):
+            m = _STALE_NOTE_RE.match(k)
+            if m and m.group(1) not in merged:
+                continue
             merged.setdefault(k, v)
         elif isinstance(v, dict) and isinstance(merged.get(k), dict):
             _merge_notes(merged[k], v)
@@ -649,28 +562,6 @@ def _cell_fill(name: str) -> str:
     return fills.get(name, "FFFFFF")
 
 
-def _append_rule_row(ws, row_idx: int, page: str, path: str, value, note: str, is_bool: bool = False):
-    """写一行展示规则（路径列结构）
-
-    Args:
-        page: 页面名
-        path: 路径（如 "客户矩阵.最大行数" / "客户矩阵.优先展示.1"）
-        value: 值（数组项为 str；空数组传 None；bool 传 bool）
-        note: 说明
-        is_bool: 值是否为布尔
-    """
-    thin = Side(style="thin", color="B0B7C3")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    display = str(value) if value is not None else ""
-    if is_bool:
-        display = "true" if value else "false"
-    vals = [page, path, display, note]
-    for c, v in enumerate(vals, 1):
-        cell = ws.cell(row=row_idx, column=c, value=v)
-        cell.border = border
-        cell.alignment = Alignment(vertical="center", wrap_text=(c == 4))
-
-
 def init_excel_template():
     """从 cleaning_config.json 当前时间范围导出 Excel 模板"""
     cfg = json.loads(CLEANING_CFG.read_text(encoding="utf-8"))
@@ -753,84 +644,10 @@ def init_excel_template():
 
     ws.freeze_panes = "A2"
 
-    # ── Sheet 2: 展示规则 ──
+    # ── Sheet 2: 展示规则 + Sheet 3: 下拉选项 ──
+    # （2026-09-28 重做：序号/页面/区块/配置项/值/可选值/说明 + 下拉验证，见 display_rules_sheet.py）
     rules = json.loads(DISPLAY_RULES_CFG.read_text(encoding="utf-8"))
-    ws_r = wb.create_sheet("展示规则")
-    ws_r.append(RULE_HEADERS)
-    for col, h in enumerate(RULE_HEADERS, 1):
-        c = ws_r.cell(row=1, column=col)
-        c.fill = header_fill
-        c.font = header_font
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border = border
-
-    row_idx = 2
-    for page in RULE_PAGES:
-        page_obj = rules.get(page, {})
-        sections = RULE_SECTIONS.get(page, [])
-        if sections:
-            # 有区块的页面：先顶层标量键，再各区块
-            top_keys = [k for k in page_obj.keys()
-                        if not isinstance(page_obj[k], dict) and not k.startswith("_")]
-            for key in top_keys:
-                _append_rule_row(ws_r, row_idx, page, key, page_obj[key],
-                                 page_obj.get(f"_{key}说明", ""), is_bool=key in BOOL_KEYS)
-                row_idx += 1
-            for sec in sections:
-                sec_obj = page_obj.get(sec, {})
-                if not isinstance(sec_obj, dict):
-                    continue
-                for key, val in sec_obj.items():
-                    if key.startswith("_"):
-                        continue
-                    path = f"{sec}.{key}"
-                    note = sec_obj.get(f"_{key}说明", "")
-                    if key in ARRAY_KEYS and isinstance(val, list):
-                        if not val:
-                            # 空数组：占位一行，值留空
-                            _append_rule_row(ws_r, row_idx, page, path, None, note)
-                            row_idx += 1
-                        else:
-                            for i, v in enumerate(val, 1):
-                                _append_rule_row(ws_r, row_idx, page, f"{path}.{i}", v, note)
-                                row_idx += 1
-                    else:
-                        _append_rule_row(ws_r, row_idx, page, path, val, note,
-                                         is_bool=key in BOOL_KEYS)
-                        row_idx += 1
-        else:
-            # 无区块页面：全部键在页面下（含顶层数组/布尔/内嵌 dict）
-            for key, val in page_obj.items():
-                if key.startswith("_"):
-                    continue
-                note = page_obj.get(f"_{key}说明", "")
-                if isinstance(val, dict) and val:
-                    # 内嵌 dict：子路径展开（如 卡片1_销售达成.显示）
-                    for sub_key, sub_val in val.items():
-                        _append_rule_row(ws_r, row_idx, page, f"{key}.{sub_key}",
-                                         sub_val, note, is_bool=sub_key in BOOL_KEYS)
-                        row_idx += 1
-                elif key in ARRAY_KEYS and isinstance(val, list):
-                    if not val:
-                        _append_rule_row(ws_r, row_idx, page, key, None, note)
-                        row_idx += 1
-                    else:
-                        for i, v in enumerate(val, 1):
-                            _append_rule_row(ws_r, row_idx, page, f"{key}.{i}", v, note)
-                            row_idx += 1
-                else:
-                    _append_rule_row(ws_r, row_idx, page, key, val,
-                                     note, is_bool=key in BOOL_KEYS)
-                    row_idx += 1
-        if row_idx > 2:
-            row_idx += 1  # 页面间空行
-
-    # 列宽
-    r_widths = [16, 40, 40, 44]
-    for i, w in enumerate(r_widths, 1):
-        ws_r.column_dimensions[get_column_letter(i)].width = w
-
-    ws_r.freeze_panes = "A2"
+    attach_rules_sheet(wb, rules)
 
     # ── Sheet 3: 销售归属 ──
     att = json.loads(ATTRIBUTION_CFG.read_text(encoding="utf-8"))["客户归属"]
@@ -955,20 +772,7 @@ def init_excel_template():
         ["   - 年份/月份范围: 仅年基线数据使用，如 2025 / 1-8"],
         ["   - 说明: 填写配置用途（可选）"],
         [""],
-        ["3. 「展示规则」sheet 列说明（路径列结构）："],
-        ["   - 页面: 数据总览 / 年度达成 / 月度达成 / 季度达成 / 销售达成 / 年度同比"],
-        ["   - 路径: 从页面下到配置项的路径，点号分隔"],
-        ["     · 销售TopN                 → 页面下标量"],
-        ["     · 客户矩阵.最大行数          → 区块.标量"],
-        ["     · 部门卡.显示               → 区块.布尔（true/false）"],
-        ["     · 客户矩阵.优先展示.1        → 区块.数组项（序号从1开始）"],
-        ["     · 客户矩阵.客户筛选          → 空数组（值留空）"],
-        ["   - 值: 配置值"],
-        ["     · 数组项（优先展示 / 客户筛选）每个值一行，路径末尾带序号"],
-        ["     · 显示类配置填 true / false"],
-        ["     · 排序可选: 目标合计降序 / 实际金额降序 / 达成率降序"],
-        ["   - 说明: 备注（可选）"],
-        [""],
+        *RULE_NOTE_LINES,
         ["4. 「销售归属」sheet 列说明："],
         ["   - 母公司: 客户归组的母公司名（如 广州小鹏汽车科技有限公司）"],
         ["   - 子公司: 实际结算主体名（=母公司时表示本部）"],
@@ -989,8 +793,9 @@ def init_excel_template():
         [""],
         ["6. 常见修改："],
         ["   - 换月份: 改「时间配置」的月度数据开始/结束日期"],
-        ["   - 调整优先展示客户: 改「展示规则」对应页面的 客户矩阵.优先展示.N 行"],
-        ["   - 显示全部客户: 把 客户矩阵.优先展示 的所有行删掉，保留一条空值行"],
+        ["   - 调整优先展示客户: 「展示规则」sheet → 第 4 列 配置项 = 优先展示 的那些行（一个客户一行，可下拉选）"],
+        ["   - 显示全部客户: 把 配置项 = 优先展示 的所有行的「值」清空（或删行）"],
+        ["   - 只显示指定客户: 配置项 = 客户筛选 的那些行，「值」填客户名（下拉选）；清空 = 不筛选"],
         ["   - 改销售归属: 在「销售归属」sheet 直接改对应行的 销售 / 比例"],
         ["   - 拆分多销售: 把一行复制成多行，各填不同销售和比例（合计需=1）"],
         [""],
@@ -1026,7 +831,11 @@ def init_excel_template():
     )
 
     wb.save(EXCEL_PATH)
-    print(f"✅ 已生成模板: {EXCEL_PATH.relative_to(BASE_DIR)}")
+    try:
+        shown = EXCEL_PATH.relative_to(BASE_DIR)
+    except ValueError:  # 测试/自定义路径（不在项目内）
+        shown = EXCEL_PATH
+    print(f"✅ 已生成模板: {shown}")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1036,6 +845,7 @@ def main():
     args = sys.argv[1:]
     init = "--init" in args
     init_map = "--init-map" in args
+    init_rules = "--init-rules" in args
     dry_run = "--dry-run" in args
 
     if init:
@@ -1045,6 +855,12 @@ def main():
     if init_map:
         path = refresh_mapping_sheet()
         print(f"✅ 已刷新「{MAP_SHEET_NAME}」sheet（其余 sheet 未改动）: {path.relative_to(BASE_DIR)}")
+        return 0
+
+    if init_rules:
+        path = refresh_rules_sheet()
+        print(f"✅ 已刷新「{RULE_SHEET_NAME}」「下拉选项」sheet（其余 sheet 未改动）: "
+              f"{path.relative_to(BASE_DIR)}")
         return 0
 
     if not EXCEL_PATH.exists():
@@ -1070,8 +886,8 @@ def main():
         print("⚠️  Excel 缺少「时间配置」sheet，跳过")
 
     # 2) 展示规则 → 展示规则.json
-    if "展示规则" in wb.sheetnames:
-        ws_r = wb["展示规则"]
+    if RULE_SHEET_NAME in wb.sheetnames:
+        ws_r = wb[RULE_SHEET_NAME]
         rules = excel_to_display_rules(ws_r)
         new_rules = update_display_rules(rules, dry_run=dry_run)
         if dry_run:
