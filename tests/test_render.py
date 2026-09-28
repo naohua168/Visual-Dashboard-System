@@ -1,5 +1,6 @@
 # Author: naohua168 <bai_bai168@qq.com>
-"""测试渲染引擎 — 端到端生成 HTML"""
+"""测试渲染引擎 — 端到端生成 HTML + Excel 汇总表落盘位置"""
+import datetime
 import subprocess
 import sys
 
@@ -11,13 +12,16 @@ from tests.conftest import BASE_DIR, OUTPUT, has_sheets
 pytestmark = pytest.mark.skipif(not has_sheets(), reason="data/sheets/ 不完整")
 
 
-def test_render_generates_html():
-    """渲染器应生成有效的 HTML 文件"""
-    output_file = OUTPUT / "test_看板.html"
-    if output_file.exists():
-        output_file.unlink()
+def test_render_generates_html(tmp_path):
+    """渲染器应生成有效 HTML；Excel 汇总表固定落到 <数据目录>/，不散落到数据文件夹外"""
+    out_dir = tmp_path / "out"
+    data_dir = out_dir / "数据"
+    output_file = out_dir / "test_看板.html"
 
-    cmd = [sys.executable, "-m", "processors.run", f"--output={output_file}"]
+    cmd = [
+        sys.executable, "-m", "processors.run",
+        f"--output={output_file}", f"--data-dir={data_dir}",
+    ]
     result = subprocess.run(cmd, cwd=str(BASE_DIR), capture_output=True, text=True, encoding="utf-8")
 
     assert result.returncode == 0, f"渲染失败:\n{result.stderr}"
@@ -38,7 +42,11 @@ def test_render_generates_html():
     # P4 年基线检查
     assert "同比" in html
 
-    output_file.unlink()  # 清理测试文件
+    # 回归（2026-09-28 修复）：Excel 汇总表落到指定的数据目录，
+    # 不再跟随 --output 落到 HTML 旁边 / output 根目录（数据文件夹外）
+    today = datetime.date.today().strftime("%Y%m%d")
+    assert (data_dir / f"data_{today}.xlsx").exists(), "Excel 汇总表未写入数据目录"
+    assert not (OUTPUT / f"data_{today}.xlsx").exists(), "Excel 汇总表散落到了 output/ 根目录（数据文件夹外）"
 
 
 def test_render_with_main_pipeline():

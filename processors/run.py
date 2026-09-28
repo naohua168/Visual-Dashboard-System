@@ -150,10 +150,28 @@ document.addEventListener('MSFullscreenChange',_fsUpdate);
 </html>"""
 
 
-def run_render(output_path: str | None = None) -> Path:
+def _rel(p: Path) -> str:
+    """相对项目根显示路径；项目外路径（如临时目录）原样返回"""
+    try:
+        return str(p.relative_to(BASE_DIR))
+    except ValueError:
+        return str(p)
+
+
+def run_render(output_path: str | None = None, data_dir_path: str | None = None) -> Path:
     frontend_cfg = _load_frontend_config()
     title = frontend_cfg.get("看板标题", {}).get("标题", "销售运营可视化看板")
     file_cfg = frontend_cfg.get("文件输出", {})
+
+    # 输出骨架：HTML → <输出目录>/看板/，Excel 汇总表 → <输出目录>/数据/
+    base_out = BASE_DIR / file_cfg.get("目录", "output")
+    html_dir = base_out / "看板"
+    data_dir = base_out / "数据"
+    if data_dir_path:  # 测试/特殊场景：Excel 输出目录重定向（产品流程不使用）
+        data_dir = Path(data_dir_path)
+        if not data_dir.is_absolute():
+            data_dir = BASE_DIR / data_dir_path
+    today = datetime.date.today().strftime("%Y%m%d")
 
     _log("渲染", "加载数据")
     data = load_all(BASE_DIR)
@@ -169,26 +187,18 @@ def run_render(output_path: str | None = None) -> Path:
         if not out.is_absolute():
             out = BASE_DIR / output_path
     else:
-        base_out = BASE_DIR / file_cfg.get("目录", "output")
-        html_dir = base_out / "看板"
-        data_dir = base_out / "数据"
         html_dir.mkdir(parents=True, exist_ok=True)
-        data_dir.mkdir(parents=True, exist_ok=True)
-        today = datetime.date.today().strftime("%Y%m%d")
         filename = file_cfg.get("看板文件名", "看板_{date}.html").format(date=today)
         out = html_dir / filename
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
-    _log("渲染", f"已写入 {out.relative_to(BASE_DIR)}（{len(html)/1024:.1f} KB）", "OK")
+    _log("渲染", f"已写入 {_rel(out)}（{len(html)/1024:.1f} KB）", "OK")
 
-    # 输出汇总 Excel
+    # 输出汇总 Excel —— 固定写 `<输出目录>/数据/`（2026-09-28 修复：不再跟随 --output，避免散落到数据目录外）
     _log("渲染", "生成汇总 Excel 数据表")
-    if output_path:
-        excel_dir = out.parent
-    else:
-        excel_dir = data_dir
-    excel_path = excel_dir / f"data_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    excel_path = data_dir / f"data_{today}.xlsx"
     try:
         # sheet 名称与 data/sheets/ 下文件夹名称完全一致（系统数据清理 + 手动维护）
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
@@ -214,7 +224,7 @@ def run_render(output_path: str | None = None) -> Path:
             data.quarterly_payment_targets.to_excel(writer, sheet_name="季度回款指标", index=False)
             data.monthly_income_targets.to_excel(writer, sheet_name="月度收入指标", index=False)
             data.monthly_payment_targets.to_excel(writer, sheet_name="月度回款指标", index=False)
-        _log("渲染", f"已写入 {excel_path.relative_to(BASE_DIR)}（{excel_path.stat().st_size/1024:.1f} KB）", "OK")
+        _log("渲染", f"已写入 {_rel(excel_path)}（{excel_path.stat().st_size/1024:.1f} KB）", "OK")
     except Exception as e:
         _log("渲染", f"Excel 汇总失败: {e}", "WARN")
 
@@ -224,16 +234,21 @@ def run_render(output_path: str | None = None) -> Path:
 def main():
     args = sys.argv[1:]
     output_path = None
+    data_dir_path = None
     for arg in args:
         if arg.startswith("--output="):
             output_path = arg.split("=", 1)[1]
+        elif arg.startswith("--data-dir="):
+            data_dir_path = arg.split("=", 1)[1]
 
     print(f"\n{'#' * 60}")
     print("  Visual Dashboard System — 渲染引擎")
     print(f"  时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  HTML: {output_path or '<输出目录>/看板/看板_YYYYMMDD.html'}"
+          f" | Excel: {data_dir_path or '<输出目录>/数据/'}")
     print(f"{'#' * 60}")
 
-    out = run_render(output_path)
+    out = run_render(output_path, data_dir_path)
 
     print(f"\n{'#' * 60}")
     print(f"  ✅ 看板已生成: {out}")
