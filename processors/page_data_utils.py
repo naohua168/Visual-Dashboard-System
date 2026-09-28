@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 from .utils import safe_float, get_config_range
-from .config_loader import CustomerFilter, get_value
+from .config_loader import SORT_DEFAULT, CustomerFilter, get_value
 
 # ── 客户合并：子公司 → 母公司
 _SUB_TO_PARENT: dict[str, str] | None = None  # 懒加载
@@ -988,8 +988,9 @@ def _sorted_customers(tgt_p: pd.DataFrame,
                 cs.append(c)
 
     # ④ 排序：有指定展示顺序（优先展示配置非空）时按金额降序；
-    #     无指定展示顺序时保持指标表原始顺序（cs 已按 tgt_p.index 指标表行序收集）
-    if filt and filt.has_priority() and base_dir:
+    #     无指定展示顺序时保持指标表原始顺序（cs 已按 tgt_p.index 指标表行序收集）；
+    #     配置「不排序」（filt.sort_none）时同样保持指标表原始顺序（优先展示只决定可见性）
+    if filt and filt.has_priority() and base_dir and not filt.sort_none:
         def _sort_key(c):
             tgt = tgt_p.loc[c, "合计"] if c in tgt_p.index else 0
             act = piv.loc[c, "合计"] if piv is not None and c in piv.index else 0
@@ -999,7 +1000,8 @@ def _sorted_customers(tgt_p: pd.DataFrame,
                 return (0, act, 0)     # 无指标有实际：按实际降序
             return (-1, 0, 0)          # 无数据（仅优先展示）：最后
         cs.sort(key=_sort_key, reverse=True)
-    if filt and (not filt.is_empty() or filt.max_rows > 0):
+    # 只要配置了客户筛选 / 行数上限 / 非默认排序，就走 apply()（排序选项才会生效）
+    if filt and (not filt.is_empty() or filt.max_rows > 0 or filt.sort_by != SORT_DEFAULT):
         # 销售拆分键保护：截断前提取，保证 科技公司·王海龙 / 科技公司·李巍 不被 max_rows 挤出
         split_keys = [c for c in cs if _sales_from_key(c) is not None]
         before_cs = list(cs)  # 截断前完整列表（用于收集被截断的客户）

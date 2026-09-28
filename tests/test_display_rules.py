@@ -5,6 +5,9 @@ import pandas as pd
 from pathlib import Path
 
 from processors.config_loader import (
+    SORT_DEFAULT,
+    SORT_NONE,
+    SORT_OPTIONS,
     CustomerFilter,
     expand_to_customer_names,
     get_value,
@@ -123,6 +126,70 @@ class TestCustomerFilterApply:
         f = CustomerFilter(include=[], max_rows=0, sort_by="达成率降序")
         out = f.apply(customers, piv, tgt, base_dir=BASE_DIR)
         assert out == ["优", "中", "差"]
+
+    def test_apply_sort_none_keeps_order(self):
+        """排序方式 = 不排序 → 完全保持传入（指标表）顺序"""
+        customers = ["丙", "甲", "乙"]
+        piv = self._make_piv(customers, [10, 100, 50])
+        f = CustomerFilter(include=[], max_rows=0, sort_by=SORT_NONE)
+        assert f.sort_none is True
+        out = f.apply(customers, piv, piv, base_dir=BASE_DIR)
+        assert out == customers
+
+    def test_sort_options_match_sheet_choices(self):
+        """排序取值与「展示规则」sheet 下拉一致（防止两处漂移）"""
+        from scripts.display_rules_sheet import SORT_CHOICES
+
+        assert list(SORT_OPTIONS) == list(SORT_CHOICES)
+        assert SORT_DEFAULT == SORT_CHOICES[0]
+        assert SORT_NONE in SORT_CHOICES
+
+
+# ═══════════════════════════════════════════════════════════
+# _sorted_customers：优先展示 × 排序方式
+# ═══════════════════════════════════════════════════════════
+class TestSortedCustomersSortMode:
+    NAMES = ["甲", "乙", "丙"]          # 指标表行序
+    TGT = [300.0, 100.0, 200.0]         # 目标：甲 > 丙 > 乙
+    ACT = [10.0, 100.0, 50.0]           # 实际：乙 > 丙 > 甲
+
+    def _piv(self, values):
+        return pd.DataFrame({"合计": values}, index=self.NAMES)
+
+    def _tgt_df(self):
+        return pd.DataFrame(
+            {"合计": self.TGT, "检测": self.TGT, "信息": [0.0] * 3,
+             "能源": [0.0] * 3, "海外": [0.0] * 3},
+            index=self.NAMES,
+        )
+
+    def _run(self, sort_by, priority):
+        filt = CustomerFilter(priority=priority, sort_by=sort_by)
+        return _sorted_customers(self._tgt_df(), filt=filt, piv=self._piv(self.ACT),
+                                 base_dir=BASE_DIR)
+
+    def test_priority_default_sorts_by_target(self):
+        """默认「目标合计降序」：按目标降序（300 > 200 > 100）"""
+        main, _ = self._run(SORT_DEFAULT, ["甲", "乙", "丙"])
+        assert main == ["甲", "丙", "乙"]
+
+    def test_priority_with_sort_none_keeps_table_order(self):
+        """不排序：完全按指标表行序（优先展示只决定可见性，不改顺序）"""
+        filt = CustomerFilter(priority=["甲", "乙", "丙"], sort_by=SORT_NONE)
+        assert filt.sort_none is True
+        main, _ = self._run(SORT_NONE, ["甲", "乙", "丙"])
+        assert main == ["甲", "乙", "丙"]
+
+    def test_sort_by_amount_desc_wins(self):
+        """实际金额降序：按实际降序（100 > 50 > 10）"""
+        main, _ = self._run("实际金额降序", ["甲", "乙", "丙"])
+        assert main == ["乙", "丙", "甲"]
+
+    def test_priority_subset_folds_others(self):
+        """优先展示只列部分客户时：命中者进主表、其余折叠（两者各自保持指标表序）"""
+        main, rest = self._run(SORT_NONE, ["丙"])
+        assert main == ["丙"]
+        assert rest == ["甲", "乙"]
 
 
 # ═══════════════════════════════════════════════════════════

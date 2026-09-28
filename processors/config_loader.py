@@ -115,6 +115,12 @@ def expand_to_customer_names(base_dir: Path, names: list[str]) -> set[str]:
 # ═══════════════════════════════════════════════════════════
 # 客户筛选引擎
 # ═══════════════════════════════════════════════════════════
+# 排序取值（与「展示规则」sheet 的下拉、scripts/display_rules_sheet.SORT_CHOICES 一致）
+SORT_OPTIONS = ["目标合计降序", "实际金额降序", "达成率降序", "不排序（按指标表顺序）"]
+SORT_DEFAULT = SORT_OPTIONS[0]
+SORT_NONE = SORT_OPTIONS[-1]  # 不排序：完全保持指标表行序（优先展示只决定可见性，不改顺序）
+
+
 @dataclass
 class CustomerFilter:
     """客户筛选器 — 根据配置过滤/排序/截断客户列表"""
@@ -122,8 +128,13 @@ class CustomerFilter:
     include: list[str] = field(default_factory=list)  # 白名单（母公司名 + 客户名混合）
     priority: list[str] = field(default_factory=list)  # 优先展示（母公司名 + 客户名混合）
     max_rows: int = 0     # 0 = 不限
-    sort_by: str = "目标合计降序"  # 排序方式
+    sort_by: str = SORT_DEFAULT  # 排序方式
     known_parents: list[str] = field(default_factory=list)  # 从归属文件加载的所有母公司
+
+    @property
+    def sort_none(self) -> bool:
+        """是否配置为「不排序」（保持指标表原始顺序）"""
+        return self.sort_by == SORT_NONE
 
     @classmethod
     def from_config(cls, base_dir: Path, page_key: str,
@@ -142,7 +153,7 @@ class CustomerFilter:
                 include=cfg.get("客户筛选", []),
                 priority=cfg.get("优先展示", []),
                 max_rows=cfg.get("最大行数", 0),
-                sort_by=cfg.get("排序", "目标合计降序"),
+                sort_by=cfg.get("排序", SORT_DEFAULT),
                 known_parents=get_parent_names(base_dir),
             )
         return cls(known_parents=get_parent_names(base_dir))
@@ -199,7 +210,9 @@ class CustomerFilter:
                 tg = float(tgt.loc[c, "合计"]) if c in tgt.index else 0
                 return act / tg if tg > 0 else 0
             result.sort(key=_rate, reverse=True)
-        # 默认 "目标合计降序" 保持原顺序（调用方已按目标降序排好）
+        # "目标合计降序"（默认）与 "不排序" 都在此保持传入顺序：
+        #   前者由调用方 _sorted_customers 按目标降序排好；后者完全不动顺序
+        #   （"不排序" 时 _sorted_customers 也不会按其优先展示规则排序，见该函数 ④）
 
         # ③ 截断
         if self.max_rows > 0 and len(result) > self.max_rows:
