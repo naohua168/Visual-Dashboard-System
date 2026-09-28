@@ -5,12 +5,14 @@
 覆盖 2026-09-17 新增能力：让「配置编辑器.xlsx → 字段映射」sheet 控制清洗列名映射
 """
 import json
+from pathlib import Path
 
 import openpyxl
 import pytest
 
 from scripts.column_mapping_sheet import (
     MAP_HEADERS,
+    _iter_sources,
     build_mapping_rows,
     excel_to_column_mapping,
     read_latest_hits,
@@ -256,3 +258,50 @@ class TestHitLogParsing:
         rows = build_mapping_rows(_cfg(), read_latest_hits(tmp_path))
         row = next(r for r in rows if r[:3] == ["财务端", "收入", "日期"])
         assert row[MAP_HEADERS.index("当前命中(只读)")] == "创建日期"
+
+
+# ──────────────────────────────────────────────────────────────
+# 真实配置文件一致性：配置编辑器.xlsx ↔ cleaning_config.json
+# ──────────────────────────────────────────────────────────────
+REAL_ROOT = Path(__file__).parent.parent
+REAL_EDITOR = REAL_ROOT / "config" / "配置编辑器.xlsx"
+REAL_CFG = REAL_ROOT / "config" / "清洗配置" / "cleaning_config.json"
+
+
+@pytest.mark.skipif(not REAL_EDITOR.exists(), reason="配置编辑器.xlsx 不存在")
+class TestRealConfigConsistency:
+    """两个维护入口（Excel 编辑层 / JSON 事实源）不允许漂移
+
+    失败时运行 `python scripts/config_excel_to_json.py` 同步即可（Excel → JSON）。
+    """
+
+    def test_mapping_sheet_matches_json(self):
+        cfg = json.loads(REAL_CFG.read_text(encoding="utf-8"))
+        mapping, _ = excel_to_column_mapping(
+            openpyxl.load_workbook(REAL_EDITOR)["字段映射"], cfg
+        )
+        for src, name, spec in _iter_sources(cfg):
+            expect = {f: v for f, v in spec["列映射"].items() if not f.startswith("_")}
+            assert mapping[src][name] == expect, (
+                f"{src}/{name} 列映射与 JSON 不一致，请同步: python scripts/config_excel_to_json.py"
+            )
+
+    def test_shaoguan_amount_is_yuan(self):
+        """2026-09-28 起 南方韶关 整文件（收入+回款）单位为「元」→ 金额乘数 1"""
+        cfg = json.loads(REAL_CFG.read_text(encoding="utf-8"))
+        assert cfg["数据源"]["财务端"]["南方韶关"]["金额乘数"] == 1
+
+        ws = openpyxl.load_workbook(REAL_EDITOR)["字段映射"]
+        row = next(
+            r for r in ws.iter_rows(min_row=2, values_only=True)
+            if tuple(str(v).strip() if v else "" for v in r[:3]) == ("财务端", "南方韶关", "金额")
+        )
+        cands = [str(c) for c in row[3:8] if c]
+        assert "金额(元)" in cands, f"韶关金额候选应含「金额(元)」: {cands}"
+
+    def test_note_sheet_documents_units(self):
+        """「说明」sheet 第 9 节说明各来源金额单位（编辑器是维护入口）"""
+        wb = openpyxl.load_workbook(REAL_EDITOR)
+        text = "\n".join(str(r[0]) for r in wb["说明"].iter_rows(values_only=True) if r[0])
+        assert "9. 金额单位" in text
+        assert "南方韶关 = 元" in text
