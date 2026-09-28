@@ -90,7 +90,10 @@ def test_shaoguan_income_keeps_yuan_scale(sg_file):
 
 
 def test_shaoguan_payment_converts_wan_to_yuan(sg_file):
-    """回款 Sheet 仍为「万元」（乘数 10000）→ 换算为元"""
+    """回款 Sheet 配为「万元」（乘数 10000）→ 换算为元
+
+    验证「按 Sheet 分列配置」能力（线上韶关当前是整文件元 = 乘数 1，不走本分支）。
+    """
     out = clean_shaoguan(SHAOGUAN_CFG, None, TIME_RANGE, "回款")
     assert len(out) == 2
     assert round(float(out["金额"].sum()), 2) == round(sum(INCOME_AMOUNTS) * 10000, 2)

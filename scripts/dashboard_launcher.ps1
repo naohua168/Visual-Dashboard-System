@@ -427,7 +427,8 @@ Write-BootLog 'dispatcher handler ready'
                     <LineBreak/><Run Text="• data/raw/客户名单/     客户名单.xlsx (471 个标准客户)"/>
                     <LineBreak/><Run Text="• data/mappings/         部门事业部映射.json + 客户名单.json"/>
                     <LineBreak/><Run Text="• config/清洗配置/cleaning_config.json  时间范围 / 输出路径 / 列映射"/>
-                    <LineBreak/><Run Text="• config/配置编辑器.xlsx  时间范围可在 Excel 中编辑,运行前自动同步到 JSON"/>
+                    <LineBreak/><Run Text="• config/配置编辑器.xlsx  唯一配置编辑层（时间配置/展示规则/销售归属/KPI指标/字段映射/说明 6 sheet），运行前自动同步到 JSON"/>
+                    <LineBreak/><Run Text="• data/sheets/手动维护/  6 张指标表；月度/季度表无销售列，同名客户一行，拆分母公司客户名写 母公司·销售（分隔符任意）"/>
                   </TextBlock>
                 </StackPanel>
               </Border>
@@ -435,9 +436,11 @@ Write-BootLog 'dispatcher handler ready'
                 <StackPanel>
                   <TextBlock Text="常用操作" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TxtBlack}" Margin="0,0,0,8"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtBlack}" LineHeight="22" FontSize="13">
-                    <Run Text="• 改时间范围:  打开 config/配置编辑器.xlsx,修改时间范围 sheet 后点 运行全流程"/>
-                    <LineBreak/><Run Text="• 改归属/拆分: config/前端渲染/客户销售归属.json + 展示规则.json"/>
-                    <LineBreak/><Run Text="• 加客户:     在 config/配置编辑器.xlsx 的 客户白名单 sheet 增删"/>
+                    <Run Text="• 改时间范围:  打开 config/配置编辑器.xlsx 的「时间配置」sheet 改日期,保存后点 运行全流程"/>
+                    <LineBreak/><Run Text="• 改归属/拆分: 配置编辑器.xlsx 的「销售归属」sheet（或 config/清洗配置/客户销售归属.json + config/前端渲染/展示规则.json）"/>
+                    <LineBreak/><Run Text="• 换指标表:   data/sheets/手动维护/ 6 张表；月/季表无销售列（拆分母公司写 母公司·销售）"/>
+                    <LineBreak/><Run Text="• 源表列名变了: 配置编辑器.xlsx 的「字段映射」sheet 加候选列名即可,无需改代码"/>
+                    <LineBreak/><Run Text="• 金额单位(元/万元): 见 配置编辑器.xlsx「说明」sheet 第 9 节；改 JSON 的 金额乘数（1=元, 10000=万元）"/>
                     <LineBreak/><Run Text="• 出错定位:   复制日志中 [错误] 段,提交给开发者"/>
                   </TextBlock>
                 </StackPanel>
@@ -461,7 +464,7 @@ Write-BootLog 'dispatcher handler ready'
                              Text="说明 runtime/python/python.exe 不在。先运行 scripts/prepare_runtime.bat 构建内置运行时,或安装 Python 3.12+ 并执行 pip install -r requirements.txt。"/>
                   <TextBlock Text="Q4: 看板数据对不上?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
-                             Text="1) 检查 config/清洗配置/cleaning_config.json 中时间范围;2) 检查 data/raw 数据是否替换;3) 删除 output 与 data/sheets/系统数据清理 后重新运行全流程。"/>
+                             Text="1) 检查 config/配置编辑器.xlsx「时间配置」sheet 的日期范围(保存后点 运行全流程;JSON 每次运行会按 Excel 重写,直接改 JSON 无效);2) 检查 data/raw 与 data/sheets/手动维护 的数据是否替换;3) 删除 output 与 data/sheets/系统数据清理 后重新运行全流程。"/>
                   <TextBlock Text="Q5: 如何把系统打包发给同事?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
                              Text="点击左侧 打包交付 (package)。生成的 Visual-Dashboard-System_vYYYYMMDD.zip 解压即可使用,无需安装 Python。"/>

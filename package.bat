@@ -123,7 +123,7 @@ echo ║  ▪ engine/      清洗引擎 (17 模块)                  ║
 echo ║  ▪ processors/  渲染层 (22 模块)                    ║
 echo ║  ▪ scripts/     工具脚本 (启动器 + 配置同步 + 验证)  ║
 echo ║  ▪ config/      配置（含配置编辑器.xlsx + KPI指标）  ║
-echo ║  ▪ tests/       测试用例 (24 文件, 276 passed)      ║
+echo ║  ▪ tests/       测试用例 (24 文件, 299 passed)      ║
 echo ║  ▪ main.py      调度器入口                          ║
 echo ║  ▪ 启动系统.bat  双击 → 图形化控制台(推荐)           ║
 echo ║  ▪ run_all.bat  双击 → 命令行全流程                  ║
