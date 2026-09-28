@@ -482,7 +482,7 @@ Visual Dashboard_system/
 │   ├── sales_pending.py              #   待确认客户弹窗
 │   ├── components.py / config_loader.py / base.py / hero.py / utils.py
 │   └── static/                       #   CSS/JS/图标/Chart.js（含 icons.py、chart.umd.min.js）
-├── tests/                            # 26 文件，348 passed（含 conftest.py）
+├── tests/                            # 27 文件，360 passed（含 conftest.py）
 ├── docs/                             # 数据系统设计 / 字段映射 / 部署指南 / 维护指南
 ├── output/                           # ★ 看板输出（不上传 Git）
 │   ├── 看板/看板_YYYYMMDD.html        #   6 页可视化看板
@@ -526,7 +526,7 @@ python -m processors.run
 ### 3. 运行测试
 
 ```bash
-python -m pytest tests/ -v              # 348 passed
+python -m pytest tests/ -v              # 360 passed
 python -m pytest tests/ -k "splitter"   # 按关键字
 ```
 

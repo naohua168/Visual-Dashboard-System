@@ -508,7 +508,7 @@ def attach_rules_sheet(wb, rules: dict):
         dv = DataValidation(
             type="list", formula1='"' + ",".join(SORT_CHOICES) + '"',
             allow_blank=True, showErrorMessage=True,
-            promptTitle="怎么填", prompt="三选一：目标合计降序 / 实际金额降序 / 达成率降序",
+            promptTitle="怎么填", prompt="四选一：目标合计降序 / 实际金额降序 / 达成率降序 / 不排序（按指标表顺序）",
         )
         for r in dv_rows["sort"]:
             dv.add(f"E{r}")

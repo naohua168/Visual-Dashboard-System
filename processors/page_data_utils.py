@@ -368,6 +368,68 @@ def filter_gd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# ── 比亚迪：同时出现在「比亚迪汽车工业有限公司」与「比亚迪电池」两个父组下的子公司 ──
+# 规则（2026-09-28 用户口径）：**只对两个父组下同时出现的子公司**做 法人主体 判断
+#   法人主体 == 广东汽车检测中心有限公司 → 「比亚迪汽车工业有限公司」
+#   其他法人主体                            → 「比亚迪电池」
+# 与销售引擎 engine/sales/run.py 的 BYD_SUB_COMPANIES 规则配套
+# （广东主体→黄浩浩=汽车工业组、非广东→周涵林=电池组）；只挂单边的子公司保持原归属不动。
+BYD_PARENT_INDUSTRY = "比亚迪汽车工业有限公司"
+BYD_PARENT_BATTERY = "比亚迪电池"
+
+
+def _byd_multi_subs() -> set[str]:
+    """同时配置在「比亚迪汽车工业有限公司」与「比亚迪电池」两个父组下的子公司（配置驱动）"""
+    import json
+    path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
+    if not path.exists():
+        return set()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        return set()
+    groups = cfg.get("客户归属", {})
+    industry = set(groups.get(BYD_PARENT_INDUSTRY, {}).get("子公司", {}).keys())
+    battery = set(groups.get(BYD_PARENT_BATTERY, {}).get("子公司", {}).keys())
+    return {s.strip() for s in (industry & battery)}
+
+
+def _multi_group_subs() -> set[str]:
+    """需要按规则判定唯一归属的"多组配置"子公司（广东自有组多组 + 比亚迪多组）"""
+    return _gd_multi_sub_to_keep() | _byd_multi_subs()
+
+
+def filter_byd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
+    """比亚迪"多组配置"子公司按法人主体归到唯一母公司（客户名直接改为父组名）
+
+    - 法人主体 == 广东汽车检测中心有限公司 → 「比亚迪汽车工业有限公司」
+    - 其他法人主体 → 「比亚迪电池」
+
+    仅在子公司同时出现在这两个父组下时生效（`_byd_multi_subs`）。
+    """
+    if df is None or len(df) == 0:
+        return df
+    if "客户" not in df.columns or "法人主体" not in df.columns:
+        return df
+    multi = _byd_multi_subs()
+    if not multi:
+        return df
+    mask = df["客户"].astype(str).str.strip().isin(multi)
+    if not mask.any():
+        return df
+    is_gd = df["法人主体"].astype(str).str.strip() == GD_LEGAL_FILTER
+    df = df.copy()
+    df.loc[mask & is_gd, "客户"] = BYD_PARENT_INDUSTRY
+    df.loc[mask & ~is_gd, "客户"] = BYD_PARENT_BATTERY
+    import logging
+    logging.getLogger("vd.filter").info(
+        f"比亚迪法人重映射: {int(mask.sum())} 行 "
+        f"（广东主体→{BYD_PARENT_INDUSTRY}, 其他→{BYD_PARENT_BATTERY}）"
+    )
+    return df
+
+
 def _consolidate_customers(df: pd.DataFrame, metric: str | None = None) -> pd.DataFrame:
     """将子公司名替换为母公司名（3+子公司时聚合，或客户本身就是母公司）
 
@@ -382,6 +444,8 @@ def _consolidate_customers(df: pd.DataFrame, metric: str | None = None) -> pd.Da
     # 广东自有客户组中"多组配置"子公司按法人过滤（法人=广东汽车检测中心→广东自有组，否则→其他组）
     # 统一所有页面（数据总览/年度/月度/季度/销售/同比）口径，与销售拆分引擎一致
     df = filter_gd_by_legal(df)
+    # 比亚迪：两个父组下同时出现的子公司按法人主体归到唯一母公司（广东→汽车工业，其他→电池）
+    df = filter_byd_by_legal(df)
     # 南方韶关：法人主体=南方（韶关）且无销售归属的行 → 归入母公司「南方韶关」
     # （有销售归属的韶关行走销售；法人非南方韶关的不归拢。仅年/月/季度页传 metric）
     if metric:
@@ -454,6 +518,31 @@ def _consolidate_customers(df: pd.DataFrame, metric: str | None = None) -> pd.Da
 
     df["客户"] = df["客户"].map(_smart_map)
     return df
+
+
+def _row_parents(df: pd.DataFrame) -> list[str]:
+    """逐行算出「矩阵里最终归入的母公司名」（复用 _consolidate_customers 的归属规则）
+
+    子公司明细弹窗用它把"多组配置"子公司（广东自有组 / 比亚迪两父组）按法人主体
+    拆到唯一父组，保证「抽屉子行合计 = 矩阵行」（否则同一子公司会在两个父组重复计入）。
+    """
+    if df is None or len(df) == 0:
+        return []
+    cols = [c for c in ("客户", "法人主体") if c in df.columns]
+    tmp = df[cols].copy()
+    return [str(v).strip() for v in _consolidate_customers(tmp)["客户"]]
+
+
+def _target_parent_map(custs) -> dict[str, str]:
+    """指标表 客户名 → 母公司名（批量；指标表无 法人主体 列）
+
+    多组子公司的销售侧判定见调用处（按 (子公司, 销售) 配置映射）。
+    """
+    uniq = list(dict.fromkeys(str(c).strip() for c in custs))
+    if not uniq:
+        return {}
+    parents = _row_parents(pd.DataFrame({"客户": uniq}))
+    return dict(zip(uniq, parents))
 
 
 DEPARTMENTS = ["检测", "信息", "能源", "海外"]
@@ -530,35 +619,67 @@ def _build_subs_with_data(
     children_map: dict[str, list[str]],
     parents: list[str],
 ) -> dict[str, list[str]]:
-    """为每个母公司构建"有数据"的子公司列表（弹窗用）"""
-    actual_custs: set[str] = set()
+    """为每个母公司构建"有数据"的子公司列表（弹窗用）
+
+    "多组配置"子公司（广东自有组 / 比亚迪两父组）按法人主体归到唯一父组后再判断
+    （与矩阵行口径一致，避免同一子公司在两个父组同时出现）。
+    """
+    multi_subs = _multi_group_subs()
+    actual_custs: set[str] = set()                   # 归属唯一的子公司
+    actual_scoped: set[tuple[str, str]] = set()      # (母公司, 子公司) → 多组子公司
     for df in raw_actuals:
         if df is None or len(df) == 0 or "客户" not in df.columns:
             continue
-        if "金额" in df.columns:
-            g = df.groupby("客户")["金额"].sum()
+        work = df
+        # 保留 法人主体 列：多组子公司（比亚迪等）需按法人主体判定归属（2026-09-28）
+        keys = ["客户"] + (["法人主体"] if "法人主体" in work.columns else [])
+        if "金额" in work.columns:
             # 金额非 0（无论正负）都算"有数据"（2026-09-18 用户口径）
-            actual_custs.update(str(c).strip() for c in g[g != 0].index)
-        else:
-            actual_custs.update(str(c).strip() for c in df["客户"].unique())
+            work = work.groupby(keys, as_index=False, dropna=False)["金额"].sum()
+            work = work[work["金额"] != 0]
+        if len(work) == 0:
+            continue
+        parents_of = _row_parents(work)
+        for sub, parent in zip(work["客户"].astype(str).str.strip(), parents_of):
+            if sub in multi_subs:
+                actual_scoped.add((parent, sub))
+            else:
+                actual_custs.add(sub)
 
     # 指标客户：任一部门指标 > 0 才算有数据（目标表可能有该客户但全为 0）
     dept_cols = [c for c in DEPARTMENTS if any(
         c in df.columns for df in raw_targets if df is not None)]
     target_custs: set[str] = set()
+    target_scoped: set[tuple[str, str]] = set()
+    sub_sales_to_parent = _load_sub_sales_to_parent()
     for df in raw_targets:
         if df is None or len(df) == 0 or "客户" not in df.columns:
             continue
+        has_sales = "销售" in df.columns
         for c, grp in df.groupby(df["客户"].map(normalize_split_cust)):
-            if any(safe_float(grp[d].sum()) > 0 for d in dept_cols if d in df.columns):
-                target_custs.add(str(c))
+            if not any(safe_float(grp[d].sum()) > 0 for d in dept_cols if d in df.columns):
+                continue
+            name = str(c).strip()
+            if name in multi_subs:
+                fallback = _target_parent_map([name]).get(name, name)
+                owners = {
+                    sub_sales_to_parent.get((name, str(s).strip())) or fallback
+                    for s in (grp["销售"] if has_sales else [""])
+                }
+                target_scoped.update((o, name) for o in owners if o)
+            else:
+                target_custs.add(name)
 
     sub_data: dict[str, list[str]] = {}
     split_map = _load_sales_split()
     for p in parents:
         all_subs = children_map.get(p, [])
         subs = [s for s in all_subs if s != p]
-        subs = [s for s in subs if s in actual_custs or s in target_custs]
+        subs = [
+            s for s in subs
+            if (p, s) in actual_scoped or (p, s) in target_scoped
+            or (s not in multi_subs and (s in actual_custs or s in target_custs))
+        ]
         # 销售拆分键：'母公司·销售' → 只取该销售名下的子公司
         sales = _sales_from_key(p, split_map)
         if sales is not None:
@@ -589,16 +710,26 @@ def _build_subs_detail(
       }
     }
     """
+    multi_subs = _multi_group_subs()
     actual: dict[str, dict[str, float]] = {}
+    # (母公司, 子公司) → 多组子公司按法人主体归属后的金额（广东自有组 / 比亚迪两父组）
+    act_scoped: dict[tuple[str, str], dict[str, float]] = {}
     if raw_actual is not None and len(raw_actual):
         df = _add_wan(raw_actual.copy())
         if "客户" in df.columns and "事业部" in df.columns:
-            g = df.groupby(["客户", "事业部"], as_index=False, dropna=False)["金额_万"].sum()
-            for _, row in g.iterrows():
+            keys = ["客户", "事业部"] + (["法人主体"] if "法人主体" in df.columns else [])
+            g = df.groupby(keys, as_index=False, dropna=False)["金额_万"].sum()
+            for (_, row), owner in zip(g.iterrows(), _row_parents(g)):
                 c = str(row["客户"]).strip()
                 dpt = str(row["事业部"]).strip()
-                if c and dpt:
-                    actual.setdefault(c, {})[dpt] = safe_float(row["金额_万"])
+                if not (c and dpt):
+                    continue
+                amt = safe_float(row["金额_万"])
+                if c in multi_subs:
+                    d = act_scoped.setdefault((owner, c), {})
+                    d[dpt] = d.get(dpt, 0.0) + amt
+                else:
+                    actual.setdefault(c, {})[dpt] = actual.setdefault(c, {}).get(dpt, 0.0) + amt
 
     # 南方韶关：子客户金额只统计「法人主体=南方（韶关）」的行
     # （保证弹窗子行合计 = 矩阵母公司行；避免同名客户在其他来源/法人的金额混入）
@@ -617,6 +748,10 @@ def _build_subs_detail(
                     sg_actual.setdefault(c2, {})[dpt2] = safe_float(r2["金额_万"])
 
     target: dict[str, dict[str, float]] = {}
+    # (母公司, 子公司) → 多组子公司的目标（指标表无 法人主体 列 → 按 (子公司, 销售) 配置判定）
+    tgt_scoped: dict[tuple[str, str], dict[str, float]] = {}
+    tgt_owner_cache: dict[str, str] = {}
+    sub_sales_to_parent = _load_sub_sales_to_parent()
     # 按 (客户, 销售) 拆分的目标：拆分母公司的"本部"行需按销售取各自目标（如 科技公司+王海龙）
     target_by_sales: dict[tuple[str, str], dict[str, float]] = {}
     if raw_target is not None and len(raw_target) and "客户" in raw_target.columns:
@@ -631,6 +766,13 @@ def _build_subs_detail(
                 # 客户列写 母公司 + 销售列 → (母公司, 销售)。两种写法口径一致
                 parts = split_key_parts(c)
                 sales = str(row.get("销售", "")).strip()
+                if c in multi_subs:
+                    owner = (sub_sales_to_parent.get((c, sales))
+                             or tgt_owner_cache.setdefault(
+                                 c, _target_parent_map([c]).get(c, c)))
+                    ty = tgt_scoped.setdefault((owner, c), {dpt: 0.0 for dpt in dept_cols})
+                    for dpt in dept_cols:
+                        ty[dpt] += safe_float(row[dpt])
                 if parts:
                     by_key = parts
                 elif sales and sales not in ("待确认", "", "nan"):
@@ -689,10 +831,18 @@ def _build_subs_detail(
             row = {}
             total_act = total_tgt = 0.0
             has_data = has_tgt = False
-            src = sg_actual if s in sg_children else actual
+            # 多组子公司（广东自有组 / 比亚迪两父组）取"按法人/销售归属到本父组"的部分
+            if s in sg_children:
+                act_map = sg_actual.get(s, {})
+            elif s in multi_subs:
+                act_map = act_scoped.get((parent_name, s), {})
+            else:
+                act_map = actual.get(s, {})
+            tgt_map = (tgt_scoped.get((parent_name, s), {})
+                       if s in multi_subs else target.get(s, {}))
             for dpt in DEPARTMENTS:
-                act = src.get(s, {}).get(dpt, 0.0)
-                tgt = target.get(s, {}).get(dpt, 0.0)
+                act = act_map.get(dpt, 0.0)
+                tgt = tgt_map.get(dpt, 0.0)
                 if act != 0:
                     has_data = True
                 if tgt != 0:
