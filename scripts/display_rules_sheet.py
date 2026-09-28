@@ -15,14 +15,15 @@
         1     数据总览           销售TopN   10                整数 ≥ 0（0 = 全部）          …
         2     年度达成  客户矩阵  最大行数   0                 整数 ≥ 0（0 = 不限）          …
         3     年度达成  客户矩阵  排序       目标合计降序       三选一下拉                    …
-        4     年度达成  客户矩阵  优先展示   比亚迪汽车工业…    下拉选择客户全称 / 母公司组名  …
+        4     年度达成  客户矩阵  优先展示   比亚迪汽车工业…    **手填**客户全称/母公司组名    …
         …     （优先展示 / 客户筛选 = 一个客户一行，行数不限）
 
 设计约定：
   - **只有 SPEC 白名单里的项能被识别**（都是代码真正读取的），写错项/非法值
     会拒绝写回并给出中文原因；
-  - 「值」列下拉：排序 = 三选一；优先展示 / 客户筛选 = 「下拉选项」辅助 sheet
-    （母公司组名 + 标准客户名 + 子公司名 + 销售拆分键）；
+  - 「值」列下拉只用于**取值有限的项**：排序 = 三选一；数字项 = 整数校验 + 提示。
+    **优先展示 / 客户筛选 不做下拉**（2026-09-28 用户口径：客户名由使用者自己填），
+    改由「可选值 / 填写规则」+「说明」两列写清怎么填（客户全称 / 母公司组名 / 一个一行）；
   - 旧「路径」表头仍可解析（向前兼容），但 `--init-rules` 会重建为新结构；
   - JSON 事实源不变：`config/前端渲染/展示规则.json`（Excel 是编辑层）。
 """
@@ -43,11 +44,11 @@ except ImportError:  # pragma: no cover
 BASE_DIR = Path(__file__).parent.parent
 EXCEL_PATH = BASE_DIR / "config" / "配置编辑器.xlsx"
 DISPLAY_RULES_CFG = BASE_DIR / "config" / "前端渲染" / "展示规则.json"
-ATTRIBUTION_CFG = BASE_DIR / "config" / "清洗配置" / "客户销售归属.json"
-CUSTOMER_LIST_JSON = BASE_DIR / "data" / "mappings" / "客户名单" / "客户名单.json"
+# 历史遗留：曾经生成过「下拉选项」辅助 sheet（客户名下拉用），2026-09-28 起不再需要，
+# 刷新时若发现该 sheet 会一并删除
+LEGACY_OPTION_SHEET = "下拉选项"
 
 RULE_SHEET_NAME = "展示规则"
-OPTION_SHEET_NAME = "下拉选项"
 RULE_HEADERS = ["序号", "页面", "区块", "配置项", "值", "可选值 / 填写规则", "说明（作用与影响）"]
 REQUIRED_HEADERS = ("页面", "区块", "配置项", "值")
 
@@ -81,8 +82,12 @@ SPEC: list[dict] = [
         for key, kind, options, note in (
             ("最大行数", "int", "整数 ≥ 0（0 = 不限）", "客户矩阵主表最多显示几行客户；『优先展示』里的客户不会被截断"),
             ("排序", "sort", "三选一下拉：目标合计降序 / 实际金额降序 / 达成率降序", "仅当『优先展示』非空时生效；留空 = 按指标表原始顺序"),
-            ("优先展示", "names", "下拉选择（客户全称 或 母公司组名，如 广汽系）；一个客户一行，可多行", "名单内客户始终显示并排在前面；全部删掉 = 所有客户都显示"),
-            ("客户筛选", "names", "下拉选择（客户全称 或 母公司组名）；一个客户一行，可多行", "填了就只显示这些客户（白名单）；留空 = 不筛选（推荐）"),
+            ("优先展示", "names",
+             "手填客户名（二选一写法）：① 母公司组名，如 广汽系 = 该组全部子公司；② 客户全称，照「销售归属」sheet 的名字写。一个客户一行，可多行",
+             "名单内客户【始终显示】并排在最前面（即使无指标无实际）；全部清空 = 所有客户都显示"),
+            ("客户筛选", "names",
+             "手填客户名（同上）：母公司组名 或 客户全称；一个客户一行，可多行",
+             "填了就【只】显示这些客户（白名单，其余客户隐藏）；留空 = 不筛选（推荐）"),
         )
     ],
     *[
@@ -94,8 +99,12 @@ SPEC: list[dict] = [
         for key, kind, options, note in (
             ("最大行数", "int", "整数 ≥ 0（0 = 不限）", "重要客户同比矩阵显示的行数"),
             ("排序", "sort", "三选一下拉：目标合计降序 / 实际金额降序 / 达成率降序", "客户排序方式"),
-            ("优先展示", "names", "下拉选择（客户全称 或 母公司组名）；一个客户一行，可多行", "名单内客户始终显示并排在前面；一般留空"),
-            ("客户筛选", "names", "下拉选择（客户全称 或 母公司组名）；一个客户一行，可多行", "填了就只显示这些客户；一般留空"),
+            ("优先展示", "names",
+             "手填客户名：母公司组名（如 广汽系）或 客户全称；一个客户一行，可多行",
+             "名单内客户始终显示并排在前面；同比页一般留空"),
+            ("客户筛选", "names",
+             "手填客户名（同上）；一个客户一行，可多行",
+             "填了就只显示这些客户；同比页一般留空"),
         )
     ],
 ]
@@ -109,10 +118,11 @@ RULE_NOTE_LINES: list[list[str]] = [
     ["   - 配置项（**只保留代码真正读取的项**）:"],
     ["     · 销售TopN / 最大行数: 填整数，0 = 显示全部（不限制行数）"],
     ["     · 排序: 下拉三选一（目标合计降序 / 实际金额降序 / 达成率降序）"],
-    ["     · 优先展示: 一个客户一行（下拉选客户全称或母公司组名，如 广汽系）→ 这些客户始终显示并排最前"],
-    ["       · 全部删掉 = 所有客户都显示；名单外的客户可直接手填（下拉不限制手输）"],
-    ["     · 客户筛选: 一个客户一行 → 只显示这些客户（白名单）；留空 = 不筛选（推荐）"],
-    ["   - 下拉候选名单在「下拉选项」sheet（自动生成，勿手改；新增客户请改「销售归属」sheet）"],
+    ["     · 优先展示: 一个客户一行，**自己填客户名** → 这些客户始终显示并排最前（无指标无实际也显示）"],
+    ["       填法二选一：① 母公司组名（如 广汽系 = 该组全部子公司）② 客户全称（照「销售归属」sheet 写）"],
+    ["       全部清空 = 所有客户都显示；一个格子里用「、」分隔多个名字也行（如 甲公司、乙公司）"],
+    ["     · 客户筛选: 一个客户一行，填了就**只**显示这些客户（白名单）；留空 = 不筛选（推荐）"],
+    ["   - 客户名怎么写才对: 到「销售归属」sheet 的『母公司』『子公司』两列照着抄（系统按这两个名字匹配）"],
     ["   - ⚠ 已删除的不生效项（2026-09-28）: 部门卡.显示 / 卡片1~3_显示 / 销售达成.排序 + 销售TopN / 数据总览.客户筛选"],
     ["     —— 这些项代码从未读取，改了不生效，故从表里去掉（避免误以为能关卡片/限人数）"],
     [""],
@@ -438,80 +448,19 @@ def excel_to_display_rules(sheet) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────
-# 下拉候选名单
-# ──────────────────────────────────────────────────────────────
-def collect_candidates(rules: dict | None = None) -> list[tuple[str, str, str]]:
-    """构建「下拉选项」候选：(名称, 类型, 备注)
-
-    顺序：母公司组名 → 标准客户名（客户名单缓存）→ 子公司名 → 销售拆分键 → 表内已填但不在名单里的名字
-    """
-    att: dict = {}
-    if ATTRIBUTION_CFG.exists():
-        try:
-            att = json.loads(ATTRIBUTION_CFG.read_text(encoding="utf-8"))
-        except Exception:  # pragma: no cover
-            att = {}
-    ownership = att.get("客户归属") or {}
-
-    seen: set[str] = set()
-    out: list[tuple[str, str, str]] = []
-
-    def add(name: str, kind: str, note: str = "") -> None:
-        n = (name or "").strip()
-        if not n or n in seen:
-            return
-        seen.add(n)
-        out.append((n, kind, note))
-
-    for parent in ownership:
-        add(parent, "母公司组名", "自动展开为该组下全部子公司")
-    for parent in ownership:
-        for sub in (ownership[parent].get("子公司") or {}):
-            add(sub, "子公司名", f"归属母公司: {parent}")
-
-    if CUSTOMER_LIST_JSON.exists():
-        try:
-            names = json.loads(CUSTOMER_LIST_JSON.read_text(encoding="utf-8"))
-        except Exception:  # pragma: no cover
-            names = []
-        if isinstance(names, list):
-            for n in names:
-                add(str(n), "标准客户名", "data/raw/客户名单")
-
-    split = (att.get("_销售拆分") or {}).get("客户矩阵") or []
-    if split:
-        for parent in split:
-            subs = ownership.get(parent, {}).get("子公司") or {}
-            for sales in {v for sub in subs.values()
-                          for metric in sub.values() if isinstance(metric, dict)
-                          for dept in metric.values() if isinstance(dept, dict)
-                          for v in dept.values()}:
-                add(f"{parent}·{sales}", "销售拆分键", f"拆分母公司 {parent}")
-
-    if rules:
-        for page in PAGE_ORDER:
-            page_cfg = rules.get(page) or {}
-            for spec in page_specs(page):
-                if spec["kind"] != "names":
-                    continue
-                node = page_cfg.get(spec["section"], {}) if spec["section"] else page_cfg
-                for name in (node or {}).get(spec["key"], []) or []:
-                    add(str(name), "表内已填", f"{page} 当前配置值")
-    return out
-
-
-# ──────────────────────────────────────────────────────────────
-# 生成 / 刷新「展示规则」+「下拉选项」sheet
+# 生成 / 刷新「展示规则」sheet
 # ──────────────────────────────────────────────────────────────
 def _thin_border() -> Border:
     thin = Side(style="thin", color="B0B7C3")
     return Border(left=thin, right=thin, top=thin, bottom=thin)
 
 
-def attach_rules_sheet(wb, rules: dict, candidates: list[tuple[str, str, str]] | None = None):
-    """在 workbook 中创建/替换「展示规则」与「下拉选项」sheet（原地修改，需调用方 save）"""
-    candidates = candidates if candidates is not None else collect_candidates(rules)
-    for name in (RULE_SHEET_NAME, OPTION_SHEET_NAME):
+def attach_rules_sheet(wb, rules: dict):
+    """在 workbook 中创建/替换「展示规则」sheet（原地修改，需调用方 save）
+
+    若存在历史遗留的「下拉选项」sheet（2026-09-28 前的客户名下拉辅助页）一并删除。
+    """
+    for name in (RULE_SHEET_NAME, LEGACY_OPTION_SHEET):
         if name in wb.sheetnames:
             del wb[name]
 
@@ -593,32 +542,13 @@ def attach_rules_sheet(wb, rules: dict, candidates: list[tuple[str, str, str]] |
             dv.add(f"E{r}")
         ws.add_data_validation(dv)
 
-    # ⑤ 下拉选项 sheet（先建，names 下拉要引用它）
-    ws_opt = wb.create_sheet(OPTION_SHEET_NAME, 2)
-    opt_headers = ["名称", "类型", "备注"]
-    for col, h in enumerate(opt_headers, 1):
-        c = ws_opt.cell(row=1, column=col, value=h)
-        c.fill = header_fill
-        c.font = header_font
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border = border
-    for i, (name, kind, note) in enumerate(candidates, start=2):
-        for col, v in enumerate((name, kind, note), 1):
-            c = ws_opt.cell(row=i, column=col, value=v)
-            c.border = border
-            c.alignment = Alignment(vertical="center")
-    for col, w in enumerate((52, 14, 46), 1):
-        ws_opt.column_dimensions[get_column_letter(col)].width = w
-    ws_opt.freeze_panes = "A2"
-
-    if dv_rows["names"] and candidates:
-        last = len(candidates) + 1
+    # ⑤ 优先展示 / 客户筛选：不做下拉（客户名由使用者自己填），只给单元格加输入提示
+    if dv_rows["names"]:
         dv = DataValidation(
-            type="list",
-            formula1=f"={OPTION_SHEET_NAME}!$A$2:$A${last}",
-            allow_blank=True, showErrorMessage=False,
+            type="none", allow_blank=True, showErrorMessage=False,
             promptTitle="怎么填",
-            prompt="下拉选择客户全称或母公司组名（如 广汽系）；也可手输未列出的名字",
+            prompt=("手填客户名：① 母公司组名（如 广汽系）② 客户全称（照「销售归属」sheet 写）；"
+                    "一个客户一行，可多行"),
         )
         for r in dv_rows["names"]:
             dv.add(f"E{r}")
@@ -628,7 +558,7 @@ def attach_rules_sheet(wb, rules: dict, candidates: list[tuple[str, str, str]] |
 
 def refresh_rules_sheet(excel_path: Path | str | None = None,
                         cfg_path: Path | str | None = None) -> Path:
-    """只刷新 Excel 里的「展示规则」+「下拉选项」sheet，保留其他 sheet 原样"""
+    """只刷新 Excel 里的「展示规则」sheet，保留其他 sheet 原样"""
     import openpyxl as _xl
 
     excel_path = Path(excel_path or EXCEL_PATH)
@@ -637,6 +567,6 @@ def refresh_rules_sheet(excel_path: Path | str | None = None,
         raise FileNotFoundError(f"未找到配置编辑器: {excel_path}")
     rules = json.loads(cfg_path.read_text(encoding="utf-8"))
     wb = _xl.load_workbook(excel_path)
-    attach_rules_sheet(wb, rules, collect_candidates(rules))
+    attach_rules_sheet(wb, rules)
     wb.save(excel_path)
     return excel_path

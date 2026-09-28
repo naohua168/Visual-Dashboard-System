@@ -83,7 +83,7 @@ echo   - data\raw\往年收入数据\ 往年收入基线 Excel
 echo   - data\raw\往年回款数据\ 往年回款基线 Excel
 echo   - data\mappings\         部门事业部映射 / 客户名单
 echo   - data\sheets\手动维护\  6 张指标表（年度/季度/月度 × 收入/回款）
-echo   - config\配置编辑器.xlsx 配置编辑层（时间配置/展示规则+下拉选项/销售归属/KPI指标/字段映射/说明 7 sheet）
+echo   - config\配置编辑器.xlsx 配置编辑层（时间配置/展示规则/销售归属/KPI指标/字段映射/说明 6 sheet）
 echo   - config\清洗配置\       cleaning_config.json
 echo.
 pause

@@ -427,7 +427,7 @@ Write-BootLog 'dispatcher handler ready'
                     <LineBreak/><Run Text="• data/raw/客户名单/     客户名单.xlsx (471 个标准客户)"/>
                     <LineBreak/><Run Text="• data/mappings/         部门事业部映射.json + 客户名单.json"/>
                     <LineBreak/><Run Text="• config/清洗配置/cleaning_config.json  时间范围 / 输出路径 / 列映射"/>
-                    <LineBreak/><Run Text="• config/配置编辑器.xlsx  唯一配置编辑层（时间配置/展示规则/下拉选项/销售归属/KPI指标/字段映射/说明 7 sheet），运行前自动同步到 JSON"/>
+                    <LineBreak/><Run Text="• config/配置编辑器.xlsx  唯一配置编辑层（时间配置/展示规则/销售归属/KPI指标/字段映射/说明 6 sheet），运行前自动同步到 JSON"/>
                     <LineBreak/><Run Text="• data/sheets/手动维护/  6 张指标表；月度/季度表无销售列，同名客户一行，拆分母公司客户名写 母公司·销售（分隔符任意）"/>
                   </TextBlock>
                 </StackPanel>
@@ -438,7 +438,7 @@ Write-BootLog 'dispatcher handler ready'
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtBlack}" LineHeight="22" FontSize="13">
                     <Run Text="• 改时间范围:  打开 config/配置编辑器.xlsx 的「时间配置」sheet 改日期,保存后点 运行全流程"/>
                     <LineBreak/><Run Text="• 改归属/拆分: 配置编辑器.xlsx 的「销售归属」sheet（或 config/清洗配置/客户销售归属.json + config/前端渲染/展示规则.json）"/>
-                    <LineBreak/><Run Text="• 改看板显示: 配置编辑器.xlsx「展示规则」sheet —— 只改「值」列（排序/客户名都是下拉，每行带可选值说明）"/>
+                    <LineBreak/><Run Text="• 改看板显示: 配置编辑器.xlsx「展示规则」sheet —— 只改「值」列（排序为下拉；优先展示/客户筛选的客户名自己填，每行带可选值说明）"/>
                     <LineBreak/><Run Text="• 换指标表:   data/sheets/手动维护/ 6 张表；月/季表无销售列（拆分母公司写 母公司·销售）"/>
                     <LineBreak/><Run Text="• 源表列名变了: 配置编辑器.xlsx 的「字段映射」sheet 加候选列名即可,无需改代码"/>
                     <LineBreak/><Run Text="• 金额单位(元/万元): 见 配置编辑器.xlsx「说明」sheet 第 9 节；改 JSON 的 金额乘数（1=元, 10000=万元）"/>

@@ -6,7 +6,6 @@
 当前支持的 sheet（2026-09-28）：
     - 时间配置  → cleaning_config.json 的「时间范围」（含结算模式）
     - 展示规则  → 前端渲染/展示规则.json（页面/区块/配置项/值，见 display_rules_sheet.py）
-    - 下拉选项  → 辅助 sheet：展示规则「值」列的下拉候选（自动生成，勿手改）
     - KPI指标   → 前端渲染/展示规则.json 各页面的 `KPI指标` 区块
     - 销售归属  → 清洗配置/客户销售归属.json
     - 字段映射  → cleaning_config.json 各来源的「列映射」（见 column_mapping_sheet.py）
@@ -16,7 +15,7 @@
     python scripts/config_excel_to_json.py --dry-run    # 只读不改写（打印将生成的内容）
     python scripts/config_excel_to_json.py --init       # 首次创建 Excel 模板（从当前 JSON 导出）
     python scripts/config_excel_to_json.py --init-map   # 只刷新「字段映射」sheet（其余 sheet 不动）
-    python scripts/config_excel_to_json.py --init-rules # 只刷新「展示规则」+「下拉选项」sheet
+    python scripts/config_excel_to_json.py --init-rules # 只刷新「展示规则」sheet
 
 设计原则：
     - Excel 是「编辑层」，JSON 是「事实源」（系统只读 JSON）
@@ -644,7 +643,7 @@ def init_excel_template():
 
     ws.freeze_panes = "A2"
 
-    # ── Sheet 2: 展示规则 + Sheet 3: 下拉选项 ──
+    # ── Sheet 2: 展示规则 ──
     # （2026-09-28 重做：序号/页面/区块/配置项/值/可选值/说明 + 下拉验证，见 display_rules_sheet.py）
     rules = json.loads(DISPLAY_RULES_CFG.read_text(encoding="utf-8"))
     attach_rules_sheet(wb, rules)
@@ -859,7 +858,7 @@ def main():
 
     if init_rules:
         path = refresh_rules_sheet()
-        print(f"✅ 已刷新「{RULE_SHEET_NAME}」「下拉选项」sheet（其余 sheet 未改动）: "
+        print(f"✅ 已刷新「{RULE_SHEET_NAME}」sheet（其余 sheet 未改动）: "
               f"{path.relative_to(BASE_DIR)}")
         return 0
 

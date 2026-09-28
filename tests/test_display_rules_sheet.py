@@ -16,13 +16,12 @@ import openpyxl
 import pytest
 
 from scripts.display_rules_sheet import (
-    OPTION_SHEET_NAME,
+    LEGACY_OPTION_SHEET,
     PAGE_ORDER,
     RULE_HEADERS,
     RULE_SHEET_NAME,
     SPEC,
     build_rows,
-    collect_candidates,
     excel_to_display_rules,
     parse_rows,
 )
@@ -257,22 +256,33 @@ class TestRealWorkbook:
         for bad in ("部门卡", "卡片1_销售达成", "卡片2_事业部矩阵", "卡片3_销售客户矩阵"):
             assert bad not in text, f"「展示规则」sheet 仍含已废弃项: {bad}"
 
-    def test_option_sheet_and_dropdowns(self):
+    def test_dropdowns_only_for_sort_and_int(self):
+        """下拉只用于排序（三选一）；数字项整数校验；客户名不做下拉"""
         wb = openpyxl.load_workbook(EXCEL)
-        assert OPTION_SHEET_NAME in wb.sheetnames, "缺少「下拉选项」辅助 sheet"
+        assert LEGACY_OPTION_SHEET not in wb.sheetnames, "「下拉选项」辅助 sheet 已废弃，应删除"
         ws = wb["展示规则"]
         dvs = list(ws.data_validations.dataValidation)
         kinds = {dv.type for dv in dvs}
-        assert {"list", "whole"} <= kinds, f"下拉/整数校验缺失: {kinds}"
-        ref = [dv.formula1 for dv in dvs if dv.type == "list" and "下拉选项" in (dv.formula1 or "")]
-        assert ref, "优先展示/客户筛选 的值列未引用「下拉选项」下拉"
+        assert "whole" in kinds, f"数字项缺少整数校验: {kinds}"
+        lists = [dv for dv in dvs if dv.type == "list"]
+        assert len(lists) == 1, f"应只有「排序」一个下拉，实际 {len(lists)} 个"
+        assert "目标合计降序" in (lists[0].formula1 or ""), "排序下拉取值异常"
+        # 客户名行（优先展示/客户筛选）：不得是下拉
+        spec_map_rows = {}
+        for r, row in enumerate(ws.iter_rows(values_only=True), 1):
+            if len(row) > 3 and row[3] in ("优先展示", "客户筛选"):
+                spec_map_rows[r] = row[3]
+        assert spec_map_rows, "未找到 优先展示/客户筛选 行"
+        for dv in dvs:
+            covered = {int(x[1:]) for x in str(dv.sqref).split() if x.startswith("E")}
+            if dv.type == "list":
+                assert not (covered & set(spec_map_rows)), "优先展示/客户筛选 不应有下拉"
 
-    def test_candidates_include_parents_and_subs(self):
-        cands = collect_candidates(CUR_RULES)
-        kinds = {k for _, k, _ in cands}
-        assert "母公司组名" in kinds and "子公司名" in kinds
-        names = {n for n, _, _ in cands}
-        assert "广汽系" in names and "南方韶关" in names
+    def test_names_prompt_available(self):
+        """客户名行带输入提示（怎么填），但允许自由输入"""
+        ws = openpyxl.load_workbook(EXCEL)["展示规则"]
+        prompts = [dv for dv in ws.data_validations.dataValidation if dv.prompt]
+        assert any("手填客户名" in (dv.prompt or "") for dv in prompts), "缺少客户名填写提示"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -286,9 +296,9 @@ def test_init_template_writes_all_sheets(tmp_path, monkeypatch):
     cej.init_excel_template()
 
     wb = openpyxl.load_workbook(out)
-    for sheet in ("时间配置", RULE_SHEET_NAME, OPTION_SHEET_NAME, "销售归属",
-                  "KPI指标", "字段映射", "说明"):
+    for sheet in ("时间配置", RULE_SHEET_NAME, "销售归属", "KPI指标", "字段映射", "说明"):
         assert sheet in wb.sheetnames, f"模板缺少 sheet: {sheet}"
+    assert LEGACY_OPTION_SHEET not in wb.sheetnames
     # 生成的模板可直接解析回当前 JSON
     parsed = excel_to_display_rules(wb[RULE_SHEET_NAME])
     for page in PAGE_ORDER:
