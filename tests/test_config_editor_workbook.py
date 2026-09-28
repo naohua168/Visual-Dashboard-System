@@ -168,9 +168,11 @@ class TestRealWorkbookDesign:
         assert len(set(fills)) >= 2, "未按母公司分块着色"
 
     def test_autofilter_on_data_sheets(self):
+        """筛选范围从表头行开始即可（Excel 保存后会把范围规范化为整块数据区）"""
         wb = self._wb()
-        for name, ref in (("时间配置", "A2:H2"), ("销售归属", "A2:G2"), ("字段映射", "A2:J2")):
-            assert wb[name].auto_filter.ref == ref, f"{name} 自动筛选范围异常"
+        for name, first_col in (("时间配置", "A2"), ("销售归属", "A2"), ("字段映射", "A2")):
+            ref = wb[name].auto_filter.ref or ""
+            assert ref.startswith(f"{first_col}:"), f"{name} 自动筛选范围异常: {ref!r}"
 
     def test_kpi_and_rules_keep_dropdowns(self):
         wb = self._wb()
