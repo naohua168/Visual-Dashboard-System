@@ -120,6 +120,28 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     return df
 
 
+# ── 金额乘数：源表金额 → 元（2026-09-28）──────────────────────────
+# 广东/湖南=10000（万元），南方韶关按 Sheet 区分（收入已改「元」=1、回款仍「万元」=10000）
+_DEFAULT_AMOUNT_MULT = 10000.0
+
+
+def _amount_multiplier(src_config, file_type: str) -> float:
+    """读配置 `金额乘数`，返回该来源该 Sheet 的金额换算倍数（→ 元）
+
+    支持两种写法：
+      · 数值：该来源所有 Sheet 相同（如 `10000` = 原始单位万元）
+      · 字典：按 Sheet/指标分别配置（如 `{"收入": 1, "回款": 10000}` = 收入已是元）
+    未配置或非法值 → 10000（历史默认：万元）。
+    """
+    raw = src_config.get("金额乘数")
+    if isinstance(raw, dict):
+        raw = raw.get(file_type)
+    try:
+        return float(raw) if raw is not None else _DEFAULT_AMOUNT_MULT
+    except (TypeError, ValueError):
+        return _DEFAULT_AMOUNT_MULT
+
+
 def clean_guangdong(config, matcher, time_range, file_type):
     """清洗广东公司数据"""
     src_config = config["数据源"]["财务端"]["广东公司"]
@@ -135,15 +157,16 @@ def clean_guangdong(config, matcher, time_range, file_type):
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"广东{file_type}", f"日期筛选后: {len(df)}行")
 
-    # 广东公司原始数据是万元，乘以10000转为元，统一单位
-    df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * 10000.0
+    # 金额换算为元：倍数由配置 `金额乘数` 决定（广东公司当前 ×10000 = 万元）
+    mult = _amount_multiplier(src_config, file_type)
+    df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * mult
     df["事业部"] = src_config["事业部固定"]
     df["法人主体"] = "广东汽车检测中心有限公司"
 
     df = _filter_by_whitelist(df, matcher, src_config, f"广东{file_type}")
 
     df = standardize_output(df)
-    log_step(f"广东{file_type}", f"最终: {len(df)}行, 金额合计: {df['金额'].sum():,.2f}（已转万元→元）", "OK")
+    log_step(f"广东{file_type}", f"最终: {len(df)}行, 金额合计: {df['金额'].sum():,.2f}（金额乘数 ×{mult:g} → 元）", "OK")
     return df
 
 
@@ -162,15 +185,16 @@ def clean_hunan(config, matcher, time_range, file_type):
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"湖南{file_type}", f"日期筛选后: {len(df)}行")
 
-    # 湖南公司原始数据是万元，乘以10000转为元，统一单位
-    df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * 10000.0
+    # 金额换算为元：倍数由配置 `金额乘数` 决定（湖南公司当前 ×10000 = 万元）
+    mult = _amount_multiplier(src_config, file_type)
+    df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * mult
     df["事业部"] = src_config["事业部固定"]
     df["法人主体"] = "中汽院智能网联汽车检测中心（湖南）有限公司"
 
     df = _filter_by_whitelist(df, matcher, src_config, f"湖南{file_type}")
 
     df = standardize_output(df)
-    log_step(f"湖南{file_type}", f"最终: {len(df)}行, 金额合计: {df['金额'].sum():,.2f}（已转万元→元）", "OK")
+    log_step(f"湖南{file_type}", f"最终: {len(df)}行, 金额合计: {df['金额'].sum():,.2f}（金额乘数 ×{mult:g} → 元）", "OK")
     return df
 
 
@@ -193,7 +217,8 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     两种格式：
       - 有表头（当前）: 列映射 客户/日期/金额
       - 无表头（历史兼容）: 配置 "无表头": true + "列位置" {客户:0, 日期:1, 金额:2}
-    金额单位均为万元 → ×10000 转元；回款 Sheet 可能为空，返回空 DataFrame 即可。
+    金额按 `金额乘数` 换算为元（按 Sheet 分别配置：2026-09-28 起 收入=1「元」、回款=10000「万元」）；
+    回款 Sheet 可能为空，返回空 DataFrame 即可。
     """
     src_config = config["数据源"]["财务端"]["南方韶关"]
     file_path = get_data_path(config, "财务端", "南方韶关")
@@ -240,15 +265,17 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     out = filter_by_date(out, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"南方韶关{file_type}", f"日期筛选后: {len(out)}行")
 
-    # 金额单位万元 → 元
-    out["金额"] = pd.to_numeric(out["金额"], errors="coerce").fillna(0.0) * 10000.0
+    # 金额换算为元：倍数由配置 `金额乘数` 决定
+    # （2026-09-28 起 收入 Sheet 已是「元」→ ×1；回款 Sheet 仍为「万元」→ ×10000）
+    mult = _amount_multiplier(src_config, file_type)
+    out["金额"] = pd.to_numeric(out["金额"], errors="coerce").fillna(0.0) * mult
     out["事业部"] = src_config["事业部固定"]
     out["法人主体"] = src_config.get("法人主体", "南方（韶关）智能网联新能源汽车试验检测中心有限公司")
 
     out = _filter_by_whitelist(out, matcher, src_config, f"南方韶关{file_type}")
 
     out = standardize_output(out)
-    log_step(f"南方韶关{file_type}", f"最终: {len(out)}行, 金额合计: {out['金额'].sum():,.2f}（已转万元→元）", "OK")
+    log_step(f"南方韶关{file_type}", f"最终: {len(out)}行, 金额合计: {out['金额'].sum():,.2f}（金额乘数 ×{mult:g} → 元）", "OK")
     return out
 
 
