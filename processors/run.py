@@ -193,7 +193,8 @@ def run_render(output_path: str | None = None, data_dir_path: str | None = None)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
-    _log("渲染", f"已写入 {_rel(out)}（{len(html)/1024:.1f} KB）", "OK")
+    # 按文件实际字节数报告（中文按 UTF-8 占 3 字节，len(html) 是字符数，会比真实文件小约 15%）
+    _log("渲染", f"已写入 {_rel(out)}（{out.stat().st_size / 1024:.1f} KB）", "OK")
 
     # 输出汇总 Excel —— 固定写 `<输出目录>/数据/`（2026-09-28 修复：不再跟随 --output，避免散落到数据目录外）
     _log("渲染", "生成汇总 Excel 数据表")
