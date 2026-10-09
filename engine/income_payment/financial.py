@@ -5,8 +5,16 @@
 全配置驱动，时间范围由 config.py 自动解析。
 """
 import pandas as pd
+from ..core import business_rules as br
 from ..core.column_resolver import extract_columns, print_hit_columns
-from ..core.utils import log_step, filter_by_date, standardize_output, read_excel_with_fallback
+from ..core.diagnostics import note_issue, note_rejects
+from ..core.utils import (
+    log_step,
+    filter_by_date,
+    standardize_output,
+    read_excel_with_fallback,
+    empty_standard_df as _empty_standard_df,
+)
 from ..core.config import get_data_path
 
 
@@ -16,7 +24,7 @@ from ..core.config import get_data_path
 # 配置驱动，候选列名可在「配置编辑器.xlsx → 字段映射」sheet 维护：
 #   数据源.财务端.<来源>.列映射.排除标记 = ["初始化", "是否初始化"]
 #   数据源.财务端.<来源>.排除标记值      = ["√", "是", "Y", ...]
-_DEFAULT_EXCLUDE_VALUES = ("√", "是", "Y", "y", "1", "true", "True", "TRUE")
+_DEFAULT_EXCLUDE_VALUES = br.exclude_marker_defaults()  # 业务规则.json → 期初剔除.默认标记值
 
 
 def _exclude_marked_rows(df, src_config, label):
@@ -61,8 +69,30 @@ def _filter_by_whitelist(df, matcher, src_config, label):
         log_step(label, f"按配置跳过客户白名单: 保留{len(df)}行（客户名仅做规范化清洗）")
         return df
     before = len(df)
-    out = matcher.filter_dataframe(df, "客户", keep_unmatched=False)
-    log_step(label, f"白名单匹配: 成功{len(out)}行, 丢弃{before - len(out)}行")
+    marked = matcher.filter_dataframe(df, "客户", keep_unmatched=True)  # 未命中 → 客户列 None
+    miss = marked["客户"].isna()
+    n_miss = int(miss.sum())
+    if n_miss:
+        # 2026-09-29 起落盘：客户名/金额/日期/来源（金额为源表口径，未乘金额乘数）
+        amt_col = "金额" if "金额" in df.columns else None
+        date_col = "日期" if "日期" in df.columns else None
+        rows = []
+        for i in df.index[miss]:
+            amt = 0.0
+            if amt_col:
+                amt = float(pd.to_numeric(pd.Series([df.at[i, amt_col]]), errors="coerce").fillna(0).iloc[0])
+            rows.append({
+                "客户名": df.at[i, "客户"],
+                "金额": amt,
+                "日期": df.at[i, date_col] if date_col else "",
+            })
+        note_rejects(label, rows)
+    out = marked[~miss].copy()
+    msg = f"白名单匹配: 成功{len(out)}行, 丢弃{n_miss}行"
+    if n_miss:
+        msg += "（明细见 数据校验 报告「未匹配明细」sheet）"
+    log_step(label, msg, "WARN" if n_miss else "INFO")
+    _ = before  # 保留原统计语义（成功行数 = len(out)）
     return out
 
 
@@ -72,7 +102,13 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     file_path = get_data_path(config, "财务端", file_type)
 
     log_step(f"财务端{file_type}", f"读取 {file_path.name}")
-    df = read_excel_with_fallback(file_path, src_config["Sheet"], src_config["引擎"])
+    try:
+        df = read_excel_with_fallback(file_path, src_config["Sheet"], src_config["引擎"])
+    except Exception as e:
+        # 读取失败 = 关键来源缺失 → 记 ERROR（收尾红色汇总 + 非零退出码），本次按空表继续
+        log_step(f"财务端{file_type}", f"❌ 读取失败: {e}", "ERROR")
+        note_issue("ERROR", f"财务端{file_type}", f"读取失败: {e}")
+        return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
     total_in = len(df)
     log_step(f"财务端{file_type}", f"原始数据: {total_in}行 x {len(df.columns)}列")
 
@@ -96,6 +132,7 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     log_step(f"财务端{file_type}", f"日期筛选后合计: {len(df)}行 (原始 {total_in}行)")
     if len(df) == 0:
         log_step(f"财务端{file_type}", "无数据（时间范围内无匹配记录），跳过", "WARN")
+        note_issue("WARN", f"财务端{file_type}", "时间范围内无数据（空表）")
         return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
 
     # 排除内部交易
@@ -149,19 +186,29 @@ def clean_guangdong(config, matcher, time_range, file_type):
     sheet_name = src_config["Sheet"][file_type][0]
 
     log_step(f"广东{file_type}", f"读取 {file_path.name}[{sheet_name}]")
-    df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"])
+    try:
+        df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"])
+    except Exception as e:
+        log_step(f"广东{file_type}", f"❌ 读取失败: {e}", "ERROR")
+        note_issue("ERROR", f"广东{file_type}", f"读取失败: {e}")
+        return _empty_standard_df()
 
     df = _exclude_marked_rows(df, src_config, f"广东{file_type}")
     df = extract_columns(df, src_config["列映射"])
     print_hit_columns(df, f"广东{file_type}")
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"广东{file_type}", f"日期筛选后: {len(df)}行")
+    if len(df) == 0:
+        log_step(f"广东{file_type}", "无数据（时间范围内无匹配记录）", "WARN")
+        note_issue("WARN", f"广东{file_type}", "时间范围内无数据（空表）")
+        return _empty_standard_df()
 
     # 金额换算为元：倍数由配置 `金额乘数` 决定（广东公司当前 ×10000 = 万元）
     mult = _amount_multiplier(src_config, file_type)
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * mult
     df["事业部"] = src_config["事业部固定"]
-    df["法人主体"] = "广东汽车检测中心有限公司"
+    # 法人主体：默认广东汽车检测中心，可由配置覆盖（2026-09-29 外置）
+    df["法人主体"] = src_config.get("法人主体", "广东汽车检测中心有限公司")
 
     df = _filter_by_whitelist(df, matcher, src_config, f"广东{file_type}")
 
@@ -177,19 +224,29 @@ def clean_hunan(config, matcher, time_range, file_type):
     sheet_name = src_config["Sheet"][file_type][0]
 
     log_step(f"湖南{file_type}", f"读取 {file_path.name}[{sheet_name}]")
-    df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"])
+    try:
+        df = pd.read_excel(file_path, sheet_name=sheet_name, engine=src_config["引擎"])
+    except Exception as e:
+        log_step(f"湖南{file_type}", f"❌ 读取失败: {e}", "ERROR")
+        note_issue("ERROR", f"湖南{file_type}", f"读取失败: {e}")
+        return _empty_standard_df()
 
     df = _exclude_marked_rows(df, src_config, f"湖南{file_type}")
     df = extract_columns(df, src_config["列映射"])
     print_hit_columns(df, f"湖南{file_type}")
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"湖南{file_type}", f"日期筛选后: {len(df)}行")
+    if len(df) == 0:
+        log_step(f"湖南{file_type}", "无数据（时间范围内无匹配记录）", "WARN")
+        note_issue("WARN", f"湖南{file_type}", "时间范围内无数据（空表）")
+        return _empty_standard_df()
 
     # 金额换算为元：倍数由配置 `金额乘数` 决定（湖南公司当前 ×10000 = 万元）
     mult = _amount_multiplier(src_config, file_type)
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * mult
     df["事业部"] = src_config["事业部固定"]
-    df["法人主体"] = "中汽院智能网联汽车检测中心（湖南）有限公司"
+    # 法人主体：默认中汽院（湖南），可由配置覆盖（2026-09-29 外置）
+    df["法人主体"] = src_config.get("法人主体", "中汽院智能网联汽车检测中心（湖南）有限公司")
 
     df = _filter_by_whitelist(df, matcher, src_config, f"湖南{file_type}")
 
@@ -223,17 +280,20 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     src_config = config["数据源"]["财务端"]["南方韶关"]
     file_path = get_data_path(config, "财务端", "南方韶关")
     sheet_name = src_config["Sheet"][file_type][0]
-    empty_df = pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
+    empty_df = _empty_standard_df()
 
     log_step(f"南方韶关{file_type}", f"读取 {file_path.name}[{sheet_name}]")
     try:
         df, is_no_header = _read_shaoguan_raw(src_config, file_path, sheet_name)
     except Exception as e:
-        log_step(f"南方韶关{file_type}", f"读取失败: {e}", "WARN")
+        # 关键来源读取失败 → ERROR（收尾红色汇总 + 非零退出码），不再只是 WARN
+        log_step(f"南方韶关{file_type}", f"❌ 读取失败: {e}", "ERROR")
+        note_issue("ERROR", f"南方韶关{file_type}", f"读取失败: {e}（该来源本次为空）")
         return empty_df
 
     if df is None or len(df) == 0:
-        log_step(f"南方韶关{file_type}", f"无数据（空 Sheet）", "WARN")
+        log_step(f"南方韶关{file_type}", "无数据（空 Sheet）", "WARN")
+        note_issue("WARN", f"南方韶关{file_type}", "空 Sheet（该来源本次为空）")
         return empty_df
 
     df = _exclude_marked_rows(df, src_config, f"南方韶关{file_type}")
@@ -260,7 +320,8 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     out = out[out["客户"].notna() & (out["客户"] != "") & (out["客户"] != "nan")].copy()
     if len(out) == 0:
         log_step(f"南方韶关{file_type}", "无有效数据行，跳过", "WARN")
-        return pd.DataFrame(columns=["事业部", "金额", "客户", "法人主体", "日期"])
+        note_issue("WARN", f"南方韶关{file_type}", "无有效数据行（该来源本次为空）")
+        return empty_df
 
     out = filter_by_date(out, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"南方韶关{file_type}", f"日期筛选后: {len(out)}行")

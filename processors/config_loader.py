@@ -16,6 +16,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from engine.core.name_key import (
+    dotted_parent_names,
+    dotted_parent_patterns,
+    key_set,
+    match_key,
+    normalize_known_parent,
+)
+
 
 _RULES: dict | None = None
 _OWNERSHIP: dict | None = None
@@ -97,18 +105,25 @@ def expand_to_customer_names(base_dir: Path, names: list[str]) -> set[str]:
         所有底层子客户名的 set（不含母公司组名本身，除非它就是叶子）
     """
     ownership = _load_ownership(base_dir).get("客户归属", {})
-    parents = set(ownership.keys())
+    # 组名按匹配键识别（全角半角/空白差异不算差异，2026-09-29）
+    parents = {match_key(p): p for p in ownership.keys()}
+    # 「父组名自带销售」（科技公司·王海龙）：展示规则里手填 `科技公司-王海龙` 也能归到同一行
+    dotted = dotted_parent_patterns(dotted_parent_names(ownership.keys()))
     result: set[str] = set()
     for n in names:
         n = (n or "").strip()
         if not n:
             continue
-        if n in parents:
-            for sub_name in ownership[n].get("子公司", {}).keys():
+        group = parents.get(match_key(n))
+        if group is not None:
+            for sub_name in ownership[group].get("子公司", {}).keys():
                 result.add(sub_name)
+            # 「父组名自带销售」（科技公司·王海龙）：矩阵里就是这一行，白名单要能选中它
+            if "·" in str(group):
+                result.add(group)
         else:
-            # 叶子客户名：直接保留
-            result.add(n)
+            # 叶子客户名：先按「父组名自带销售」归一（分隔符容错），再直接保留
+            result.add(normalize_known_parent(n, dotted) or n)
     return result
 
 
@@ -189,14 +204,14 @@ class CustomerFilter:
         """
         result = list(customers)
 
-        # ① 白名单过滤（母公司名自动展开）
+        # ① 白名单过滤（母公司名自动展开；比较走匹配键，全角半角/空白差异不算差异）
         if self.include:
             if base_dir is None:
                 # 无 base_dir 时退化为精确匹配
-                allowed = set(self.include)
+                allowed_keys = key_set(self.include)
             else:
-                allowed = expand_to_customer_names(base_dir, self.include)
-            result = [c for c in result if c in allowed]
+                allowed_keys = key_set(expand_to_customer_names(base_dir, self.include))
+            result = [c for c in result if match_key(c) in allowed_keys]
 
         # ② 排序
         if self.sort_by == "实际金额降序" and piv is not None:

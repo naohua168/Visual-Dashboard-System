@@ -50,6 +50,16 @@ except ImportError:  # 以包形式导入时（如单元测试）
     )
 
 BASE_DIR = Path(__file__).parent.parent
+
+
+def _rel(p) -> str:
+    """路径 → 相对项目根显示（与 engine.core.utils.rel_path 同口径；本模块不依赖 engine）"""
+    try:
+        return str(Path(p).relative_to(BASE_DIR))
+    except (ValueError, TypeError):
+        return str(p)
+
+
 EXCEL_PATH = BASE_DIR / "config" / "配置编辑器.xlsx"
 DISPLAY_RULES_CFG = BASE_DIR / "config" / "前端渲染" / "展示规则.json"
 # 历史遗留：曾经生成过「下拉选项」辅助 sheet（客户名下拉用），2026-09-28 起不再需要，
@@ -529,7 +539,8 @@ def attach_rules_sheet(wb, rules: dict):
             type="none", allow_blank=True, showErrorMessage=False,
             promptTitle="怎么填",
             prompt=("手填客户名：① 母公司组名（如 广汽系）② 客户全称（照「销售归属」sheet 写）；"
-                    "一个客户一行，可多行"),
+                    "一个客户一行，可多行。"
+                    "带销售的父组名分隔符任意（科技公司-王海龙 = 科技公司·王海龙）"),
         )
         for r in dv_rows["names"]:
             dv.add(f"E{r}")
@@ -545,7 +556,7 @@ def refresh_rules_sheet(excel_path: Path | str | None = None,
     excel_path = Path(excel_path or EXCEL_PATH)
     cfg_path = Path(cfg_path or DISPLAY_RULES_CFG)
     if not excel_path.exists():
-        raise FileNotFoundError(f"未找到配置编辑器: {excel_path}")
+        raise FileNotFoundError(f"未找到配置编辑器: {_rel(excel_path)}")
     rules = json.loads(cfg_path.read_text(encoding="utf-8"))
     wb = _xl.load_workbook(excel_path)
     attach_rules_sheet(wb, rules)

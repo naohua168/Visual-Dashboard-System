@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from engine.core.diagnostics import note_issue, output_dir, print_summary, write_reports
+from engine.core.io_utils import ExcelBusyError, save_excel
 from .data_loader import load_all
 from .base import GLOBAL_CSS, GLOBAL_JS, GLOBAL_OV_CSS
 from .page_overview import OverviewPage
@@ -202,32 +204,37 @@ def run_render(output_path: str | None = None, data_dir_path: str | None = None)
     excel_path = data_dir / f"data_{today}.xlsx"
     try:
         # sheet 名称与 data/sheets/ 下文件夹名称完全一致（系统数据清理 + 手动维护）
-        with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-            data.income.to_excel(writer, sheet_name="当年累计收入", index=False)
-            data.payment.to_excel(writer, sheet_name="当年累计回款", index=False)
-            data.sales_income.to_excel(writer, sheet_name="销售收入", index=False)
-            data.sales_payment.to_excel(writer, sheet_name="销售回款", index=False)
-            if data.quarterly_income is not None:
-                data.quarterly_income.to_excel(writer, sheet_name="季度累计收入", index=False)
-            if data.quarterly_payment is not None:
-                data.quarterly_payment.to_excel(writer, sheet_name="季度累计回款", index=False)
-            if data.yearly_income is not None:
-                data.yearly_income.to_excel(writer, sheet_name="往年收入", index=False)
-            if data.yearly_payment is not None:
-                data.yearly_payment.to_excel(writer, sheet_name="往年回款", index=False)
-            if data.monthly_income_detail is not None:
-                data.monthly_income_detail.to_excel(writer, sheet_name="月收入", index=False)
-            if data.monthly_payment_detail is not None:
-                data.monthly_payment_detail.to_excel(writer, sheet_name="月回款", index=False)
-            data.annual_income_targets.to_excel(writer, sheet_name="年度收入总指标", index=False)
-            data.annual_payment_targets.to_excel(writer, sheet_name="年度回款总指标", index=False)
-            data.quarterly_income_targets.to_excel(writer, sheet_name="季度收入指标", index=False)
-            data.quarterly_payment_targets.to_excel(writer, sheet_name="季度回款指标", index=False)
-            data.monthly_income_targets.to_excel(writer, sheet_name="月度收入指标", index=False)
-            data.monthly_payment_targets.to_excel(writer, sheet_name="月度回款指标", index=False)
+        sheets: dict[str, object] = {
+            "当年累计收入": data.income,
+            "当年累计回款": data.payment,
+            "销售收入": data.sales_income,
+            "销售回款": data.sales_payment,
+        }
+        for name, df in (("季度累计收入", data.quarterly_income),
+                         ("季度累计回款", data.quarterly_payment),
+                         ("往年收入", data.yearly_income),
+                         ("往年回款", data.yearly_payment),
+                         ("月收入", data.monthly_income_detail),
+                         ("月回款", data.monthly_payment_detail)):
+            if df is not None:
+                sheets[name] = df
+        sheets.update({
+            "年度收入总指标": data.annual_income_targets,
+            "年度回款总指标": data.annual_payment_targets,
+            "季度收入指标": data.quarterly_income_targets,
+            "季度回款指标": data.quarterly_payment_targets,
+            "月度收入指标": data.monthly_income_targets,
+            "月度回款指标": data.monthly_payment_targets,
+        })
+        save_excel(sheets, excel_path)
         _log("渲染", f"已写入 {_rel(excel_path)}（{excel_path.stat().st_size/1024:.1f} KB）", "OK")
+    except ExcelBusyError as e:
+        # 交付物缺失 → ERROR（Phase 6 交付校验也会报错；不阻断 HTML 生成）
+        _log("渲染", f"❌ 数据总表写入失败：{e}", "ERROR")
+        note_issue("ERROR", "渲染", f"数据总表写入失败：{e}")
     except Exception as e:
-        _log("渲染", f"Excel 汇总失败: {e}", "WARN")
+        _log("渲染", f"❌ Excel 汇总失败: {e}", "ERROR")
+        note_issue("ERROR", "渲染", f"数据总表生成失败: {e}")
 
     return out
 
@@ -252,9 +259,18 @@ def main():
     out = run_render(output_path, data_dir_path)
 
     print(f"\n{'#' * 60}")
-    print(f"  ✅ 看板已生成: {out}")
+    print(f"  ✅ 看板已生成: {_rel(out)}")
     print(f"     大小: {out.stat().st_size / 1024:.1f} KB")
     print(f"{'#' * 60}")
+
+    # 收尾：本步骤数据质量摘要（渲染层的 Excel 汇总失败会记 ERROR → 退出码由 main.py 决定）
+    try:
+        cfg = json.loads((BASE_DIR / "config" / "清洗配置" / "cleaning_config.json").read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+    for p in write_reports(output_dir(cfg), step="渲染"):
+        print(f"  📄 已写入: {p}")
+    print_summary("渲染 · 数据质量汇总")
     return out
 
 

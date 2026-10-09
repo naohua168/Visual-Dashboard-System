@@ -1,12 +1,19 @@
 # Author: naohua168 <bai_bai168@qq.com>
-"""pytest 共享辅助 — 统一"数据就绪"检查，避免各测试文件复制路径逻辑
+"""pytest 共享辅助 — 统一"数据就绪"检查 + 诊断产物重定向
 
-三个数据依赖型测试文件（test_data_loader / test_page_renderers / test_render）
-共用同一份检查，防止路径漂移导致测试静默 skip。
+- 三个数据依赖型测试文件（test_data_loader / test_page_renderers / test_render）
+  共用同一份检查，防止路径漂移导致测试静默 skip；
+- 诊断产物（`engine.core.diagnostics`）重定向到系统临时目录：测试会跑真实流水线，
+  不重定向的话 `output/数据校验/` 会被测试报告塞满（2026-09-29 用户反馈"还是有多个文件"）。
 """
+import os
+import tempfile
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent
+
+# 子进程（main.py / 各步骤）继承该变量 → 测试期间的报告落到临时目录，正式目录保持干净
+os.environ["VD_DIAG_DIR"] = str(Path(tempfile.gettempdir()) / "vd_diag_pytest")
 SYS_DIR = BASE_DIR / "data" / "sheets" / "系统数据清理"
 MAN_DIR = BASE_DIR / "data" / "sheets" / "手动维护"
 OUTPUT = BASE_DIR / "output"

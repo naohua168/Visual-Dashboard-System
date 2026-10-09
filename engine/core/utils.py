@@ -2,7 +2,27 @@
 """
 通用工具函数
 """
+from pathlib import Path
+
 import pandas as pd
+
+from .config import end_of_day
+from .name_key import is_gd_legal, is_sz_legal
+
+# 项目根目录（engine/core/utils.py → 上三级）；供 rel_path() 计算相对显示路径
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def rel_path(p) -> str:
+    """路径 → 相对项目根显示（日志/提示专用；不在项目根下时原样返回）
+
+    交付验收要求「日志中不出现宿主机的 F:\\... 等绝对路径」（docs/部署指南.md），
+    运行时的真实读写仍用传入的完整路径，本函数只影响显示文本。
+    """
+    try:
+        return str(Path(p).relative_to(BASE_DIR))
+    except (ValueError, TypeError):
+        return str(p)
 
 
 def log_step(source, message, level="INFO"):
@@ -47,11 +67,11 @@ def read_excel_with_fallback(file_path, sheet_candidates, engine):
 
 
 def filter_by_date(df, date_col, start_date, end_date):
-    """日期范围筛选"""
+    """日期范围筛选（结束时间只写到「日」时补到当天 23:59:59，避免漏掉当天数据）"""
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     start = pd.to_datetime(start_date)
-    end = pd.to_datetime(end_date)
+    end = pd.to_datetime(end_of_day(end_date))
     mask = (df[date_col] >= start) & (df[date_col] <= end)
     return df[mask].copy()
 
@@ -70,10 +90,10 @@ def infer_company_type(entity):
     """
     if pd.isna(entity):
         return "", ""
-    e = str(entity).strip()
-    if e == "广东汽车检测中心有限公司":
+    # 按匹配键判定（全角半角/空白差异不影响，2026-09-29）
+    if is_gd_legal(entity):
         return "是", ""
-    if "深圳" in e:
+    if is_sz_legal(entity):
         return "", "是"
     return "", ""
 
@@ -107,12 +127,20 @@ def clean_customer_name(name) -> str:
     return s
 
 
+# 标准输出列（清洗结果统一口径；空的/失败的来源也按这套列返回，下游 concat 才安全）
+STD_COLUMNS = ["事业部", "金额", "客户", "法人主体", "日期"]
+
+
+def empty_standard_df() -> pd.DataFrame:
+    """空的标准输出表（读取失败 / 空表时用）"""
+    return pd.DataFrame(columns=STD_COLUMNS)
+
+
 def standardize_output(df):
     """标准化输出列顺序，并对客户列做名称清理"""
-    std_cols = ["事业部", "金额", "客户", "法人主体", "日期"]
-    for col in std_cols:
+    for col in STD_COLUMNS:
         if col not in df.columns:
             df[col] = ""
     if "客户" in df.columns:
         df["客户"] = df["客户"].apply(clean_customer_name)
-    return df[std_cols].copy()
+    return df[STD_COLUMNS].copy()

@@ -13,6 +13,20 @@ import pandas as pd
 from .utils import safe_float, get_config_range
 from .config_loader import SORT_DEFAULT, CustomerFilter, get_value
 
+# 公司名匹配键：全角半角括号/空白/大小写差异不再导致查表失败（2026-09-29）
+from engine.core import business_rules as br
+from engine.core.name_key import (
+    SPLIT_SEP,
+    KeyedLookup,
+    dotted_parent_names,
+    dotted_parent_patterns as _dotted_parent_patterns,
+    key_set,
+    match_key,
+    normalize_known_parent as _normalize_known_parent,
+    pair_key,
+)
+from engine.core.business_rules import is_gd_legal, is_sg_legal
+
 # ── 客户合并：子公司 → 母公司
 _SUB_TO_PARENT: dict[str, str] | None = None  # 懒加载
 # 销售拆分：{母公司: {子公司: 销售}}
@@ -87,10 +101,7 @@ def _sub_to_sales_key(c: str, parent: str) -> str | None:
 # ── 拆分键分隔符容错（2026-09-24 用户口径）──────────────────────
 # 手填指标表时 '母公司·销售' 中间的分隔符可能打成 - / － / 空格 / 斜杠 / 顿号…
 # → 统一归一化为系统标准键 '母公司·销售'，避免"名字对得上、只是分隔符不同"导致目标挂空
-_SPLIT_SEP = (
-    r"\s_\u00b7\u2022\u2027\u30fb\u2010-\u2015\u2212\-\uFF0D/\uFF0F\\|\uFF5C"
-    r",，、;；:：.。~\uFF5E"
-)
+_SPLIT_SEP = SPLIT_SEP  # 与 name_key 共用同一套分隔符字符
 # 母公司集合 → 已编译的 '母公司 + 分隔符 + 销售' 匹配器（按集合缓存，避免逐格重复编译）
 _SPLIT_KEY_RE_CACHE: dict[tuple[str, ...], re.Pattern | None] = {}
 
@@ -117,6 +128,8 @@ def split_key_parts(c, parents=None) -> tuple[str, str] | None:
 
     分隔符容忍：· • ・ － - – — − ／ / \\ | , ， 、 ; ； : ： . 。 ~ 空格…
     parents: 允许的母公司集合；默认取配置里的销售拆分母公司（_销售拆分.客户矩阵）
+
+    ⚠ 只处理"老的拆分母公司"；「父组名自带销售」归一化见 normalize_known_parent()
     """
     s = str(c).strip()
     if not s:
@@ -132,10 +145,72 @@ def split_key_parts(c, parents=None) -> tuple[str, str] | None:
     return (m.group("parent"), sales) if sales else None
 
 
+# ── 父组名自带销售（2026-09-29 起：科技公司·王海龙 / 科技公司·李巍）────────────
+# 归属表把「按销售拆行的母公司」直接写成 `母公司·销售`；指标表 / 展示规则手填时中间的
+# 分隔符可能打成 - / 空格 / 斜杠…（甚至漏打）→ 都归一到归属表里的规范写法。
+# 纯匹配逻辑在 engine.core.name_key（渲染层与配置加载层共用）；这里只负责"读一次归属表"。
+_DOTTED_NAMES: tuple[str, ...] | None = None
+
+
+def _dotted_names() -> tuple[str, ...]:
+    """读一次 客户销售归属.json，取「父组名自带 ·销售」的母公司名（进程内缓存）
+
+    ⚠ 这个函数在"逐客户名调用"的热路径上，绝不能每次调用都读文件。
+    """
+    global _DOTTED_NAMES
+    if _DOTTED_NAMES is None:
+        try:
+            import json
+            path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            _DOTTED_NAMES = dotted_parent_names(data.get("客户归属", {}))
+        except Exception:
+            _DOTTED_NAMES = ()
+    return _DOTTED_NAMES
+
+
+def dotted_parent_patterns(names=None) -> tuple[tuple[str, re.Pattern], ...]:
+    """归属表里「父组名自带 ·销售」的 (规范名, 匹配器) 列表（名字与匹配器都缓存）
+
+    names=None → 用归属表里的名字（只读一次）；调用方也可注入（测试用）。
+    """
+    return _dotted_parent_patterns(_dotted_names() if names is None else names)
+
+
+def normalize_known_parent(c, patterns=None) -> str | None:
+    """客户名等于「父组名自带销售」的任意分隔符写法 → 返回归属表里的规范名，否则 None"""
+    return _normalize_known_parent(
+        c, _dotted_parent_patterns(_dotted_names()) if patterns is None else patterns
+    )
+
+
+def sales_of_dotted_parent(c) -> str | None:
+    """「父组名自带销售」→ 销售名（= 规范名的最后一段）；不是则 None"""
+    canon = normalize_known_parent(c)
+    return canon.split("·")[-1] if canon else None
+
+
+def is_sales_key(c) -> bool:
+    """该客户行是否"带销售"（老的 `母公司·销售` 拆分键，或新的「父组名自带销售」）
+
+    用于 max_rows 截断保护：这类行即使金额小也不该被挤出榜单。
+    """
+    return _sales_from_key(c) is not None or sales_of_dotted_parent(c) is not None
+
+
 def normalize_split_cust(c) -> str:
-    """客户名归一化：'科技公司-王海龙' / '科技公司 王海龙' → '科技公司·王海龙'"""
+    """客户名归一化：'科技公司-王海龙' / '科技公司 王海龙' → '科技公司·王海龙'
+
+    两条路都走一遍：
+      1) 老的拆分母公司（`_销售拆分.客户矩阵`）：'母公司<任意分隔符>销售'
+      2) 新的「父组名自带销售」（归属表里的 `母公司·销售`，2026-09-29 起）：
+         任意分隔符、甚至漏打分隔符，都归一到归属表里的规范写法
+    """
     parts = split_key_parts(c)
-    return f"{parts[0]}·{parts[1]}" if parts else str(c).strip()
+    if parts:
+        return f"{parts[0]}·{parts[1]}"
+    canon = normalize_known_parent(c)
+    return canon or str(c).strip()
 
 
 def _parent_from_key(key: str, split_map: dict | None = None) -> str:
@@ -151,12 +226,17 @@ def _sales_from_key(key: str, split_map: dict[str, dict[str, str]] | None = None
     return parts[1] if parts else None
 
 
-def _expand_children_map(children_map: dict[str, list[str]]) -> dict[str, list[str]]:
-    """扩展母公司→子公司列表：为销售拆分的母公司生成 '母公司·销售' → 该销售子公司列表"""
+def _expand_children_map(children_map) -> KeyedLookup:
+    """扩展母公司→子公司列表：为销售拆分的母公司生成 '母公司·销售' → 该销售子公司列表
+
+    返回 KeyedLookup：查表（含 '母公司·销售' 键）自动忽略全角半角/空白差异。
+    """
     split_map = _load_sales_split()
+    expanded = KeyedLookup()
+    for name in children_map:
+        expanded.add(name, children_map.get(name))
     if not split_map:
-        return children_map
-    expanded = dict(children_map)
+        return expanded
     for parent, sales_map in split_map.items():
         all_subs = children_map.get(parent, [])
         sales_list: dict[str, list[str]] = {}
@@ -165,7 +245,7 @@ def _expand_children_map(children_map: dict[str, list[str]]) -> dict[str, list[s
             if sales:
                 sales_list.setdefault(sales, []).append(s)
         for sales, subs in sales_list.items():
-            expanded[f"{parent}·{sales}"] = subs
+            expanded.add(f"{parent}·{sales}", subs)
     return expanded
 
 
@@ -177,33 +257,42 @@ def _expand_children_map(children_map: dict[str, list[str]]) -> dict[str, list[s
 #   · 有销售归属的韶关行 → 保持原客户行（走销售）
 #   · 法人主体 ≠ 南方（韶关）→ 不归拢（走销售，即使客户在"南方自有"清单里）
 # ══════════════════════════════════════════════════════════════
-SG_PARENT = "南方韶关"
-SG_LEGAL_ENTITY = "南方（韶关）智能网联新能源汽车试验检测中心有限公司"
+# 2026-09-29：父组名/法人主体名外置到 config/清洗配置/业务规则.json（此处为解析后的值）
+SG_PARENT = br.parent_sg()
+SG_LEGAL_ENTITY = br.legal_sg()
 
 _ATTRIBUTION_FLAT: dict | None = None
 # 被归入「南方韶关」的客户名（本次渲染累计，供抽屉/弹窗展示明细）
 _SG_CHILDREN_SEEN: list[str] = []
 
 
-def _load_attribution_flat() -> dict:
+def _load_attribution_flat():
     """客户销售归属.json → {客户: {父组: {收入/回款: {部门: {销售: 比例}}}}}
 
     与 engine/sales/run.py::_load_attribution 同口径，用于判断"该行是否有销售归属"。
+    返回 KeyedLookup：查表按匹配键（全角半角/空白差异不影响），遍历仍是配置里的原写法。
     """
     global _ATTRIBUTION_FLAT
     if _ATTRIBUTION_FLAT is not None:
         return _ATTRIBUTION_FLAT
     import json
     path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
-    flat: dict = {}
+    flat = KeyedLookup()
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         for parent, group in data.get("客户归属", {}).items():
             for sub, sub_data in group.get("子公司", {}).items():
-                flat.setdefault(sub.strip(), {})[parent] = sub_data or {}
+                key = match_key(sub)
+                if not key:
+                    continue
+                bucket = flat.get(sub)
+                if bucket is None:
+                    bucket = {}
+                    flat.add(sub, bucket)
+                bucket[parent] = sub_data or {}
     except Exception:
-        flat = {}
+        flat = KeyedLookup()
     _ATTRIBUTION_FLAT = flat
     return flat
 
@@ -228,7 +317,8 @@ def filter_sg_by_legal(df: pd.DataFrame, metric: str):
         return df, []
     if not {"客户", "法人主体", "事业部"} <= set(df.columns):
         return df, []
-    sg_rows = df[df["法人主体"].astype(str).str.strip() == SG_LEGAL_ENTITY]
+    # 法人主体按匹配键判定（全角半角/空白差异不影响，2026-09-29）
+    sg_rows = df[df["法人主体"].map(is_sg_legal)]
     if len(sg_rows) == 0:
         return df, []
 
@@ -246,54 +336,75 @@ def filter_sg_by_legal(df: pd.DataFrame, metric: str):
     return out, absorbed
 
 
-def _load_sub_to_parent() -> dict[str, str]:
-    """加载 子公司→母公司 映射（跳过1:1：子公司名=母公司名的不映射，随便展示哪个都行）"""
+def _load_sub_to_parent():
+    """加载 子公司→母公司 映射（跳过1:1：子公司名=母公司名的不映射，随便展示哪个都行）
+
+    返回 KeyedLookup：`映射.get(客户名)` 自动忽略全角半角/空白差异，值仍是配置里的母公司名。
+    """
     import json
     path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    raw = {}
+    raw = KeyedLookup()
     for parent, group in data.get("客户归属", {}).items():
         subs = list(group.get("子公司", {}).keys())
         # 只对 N:1（子公司数 > 1）或客户名≠子公司名的关系建立映射
         for sub in subs:
-            s = sub.strip()
-            if s == parent:
+            if match_key(sub) == match_key(parent):
                 continue  # 1:1 自引用，跳过，随便展示哪个都行
-            if s not in raw:
-                raw[s] = parent
+            if sub not in raw:
+                raw.add(sub, parent)
     return raw
 
 
-def _load_children_map() -> dict[str, list[str]]:
-    """加载 母公司 → 子公司列表（弹窗展示用）"""
+def _load_children_map():
+    """加载 母公司 → 子公司列表（弹窗展示用）
+
+    返回 KeyedLookup：`children.get(客户/母公司名)` 自动忽略全角半角/空白差异。
+    """
     import json
     path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    children = {}
+    children = KeyedLookup()
     for parent, group in data.get("客户归属", {}).items():
         for sub in group.get("子公司", {}):
-            s = sub.strip()
-            children.setdefault(parent, []).append(s)
+            bucket = children.get(parent)
+            if bucket is None:
+                bucket = []
+                children.add(parent, bucket)
+            bucket.append(sub.strip())
     # 南方韶关：注入被归入的子客户（动态，来自 _consolidate_customers）
     if _SG_CHILDREN_SEEN:
-        bucket = children.setdefault(SG_PARENT, [])
+        bucket = children.get(SG_PARENT)
+        if bucket is None:
+            bucket = []
+            children.add(SG_PARENT, bucket)
         for c in _SG_CHILDREN_SEEN:
             if c not in bucket:
                 bucket.append(c)
     return children
 
 
-# 广东自有客户组：法人主体过滤常量（与销售拆分引擎 GD_LEGAL_ENTITY 对齐）
-GD_LEGAL_FILTER = "广东汽车检测中心有限公司"
-GD_PARENT_FILTER = "广东自有客户"
+# 广东自有客户组：法人主体过滤常量（与销售拆分引擎 GD_LEGAL_ENTITY 对齐；值来自 业务规则.json）
+GD_LEGAL_FILTER = br.legal_gd()
+GD_PARENT_FILTER = br.parent_gd_self()
+OTHER_PARENT_FILTER = br.parent_other()  # 法人≠广东时优先归入的"其他父组"
+
+
+def _group_by_key(groups: dict, name: str) -> dict:
+    """按匹配键取父组配置（父组名写法不同也能取到）"""
+    for p, grp in groups.items():
+        if match_key(p) == match_key(name):
+            return grp
+    return {}
 
 
 def _gd_multi_sub_to_keep() -> set[str]:
     """广东自有客户组中"多组配置"的子公司集合（这些公司按法人主体过滤）
 
-    仅广东自有配置的子公司（不在其他任何组中）→ 无歧义，全部保留
+    仅广东自有配置的子公司（不在其他任何组中）→ 无歧义，全部保留。
+    返回**匹配键集合**（全角半角/空白差异不影响比对，2026-09-29）。
     """
     import json
     path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
@@ -301,13 +412,14 @@ def _gd_multi_sub_to_keep() -> set[str]:
         return set()
     with open(path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
-    gd_subs = set(cfg.get("客户归属", {}).get(GD_PARENT_FILTER, {}).get("子公司", {}).keys())
-    all_other = set()
-    for p, grp in cfg.get("客户归属", {}).items():
-        if p == GD_PARENT_FILTER:
+    groups = cfg.get("客户归属", {})
+    gd_keys = key_set(_group_by_key(groups, GD_PARENT_FILTER).get("子公司", {}).keys())
+    all_other: set[str] = set()
+    for p, grp in groups.items():
+        if match_key(p) == match_key(GD_PARENT_FILTER):
             continue
-        all_other.update(grp.get("子公司", {}).keys())
-    return {s.strip() for s in gd_subs & all_other}
+        all_other |= key_set(grp.get("子公司", {}).keys())
+    return gd_keys & all_other
 
 
 def filter_gd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
@@ -325,7 +437,7 @@ def filter_gd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
         return df
     if "客户" not in df.columns or "法人主体" not in df.columns:
         return df
-    multi = _gd_multi_sub_to_keep()
+    multi = _gd_multi_sub_to_keep()  # 匹配键集合
     if not multi:
         return df
     import json
@@ -336,31 +448,36 @@ def filter_gd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
     except Exception:
         return df
 
-    # 构建 多组子公司 → 其"其他父组"（优先零部件客户）
+    # 子公司匹配键 → 出现的父组名列表（一次遍历建好，避免逐子公司全表扫描）
+    sub_parents: dict[str, list[str]] = {}
+    for p, grp in cfg.get("客户归属", {}).items():
+        for s in grp.get("子公司", {}):
+            sub_parents.setdefault(match_key(s), []).append(p)
+
+    # 构建 多组子公司(键) → 其"其他父组"（优先零部件客户）
+    other_parent_pref = match_key(OTHER_PARENT_FILTER)
     sub_other_parent: dict[str, str] = {}
-    for sub in multi:
-        groups = [p for p, grp in cfg.get("客户归属", {}).items()
-                  if sub in grp.get("子公司", {})]
-        others = [p for p in groups if p != GD_PARENT_FILTER]
+    for sub_key in multi:
+        others = [p for p in sub_parents.get(sub_key, [])
+                  if match_key(p) != match_key(GD_PARENT_FILTER)]
         if not others:
             continue
-        sub_other_parent[sub] = (
-            "零部件客户" if "零部件客户" in others else others[0]
+        sub_other_parent[sub_key] = (
+            OTHER_PARENT_FILTER
+            if any(match_key(p) == other_parent_pref for p in others)
+            else others[0]
         )
 
-    cust_col = df["客户"].astype(str).str.strip()
-    legal_col = df["法人主体"].astype(str).str.strip()
-    not_gd_legal = legal_col != GD_LEGAL_FILTER
-    is_multi = cust_col.isin(sub_other_parent)
+    cust_keys = df["客户"].map(match_key)
+    not_gd_legal = ~df["法人主体"].map(is_gd_legal)
+    is_multi = cust_keys.isin(sub_other_parent)
     remap_mask = is_multi & not_gd_legal
 
     n_remap = int(remap_mask.sum())
     if n_remap == 0:
         return df
     df = df.copy()
-    df.loc[remap_mask, "客户"] = df.loc[remap_mask, "客户"].map(
-        lambda c: sub_other_parent.get(str(c).strip(), str(c).strip())
-    )
+    df.loc[remap_mask, "客户"] = cust_keys[remap_mask].map(sub_other_parent)
     import logging
     logging.getLogger("vd.filter").info(
         f"广东自有法人重映射: {n_remap} 行非广东法人子公司 → 归入其其他父组（零部件客户等）"
@@ -374,12 +491,15 @@ def filter_gd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
 #   其他法人主体                            → 「比亚迪电池」
 # 与销售引擎 engine/sales/run.py 的 BYD_SUB_COMPANIES 规则配套
 # （广东主体→黄浩浩=汽车工业组、非广东→周涵林=电池组）；只挂单边的子公司保持原归属不动。
-BYD_PARENT_INDUSTRY = "比亚迪汽车工业有限公司"
-BYD_PARENT_BATTERY = "比亚迪电池"
+BYD_PARENT_INDUSTRY = br.parent_byd_industry()
+BYD_PARENT_BATTERY = br.parent_byd_battery()
 
 
 def _byd_multi_subs() -> set[str]:
-    """同时配置在「比亚迪汽车工业有限公司」与「比亚迪电池」两个父组下的子公司（配置驱动）"""
+    """同时配置在「比亚迪汽车工业有限公司」与「比亚迪电池」两个父组下的子公司（配置驱动）
+
+    返回**匹配键集合**（两侧写法不同的同一家公司也能识别，2026-09-29）。
+    """
     import json
     path = Path(__file__).parent.parent / "config" / "清洗配置" / "客户销售归属.json"
     if not path.exists():
@@ -390,9 +510,9 @@ def _byd_multi_subs() -> set[str]:
     except Exception:
         return set()
     groups = cfg.get("客户归属", {})
-    industry = set(groups.get(BYD_PARENT_INDUSTRY, {}).get("子公司", {}).keys())
-    battery = set(groups.get(BYD_PARENT_BATTERY, {}).get("子公司", {}).keys())
-    return {s.strip() for s in (industry & battery)}
+    industry = key_set(_group_by_key(groups, BYD_PARENT_INDUSTRY).get("子公司", {}).keys())
+    battery = key_set(_group_by_key(groups, BYD_PARENT_BATTERY).get("子公司", {}).keys())
+    return industry & battery
 
 
 def _multi_group_subs() -> set[str]:
@@ -412,13 +532,13 @@ def filter_byd_by_legal(df: pd.DataFrame) -> pd.DataFrame:
         return df
     if "客户" not in df.columns or "法人主体" not in df.columns:
         return df
-    multi = _byd_multi_subs()
+    multi = _byd_multi_subs()  # 匹配键集合
     if not multi:
         return df
-    mask = df["客户"].astype(str).str.strip().isin(multi)
+    mask = df["客户"].map(match_key).isin(multi)
     if not mask.any():
         return df
-    is_gd = df["法人主体"].astype(str).str.strip() == GD_LEGAL_FILTER
+    is_gd = df["法人主体"].map(is_gd_legal)
     df = df.copy()
     df.loc[mask & is_gd, "客户"] = BYD_PARENT_INDUSTRY
     df.loc[mask & ~is_gd, "客户"] = BYD_PARENT_BATTERY
@@ -507,6 +627,10 @@ def _consolidate_customers(df: pd.DataFrame, metric: str | None = None) -> pd.Da
         parts = split_key_parts(c)
         if parts:
             return f"{parts[0]}·{parts[1]}"
+        # 父组名自带销售（科技公司·王海龙）：任意分隔符写法 → 归属表里的规范名
+        canon = normalize_known_parent(c)
+        if canon:
+            return canon
         p = _map(c)
         if p in consolidate:
             # 配置了销售拆分的母公司：子公司映射为 '母公司·销售'，矩阵按销售拆行
@@ -545,7 +669,9 @@ def _target_parent_map(custs) -> dict[str, str]:
     return dict(zip(uniq, parents))
 
 
-DEPARTMENTS = ["检测", "信息", "能源", "海外"]
+# 4 大事业部：唯一来源 config/清洗配置/业务规则.json → 部门.列表（2026-09-29 起）
+# 6 个页面都从这里 import，改配置即全站生效（前提：源表/指标表用同一套部门名）
+DEPARTMENTS = br.departments()
 
 
 def _load_sub_sales_to_parent() -> dict[tuple[str, str], str]:
@@ -641,7 +767,7 @@ def _build_subs_with_data(
             continue
         parents_of = _row_parents(work)
         for sub, parent in zip(work["客户"].astype(str).str.strip(), parents_of):
-            if sub in multi_subs:
+            if match_key(sub) in multi_subs:
                 actual_scoped.add((parent, sub))
             else:
                 actual_custs.add(sub)
@@ -660,7 +786,7 @@ def _build_subs_with_data(
             if not any(safe_float(grp[d].sum()) > 0 for d in dept_cols if d in df.columns):
                 continue
             name = str(c).strip()
-            if name in multi_subs:
+            if match_key(name) in multi_subs:
                 fallback = _target_parent_map([name]).get(name, name)
                 owners = {
                     sub_sales_to_parent.get((name, str(s).strip())) or fallback
@@ -678,7 +804,7 @@ def _build_subs_with_data(
         subs = [
             s for s in subs
             if (p, s) in actual_scoped or (p, s) in target_scoped
-            or (s not in multi_subs and (s in actual_custs or s in target_custs))
+            or (match_key(s) not in multi_subs and (s in actual_custs or s in target_custs))
         ]
         # 销售拆分键：'母公司·销售' → 只取该销售名下的子公司
         sales = _sales_from_key(p, split_map)
@@ -725,7 +851,7 @@ def _build_subs_detail(
                 if not (c and dpt):
                     continue
                 amt = safe_float(row["金额_万"])
-                if c in multi_subs:
+                if match_key(c) in multi_subs:
                     d = act_scoped.setdefault((owner, c), {})
                     d[dpt] = d.get(dpt, 0.0) + amt
                 else:
@@ -738,7 +864,7 @@ def _build_subs_detail(
     if (sg_children and raw_actual is not None and len(raw_actual)
             and "法人主体" in raw_actual.columns):
         sdf = _add_wan(raw_actual.copy())
-        sdf = sdf[sdf["法人主体"].astype(str).str.strip() == SG_LEGAL_ENTITY]
+        sdf = sdf[sdf["法人主体"].map(is_sg_legal)]
         if len(sdf) and "客户" in sdf.columns and "事业部" in sdf.columns:
             g2 = sdf.groupby(["客户", "事业部"], as_index=False, dropna=False)["金额_万"].sum()
             for _, r2 in g2.iterrows():
@@ -766,7 +892,7 @@ def _build_subs_detail(
                 # 客户列写 母公司 + 销售列 → (母公司, 销售)。两种写法口径一致
                 parts = split_key_parts(c)
                 sales = str(row.get("销售", "")).strip()
-                if c in multi_subs:
+                if match_key(c) in multi_subs:
                     owner = (sub_sales_to_parent.get((c, sales))
                              or tgt_owner_cache.setdefault(
                                  c, _target_parent_map([c]).get(c, c)))
@@ -834,12 +960,12 @@ def _build_subs_detail(
             # 多组子公司（广东自有组 / 比亚迪两父组）取"按法人/销售归属到本父组"的部分
             if s in sg_children:
                 act_map = sg_actual.get(s, {})
-            elif s in multi_subs:
+            elif match_key(s) in multi_subs:
                 act_map = act_scoped.get((parent_name, s), {})
             else:
                 act_map = actual.get(s, {})
             tgt_map = (tgt_scoped.get((parent_name, s), {})
-                       if s in multi_subs else target.get(s, {}))
+                       if match_key(s) in multi_subs else target.get(s, {}))
             for dpt in DEPARTMENTS:
                 act = act_map.get(dpt, 0.0)
                 tgt = tgt_map.get(dpt, 0.0)
@@ -978,19 +1104,22 @@ def _customer_pivot(df: pd.DataFrame, tgt: pd.DataFrame) -> tuple[pd.DataFrame, 
     return piv, tgt_p
 
 
-def _build_cust_parent_map(base_dir: Path) -> dict[str, str]:
-    """从客户销售归属.json 构建 子公司→母公司 映射"""
+def _build_cust_parent_map(base_dir: Path):
+    """从客户销售归属.json 构建 子公司→母公司 映射
+
+    返回 KeyedLookup：`映射.get(客户名)` 自动忽略全角半角/空白差异（2026-09-29）。
+    """
     import json
     path = base_dir / "config" / "清洗配置" / "客户销售归属.json"
     try:
         with open(path, "r", encoding="utf-8") as f:
             ownership = json.load(f)
     except Exception:
-        return {}
-    parent_map: dict[str, str] = {}
+        return KeyedLookup()
+    parent_map = KeyedLookup()
     for parent, entry in ownership.get("客户归属", {}).items():
         for sub in entry.get("子公司", {}).keys():
-            parent_map[sub] = parent
+            parent_map.add(sub, parent)
     return parent_map
 
 
@@ -1040,8 +1169,9 @@ def _resplit_priority(all_custs: list[str], base_dir: Path,
     if filt is not None and filt.has_priority():
         parent_map = _build_cust_parent_map(base_dir)
         pri_parents = {parent_map.get(s, s) for s in filt.get_priority_names(base_dir)}
-        return ([c for c in all_custs if c in pri_parents],
-                [c for c in all_custs if c not in pri_parents])
+        pri_keys = key_set(pri_parents)  # 比较走匹配键（全角半角/空白差异不算差异）
+        return ([c for c in all_custs if match_key(c) in pri_keys],
+                [c for c in all_custs if match_key(c) not in pri_keys])
 
     # ── ② 无优先展示 → 非指标客户折叠 ──
     if tgt is None or len(tgt) == 0:
@@ -1052,7 +1182,7 @@ def _resplit_priority(all_custs: list[str], base_dir: Path,
                 reverse=True,
             )
             # 销售拆分键保护：保证 科技公司·王海龙 / 科技公司·李巍 不被截断
-            split_keys = [c for c in cs if _sales_from_key(c) is not None]
+            split_keys = [c for c in cs if is_sales_key(c)]
             top_n = cs[: filt.max_rows]
             rest = [c for c in cs[filt.max_rows :] if c not in split_keys]
             for k in split_keys:
@@ -1068,7 +1198,7 @@ def _resplit_priority(all_custs: list[str], base_dir: Path,
     main = [c for c in all_custs if c in has_tgt]
     rest = [c for c in all_custs if c not in has_tgt]
     if filt is not None and filt.max_rows > 0 and len(main) > filt.max_rows:
-        split_keys = [c for c in main if _sales_from_key(c) is not None]
+        split_keys = [c for c in main if is_sales_key(c)]
         top_n = main[: filt.max_rows]
         moved = [c for c in main[filt.max_rows :] if c not in split_keys]
         for k in split_keys:
@@ -1133,8 +1263,9 @@ def _sorted_customers(tgt_p: pd.DataFrame,
     # ③ 优先展示母公司：无论如何都展示（即使无指标无实际）
     if filt and filt.has_priority() and base_dir:
         pri_set = filt.get_priority_names(base_dir)
+        cs_keys = key_set(cs)  # 比较走匹配键（全角半角/空白差异不算差异）
         for c in pri_set:
-            if c not in cs:
+            if match_key(c) not in cs_keys:
                 cs.append(c)
 
     # ④ 排序：有指定展示顺序（优先展示配置非空）时按金额降序；
@@ -1153,7 +1284,7 @@ def _sorted_customers(tgt_p: pd.DataFrame,
     # 只要配置了客户筛选 / 行数上限 / 非默认排序，就走 apply()（排序选项才会生效）
     if filt and (not filt.is_empty() or filt.max_rows > 0 or filt.sort_by != SORT_DEFAULT):
         # 销售拆分键保护：截断前提取，保证 科技公司·王海龙 / 科技公司·李巍 不被 max_rows 挤出
-        split_keys = [c for c in cs if _sales_from_key(c) is not None]
+        split_keys = [c for c in cs if is_sales_key(c)]
         before_cs = list(cs)  # 截断前完整列表（用于收集被截断的客户）
         cs = filt.apply(cs, piv, tgt_p, base_dir)
         missing = [k for k in split_keys if k not in cs]
@@ -1177,8 +1308,8 @@ def _sorted_customers(tgt_p: pd.DataFrame,
 
     # ⑤ 优先展示拆分
     if filt and filt.has_priority() and base_dir:
-        pri_set = filt.get_priority_names(base_dir)
-        pri: list[str] = [c for c in cs if c in pri_set]
-        rest: list[str] = [c for c in cs if c not in pri_set]
+        pri_keys = key_set(filt.get_priority_names(base_dir))
+        pri: list[str] = [c for c in cs if match_key(c) in pri_keys]
+        rest: list[str] = [c for c in cs if match_key(c) not in pri_keys]
         return pri, rest
     return cs, rest_all

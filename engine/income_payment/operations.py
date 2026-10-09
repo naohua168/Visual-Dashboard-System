@@ -7,8 +7,15 @@ from datetime import datetime
 
 import pandas as pd
 from ..core.column_resolver import extract_columns, print_hit_columns
-from ..core.utils import log_step, standardize_output, read_excel_with_fallback
+from ..core.diagnostics import note_issue
+from ..core.utils import (
+    log_step,
+    standardize_output,
+    read_excel_with_fallback,
+    empty_standard_df as _empty_standard_df,
+)
 from ..core.config import get_data_path, get_annual_time_range
+from ..core.business_rules import is_gd_legal, is_sz_legal
 
 
 # 月份标签归属年份的兜底值（仅当调用方未传 year 时使用）
@@ -51,14 +58,24 @@ def _parse_ops_date(s, year=None):
     return None if pd.isna(ts) else ts.normalize()
 
 
-def clean_operations_single(config, mapper, matcher, file_type):
-    """清洗单个运营端文件"""
+def clean_operations_single(config, mapper, file_type):
+    """清洗单个运营端文件（运营端全量保留，不使用客户白名单 matcher）"""
     src_config = config["数据源"]["运营端"][file_type]
     file_path = get_data_path(config, "运营端", file_type)
 
     log_step(f"运营端{file_type}", f"读取 {file_path.name}")
-    df = read_excel_with_fallback(file_path, src_config["Sheet"], src_config["引擎"])
+    try:
+        df = read_excel_with_fallback(file_path, src_config["Sheet"], src_config["引擎"])
+    except Exception as e:
+        # 关键来源读取失败 → ERROR（收尾红色汇总 + 非零退出码）
+        log_step(f"运营端{file_type}", f"❌ 读取失败: {e}", "ERROR")
+        note_issue("ERROR", f"运营端{file_type}", f"读取失败: {e}")
+        return _empty_standard_df()
     total_in = len(df)
+    if total_in == 0:
+        log_step(f"运营端{file_type}", "空表（无数据行）", "WARN")
+        note_issue("WARN", f"运营端{file_type}", "空表（无数据行）")
+        return _empty_standard_df()
     log_step(f"运营端{file_type}", f"原始数据: {total_in}行 x {len(df.columns)}列")
 
     # 列名提取（冗余）
@@ -115,8 +132,9 @@ def clean_operations_single(config, mapper, matcher, file_type):
             accounting_col = candidate
             break
     if accounting_col:
-        n_gd = df[accounting_col].astype(str).str.strip().eq("广东汽车检测中心有限公司").sum()
-        n_sz = df[accounting_col].astype(str).str.strip().str.contains("深圳", na=False).sum()
+        # 法人主体按匹配键判定（全角半角/空白差异不影响，2026-09-29）
+        n_gd = df[accounting_col].map(is_gd_legal).sum()
+        n_sz = df[accounting_col].map(is_sz_legal).sum()
         n_other = len(df) - n_gd - n_sz
         log_step(f"运营端{file_type}",
                  f"客户全量通过: 广东{n_gd}行 + 深圳{n_sz}行 + 其他{n_other}行")
@@ -128,9 +146,9 @@ def clean_operations_single(config, mapper, matcher, file_type):
     return df
 
 
-def clean_operations(config, mapper, matcher, file_type):
+def clean_operations(config, mapper, file_type):
     """运营端完整清洗"""
     print(f"\n{'='*50}")
     print(f"  Phase 2: 运营端{file_type}清洗")
     print(f"{'='*50}")
-    return clean_operations_single(config, mapper, matcher, file_type)
+    return clean_operations_single(config, mapper, file_type)

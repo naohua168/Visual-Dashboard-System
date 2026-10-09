@@ -17,6 +17,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from processors.data_loader import DashboardData
+from processors.page_data import prepare_quarterly_data
 from processors.page_data_utils import (
     _add_wan,
     _build_subs_detail,
@@ -515,3 +517,72 @@ class TestGroupByParent:
             )
             assert result_custs == ["公司A"]
             assert result_piv.equals(piv)
+
+
+# ══════════════════════════════════════════════════════════════
+# 测试 prepare_quarterly_data
+#   季度累计为空 → 不得回退到「当年累计」（2026-10-09：曾把全年 6.9 亿当季报 → 328%）
+# ══════════════════════════════════════════════════════════════
+BASE_DIR = Path(__file__).parent.parent
+ACTUAL_COLS = ["事业部", "金额", "客户", "法人主体", "日期"]
+
+
+def _mock_data(quarterly_inc, quarterly_pay):
+    """最小 DashboardData：当年累计=6.9 亿（切忌被季度页拿去用）"""
+    def _actual(amount: float):
+        return pd.DataFrame([{"事业部": "检测", "金额": amount, "客户": "某测试客户",
+                              "法人主体": "某测试法人", "日期": "2026-09-30"}])
+
+    def _tgt():
+        return pd.DataFrame([{"客户": "某测试客户", "检测": 100.0, "信息": 50.0,
+                              "能源": 30.0, "海外": 20.0}])
+
+    return DashboardData(
+        income=_actual(688_700_000.0),
+        payment=_actual(586_900_000.0),
+        sales_income=_actual(688_700_000.0),
+        sales_payment=_actual(586_900_000.0),
+        annual_income_targets=_tgt(), annual_payment_targets=_tgt(),
+        quarterly_income_targets=_tgt(), quarterly_payment_targets=_tgt(),
+        monthly_income_targets=_tgt(), monthly_payment_targets=_tgt(),
+        quarterly_income=quarterly_inc,
+        quarterly_payment=quarterly_pay,
+    )
+
+
+class TestPrepareQuarterlyEmpty:
+    def test_empty_quarterly_does_not_fall_back_to_annual(self):
+        """季度累计空表 → 季度页 0；绝不显示当年累计的 6.9 亿"""
+        data = _mock_data(pd.DataFrame(columns=ACTUAL_COLS),
+                          pd.DataFrame(columns=ACTUAL_COLS))
+        d = prepare_quarterly_data(data, BASE_DIR)
+        assert d.total_inc == 0.0
+        assert d.total_pay == 0.0
+        # 「第 N 季度」按配置窗口（不硬编码，跟随用户维护的季度）
+        q_start = int(_quarter_start_date()[:7].split("-")[1])
+        assert d.quarter == (q_start - 1) // 3 + 1
+
+    def test_missing_quarterly_file_does_not_fall_back(self):
+        """季度累计文件整体缺失（None）同样按空表渲染"""
+        d = prepare_quarterly_data(_mock_data(None, None), BASE_DIR)
+        assert d.total_inc == 0.0
+        assert d.total_pay == 0.0
+
+    def test_quarterly_data_still_used_when_present(self):
+        """有季度数据时照常汇总（收入 1 亿 / 回款 2 亿，万元）"""
+        inc = pd.DataFrame([{"事业部": "检测", "金额": 100_000_000.0, "客户": "某测试客户",
+                             "法人主体": "某测试法人", "日期": "2026-10-05"}])
+        pay = pd.DataFrame([{"事业部": "检测", "金额": 200_000_000.0, "客户": "某测试客户",
+                             "法人主体": "某测试法人", "日期": "2026-10-05"}])
+        d = prepare_quarterly_data(_mock_data(inc, pay), BASE_DIR)
+        assert d.total_inc == pytest.approx(10000.0)
+        assert d.total_pay == pytest.approx(20000.0)
+        assert d.quarter == 4
+
+
+def _quarter_start_date() -> str:
+    """读配置里的「季度累计筛选」起始日期（YYYY-MM-DD）"""
+    import json
+    cfg = json.loads((BASE_DIR / "config" / "清洗配置" / "cleaning_config.json")
+                     .read_text(encoding="utf-8"))
+    return cfg["时间范围"]["季度累计筛选"]["start_date"]

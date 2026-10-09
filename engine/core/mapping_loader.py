@@ -4,6 +4,8 @@
 """
 import pandas as pd
 from .config import load_mapping, BASE_DIR
+from .name_key import key_set, match_key
+from .utils import rel_path
 
 
 class DepartmentMapper:
@@ -37,6 +39,8 @@ class DepartmentMapper:
         # 内部交易排除名单（直接数组格式）
         excluded = mapping_data.get("excluded_internal_companies", [])
         self.excluded_companies = excluded if isinstance(excluded, list) else excluded.get("companies", [])
+        # 匹配键集合：全角半角/空白差异不影响排除判定（2026-09-29）
+        self.excluded_keys = key_set(self.excluded_companies)
 
     def map_income_dept(self, dept_name):
         """收入版部门映射"""
@@ -51,10 +55,10 @@ class DepartmentMapper:
         return self.payment_map.get(str(dept_name).strip())
 
     def is_excluded(self, customer_name):
-        """是否在内部交易排除名单中"""
+        """是否在内部交易排除名单中（按匹配键比较，忽略全角半角/空白差异）"""
         if pd.isna(customer_name):
             return False
-        return str(customer_name).strip() in self.excluded_companies
+        return match_key(customer_name) in self.excluded_keys
 
 
 def load_department_mapper(config):
@@ -74,7 +78,7 @@ def load_customer_list(config):
     if not os.path.exists(raw_path):
         raise FileNotFoundError(
             f"客户名单文件未找到，请将 '客户名单.xlsx' 放入:\n"
-            f"  {raw_path}"
+            f"  {rel_path(raw_path)}"
         )
 
     # 从 Excel 读取

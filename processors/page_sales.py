@@ -74,9 +74,11 @@ class SalesPage(BaseRenderer):
             return sorted(all_sales, key=_key, reverse=True)
 
         def _col(by_sales, title, total_act, total_tgt, tgt_dict, metric):
-            # TODO: 0 指标销售有实际金额时，total_act > total_tgt → 合计完成率 > 100%。
-            # 当前实际数据中 0 指标销售实际金额=0，不影响；未来若需严格控制，
-            # 可改为 total_act = sum(by_sales[s] for s in tgt_dict if tgt_dict[s] > 0)
+            # 合计完成率口径（2026-09-29 修）：分子只算**有指标**的销售 —— 否则 0 指标销售
+            # 的实际金额会把合计完成率顶到 >100%（与个人行口径不一致）。
+            # 显示的「实际合计」仍是全部实际金额，不受影响。
+            act_for_rate = sum(float(by_sales.get(str(s), 0) or 0)
+                               for s, ti in tgt_dict.items() if float(ti or 0) > 0)
             sales_sorted = _sorted_sales(by_sales, tgt_dict)
             rows = ""
             for s_name in sales_sorted:
@@ -115,7 +117,7 @@ class SalesPage(BaseRenderer):
                     f'</div>'
                 )
             # 合计行（有实际无指标 → 100%）
-            total_rate = 1.0 if (total_tgt == 0 and total_act > 0) else (total_act / total_tgt if total_tgt else 0)
+            total_rate = (act_for_rate / total_tgt) if total_tgt else (1.0 if total_act > 0 else 0.0)
             rpct = round(total_rate * 100)
             summary = (
                 f'<div class="mini-rate summary-rate">'

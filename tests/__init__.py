@@ -14,6 +14,7 @@ Visual Dashboard System — 端到端测试套件
     - test_mapping_loader.py:   部门映射/客户名单加载
     - test_splitter.py:     销售拆分逻辑 + 总额校验
     - test_main.py:         顶层调度器参数解析与预检
+    - test_extreme_data.py: 极端数据健壮性（日期窗口边界 / 金额异常 / 客户名异常 / 达成率除零 / HTML-JS 注入 / 归属表比例守恒）
     - test_e2e.py:          端到端流水线（需真实数据）
 
 测试不依赖真实业务数据：使用合成 DataFrame 验证逻辑正确性。

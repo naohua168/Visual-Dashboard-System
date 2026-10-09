@@ -12,32 +12,33 @@ import sys
 
 import pandas as pd
 
+from ..core import business_rules as br
 from ..core.config import load_config, get_output_path, BASE_DIR
-from ..core.utils import log_step
+from ..core.diagnostics import note_issue, output_dir, print_summary, write_reports
+from ..core.io_utils import ExcelBusyError, save_excel
+from ..core.name_key import (
+    dup_name_groups,
+    format_conflicts,
+    key_set,
+    match_key,
+)
+from ..core.business_rules import is_gd_legal
+from ..core.utils import log_step, rel_path
 
-# 4 大事业部
-DEPARTMENTS = ["检测", "信息", "能源", "海外"]
+# 4 大事业部（列顺序来自 业务规则.json → 部门.列表，2026-09-29）
+DEPARTMENTS = br.departments()
 
 # 比亚迪汽车工业有限公司 下属需按法人主体区分销售的子公司
 # 规则：仅当某子公司同时存在 "广东汽车检测中心" 法人主体（→黄浩浩）与
 #       非 "广东汽车检测中心" 法人主体（→周涵林）时，才做此区分；
 #       单边存在时保持原拆分结果不动。
-BYD_SUB_COMPANIES = [
-    "汕尾比亚迪实业有限公司",
-    "长沙市比亚迪汽车有限公司",
-    "衡阳比亚迪实业有限公司",
-    "韶关比亚迪实业有限公司",
-    "西安比亚迪汽车零部件有限公司",
-    "合肥比亚迪汽车有限公司",
-    "深圳比亚迪汽车实业有限公司",
-    "常州比亚迪汽车有限公司",
-    "抚州比亚迪实业有限公司",
-    "济南比亚迪汽车有限公司",
-    "郑州比亚迪汽车有限公司",
-]
-BYD_GD_LEGAL = "广东汽车检测中心有限公司"   # 广东主体 → 黄浩浩
-BYD_GD_SALES = "黄浩浩"
-BYD_OTHER_SALES = "周涵林"                 # 非广东主体 → 周涵林
+# 2026-09-29：清单 / 销售名 / 法人主体名外置到 `config/清洗配置/业务规则.json`
+# （engine/core/business_rules.py 读取，缺项回落到此处等价的内置默认值）；
+# 下面这些模块常量保留为别名，供其它模块与测试引用。
+BYD_SUB_COMPANIES = br.byd_subs()
+BYD_GD_LEGAL = br.legal_gd()                 # 广东主体 → 黄浩浩
+BYD_GD_SALES = br.sales_byd_gd()
+BYD_OTHER_SALES = br.sales_byd_other()       # 非广东主体 → 周涵林
 
 
 def _apply_byd_sales_override(split_df: pd.DataFrame) -> pd.DataFrame:
@@ -52,15 +53,16 @@ def _apply_byd_sales_override(split_df: pd.DataFrame) -> pd.DataFrame:
     if not overlap:
         return split_df
 
-    cust_col = split_df["客户"].astype(str).str.strip()
-    legal_col = split_df["法人主体"].astype(str).str.strip()
+    # 客户名/法人主体都按匹配键比较（全角半角、空白差异不影响判定）
+    cust_col = split_df["客户"].map(match_key)
+    legal_col = split_df["法人主体"].map(match_key)
 
     affected = 0
-    for cust in overlap:
+    for cust in overlap:  # overlap 里存的是匹配键
         mask = cust_col == cust
         if not mask.any():
             continue
-        is_gd = legal_col[mask] == BYD_GD_LEGAL
+        is_gd = legal_col[mask].map(is_gd_legal)
         split_df.loc[mask & is_gd, "销售"] = BYD_GD_SALES
         split_df.loc[mask & ~is_gd, "销售"] = BYD_OTHER_SALES
         affected += int(mask.sum())
@@ -88,7 +90,11 @@ def _load_excluded_companies() -> list[str]:
 
 
 def _load_attribution() -> dict[str, dict[str, dict]]:
-    """加载客户销售归属.json，扁平化为 {客户名: {父组名: {收入: {部门: {销售: 比例}}, 回款: ...}}}。
+    """加载客户销售归属.json，扁平化为 {匹配键: {父组名: {收入: {部门: {销售: 比例}}, 回款: ...}}}。
+
+    键 = `name_key.match_key(子公司名)`：全角半角括号、空白、大小写差异不再导致匹配不上
+    （2026-09-29，如 `法雷奥汽车内部控制（深圳）有限公司` vs `... (深圳) ...`）。
+    显示名不受影响；撞键时按配置里**先出现的写法**合并匹配，并在日志里提示去合并配置。
 
     保留父组名：同一客户可能同时出现在多个父组（如"广东自有客户"与"零部件客户"），
     拆分时需按法人主体判断取哪个父组的销售分配。
@@ -104,16 +110,38 @@ def _load_attribution() -> dict[str, dict[str, dict]]:
     flat: dict[str, dict[str, dict]] = {}
     for parent, group in data.get("客户归属", {}).items():
         for sub_name, sub_data in group.get("子公司", {}).items():
-            key = sub_name.strip()
+            key = match_key(sub_name)
+            if not key:
+                continue
             flat.setdefault(key, {})[parent] = sub_data
 
+    # 同一家公司写成两遍（仅符号/空白差异）→ 提示人工合并；多组配置（不同父组）不算
+    problems = dup_name_groups(data.get("客户归属", {}))
+    if problems:
+        log_step(
+            "销售引擎",
+            f"⚠ 归属表存在「同一家公司写成两遍」的条目 {len(problems)} 组"
+            f"（匹配按先出现的写法合并，建议合并成一条）: {format_conflicts(problems)}",
+            "WARN",
+        )
     log_step("销售引擎", f"加载 {len(flat)} 条客户→销售映射")
     return flat
 
 
 # 广东法人主体 → 归属"广东自有客户"父组（其余法人主体归其他父组）
-GD_LEGAL_ENTITY = "广东汽车检测中心有限公司"
-GD_PARENT_GROUP = "广东自有客户"
+# 2026-09-29：法人主体名 / 父组名外置到 业务规则.json（这里保留别名，比较走 is_gd_legal）
+GD_LEGAL_ENTITY = br.legal_gd()
+GD_PARENT_GROUP = br.parent_gd_self()
+OTHER_PARENT_GROUP = br.parent_other()
+
+
+def _find_group(cust_groups: dict[str, dict], name: str) -> str | None:
+    """在父组 dict 里按匹配键找组名（忽略全角半角/空白差异）"""
+    target = match_key(name)
+    for key in cust_groups:
+        if match_key(key) == target:
+            return key
+    return None
 
 
 def _select_parent_group(cust_groups: dict[str, dict], legal_entity: str) -> tuple[str, dict]:
@@ -121,17 +149,20 @@ def _select_parent_group(cust_groups: dict[str, dict], legal_entity: str) -> tup
 
     返回 (父组名, 配置)。父组名会写入拆分结果的"母公司"列，供前端按此分组。
 
-    - 法人主体 == 广东汽车检测中心有限公司 → 取"广东自有客户"组
+    - 法人主体（归一化后）== 广东汽车检测中心有限公司 → 取"广东自有客户"组
     - 其他 → 优先取"零部件客户"组；若无则取第一个组
     """
     if len(cust_groups) == 1:
         only = next(iter(cust_groups.items()))
         return only[0], only[1]
 
-    if legal_entity == GD_LEGAL_ENTITY and GD_PARENT_GROUP in cust_groups:
-        return GD_PARENT_GROUP, cust_groups[GD_PARENT_GROUP]
-    if "零部件客户" in cust_groups:
-        return "零部件客户", cust_groups["零部件客户"]
+    if is_gd_legal(legal_entity):
+        gd = _find_group(cust_groups, GD_PARENT_GROUP)
+        if gd:
+            return gd, cust_groups[gd]
+    other = _find_group(cust_groups, OTHER_PARENT_GROUP)
+    if other:
+        return other, cust_groups[other]
     first = next(iter(cust_groups.items()))
     return first[0], first[1]
 
@@ -150,11 +181,12 @@ def _load_byd_overlap() -> set[str]:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    byd_keys = key_set(BYD_SUB_COMPANIES)  # 名单与配置都用匹配键比较
     sales_by_cust: dict[str, set[str]] = {}
     for parent, group in data.get("客户归属", {}).items():
         for sub_name, sub_data in group.get("子公司", {}).items():
-            key = sub_name.strip()
-            if key not in BYD_SUB_COMPANIES:
+            key = match_key(sub_name)
+            if key not in byd_keys:
                 continue
             all_s = sales_by_cust.setdefault(key, set())
             for metric in ("收入", "回款"):
@@ -192,16 +224,17 @@ def run_split(file_type, config=None):
     total_amount = df["金额"].sum()
     log_step(f"销售{file_type}", f"原始: {total_in}行, 金额{total_amount:,.2f}")
 
-    # 排除内部交易公司（客户=自身，与清洗层排除名单一致）
-    excluded = _load_excluded_companies()
+    # 排除内部交易公司（客户=自身，与清洗层排除名单一致；名单/客户名都按匹配键比较）
+    excluded = key_set(_load_excluded_companies())
     if excluded and "客户" in df.columns:
         before = len(df)
-        df = df[~df["客户"].astype(str).str.strip().isin(excluded)].copy()
+        df = df[~df["客户"].map(match_key).isin(excluded)].copy()
         if before - len(df) > 0:
             log_step(f"销售{file_type}", f"排除内部交易客户: 丢弃{before - len(df)}行", "OK")
 
     if not attribution:
-        log_step(f"销售{file_type}", "无归属映射，跳过拆分", "WARN")
+        log_step(f"销售{file_type}", "无归属映射，跳过拆分（输出文件不会更新）", "WARN")
+        note_issue("WARN", f"销售{file_type}", "无归属映射 → 跳过拆分（销售收入/回款沿用上一期）")
         df["销售"] = ""
         return df
 
@@ -217,7 +250,8 @@ def run_split(file_type, config=None):
     unmatched = 0
 
     for _, row in df.iterrows():
-        customer = str(row.get("客户", "")).strip()
+        # 客户名经归一化匹配键查表：全角半角括号/空白/大小写差异不再导致漏匹配
+        customer = match_key(row.get("客户", ""))
         department = str(row.get("事业部", "")).strip()
         amount = float(row.get("金额", 0))
 
@@ -240,7 +274,7 @@ def run_split(file_type, config=None):
         #   该组只收 法人主体 = 广东汽车检测中心有限公司 的行。
         #   同一客户在其它法人（如 南方韶关）下的行不归销售 → 保持"待确认"，
         #   否则会出现"韶关的行业绩算给了广东自有销售"的口径错配。
-        if parent_name == GD_PARENT_GROUP and legal_entity != GD_LEGAL_ENTITY:
+        if match_key(parent_name) == match_key(GD_PARENT_GROUP) and not is_gd_legal(legal_entity):
             row_dict = row.to_dict()
             row_dict["销售"] = "待确认"
             row_dict["母公司"] = parent_name
@@ -292,13 +326,15 @@ def run_split(file_type, config=None):
     else:
         log_step(f"销售{file_type}", f"总额校验: 差异 {diff:,.6f}", "WARN")
 
-    # 写入
+    # 写入（被 Excel 占用 → 友好提示 + 退出码 3）
     output_key = f"销售{file_type}"
     output_path = get_output_path(config, output_key)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    split_df = split_df.fillna("")
-    split_df.to_excel(output_path, index=False)
-    log_step(f"销售{file_type}", f"写入: {output_path}", "OK")
+    try:
+        save_excel(split_df.fillna(""), output_path)
+    except ExcelBusyError as e:
+        log_step(f"销售{file_type}", f"❌ 写入失败：{e}", "ERROR")
+        raise SystemExit(3) from e
+    log_step(f"销售{file_type}", f"写入: {rel_path(output_path)}", "OK")
 
     return split_df
 
@@ -330,6 +366,11 @@ def main():
     for ft, df in results.items():
         print(f"  销售{ft}: {len(df)}行, 金额{df['金额'].sum():,.2f}")
     print(f"{'#'*60}")
+
+    # 收尾：本步骤的数据质量摘要（写盘 + 打印；最终退出码由 main.py 统一决定）
+    for p in write_reports(output_dir(config), step="销售拆分"):
+        print(f"  📄 已写入: {p}")
+    print_summary("销售拆分 · 数据质量汇总")
     return results
 
 

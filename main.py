@@ -22,13 +22,22 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+from engine.core.utils import rel_path  # 日志统一显示相对项目根的路径（无绝对路径）
+
 # 项目根目录（main.py 所在目录）
 BASE_DIR = Path(__file__).parent.resolve()
 LOGS_DIR = BASE_DIR / "logs"
+
+# 本次运行号（与日志文件同名）：传给各步骤子进程，让它们只写中间件、
+# 由收尾统一合并成「数据校验目录唯一一份报告」（2026-09-29 用户口径）
+RUN_ID_ENV = "VD_RUN_ID"
+CURRENT_RUN_ID = ""
 
 
 # ──────────────────────────────────────────────────────────────
@@ -79,6 +88,20 @@ STEPS = [
         "name": "Phase 4: 渲染 HTML 看板",
         "module": "processors.run",
         "description": "加载已清洗数据，生成 6 页面 HTML 可视化看板到 output/",
+    },
+    {
+        "key": "report",
+        "name": "Phase 5: 销售完成度汇总表",
+        "script": "scripts/sales_summary_report.py",
+        "description": "按销售汇总 实际(元)/指标(万元→元) → <输出目录>/销售完成度/销售完成度汇总_YYYYMMDD.xlsx（收入/回款 2 sheet）"
+                       "（2026-09-29 从 run_all.bat 并入主流程，路径与单位换算改为配置驱动）",
+    },
+    {
+        "key": "verify",
+        "name": "Phase 6: 交付物校验",
+        "script": "scripts/verify_dashboard.py",
+        "description": "校验 看板 HTML（JS 语法/6 页/onclick 绑定）+ 数据总表 + 销售完成度表 是否齐全且非空；"
+                       "有 ❌ 则整次运行失败",
     },
 ]
 
@@ -191,9 +214,11 @@ def run_step(step: dict, file_type: str | None, logger: Logger, dry_run: bool) -
             cwd=str(BASE_DIR),
             encoding="utf-8",
             errors="replace",
+            # 把本次运行号传给子进程：各步骤只写中间件，收尾合并成唯一报告
+            env={**os.environ, **({RUN_ID_ENV: CURRENT_RUN_ID} if CURRENT_RUN_ID else {})},
         )
     except FileNotFoundError:
-        logger.log(f"  Python 解释器未找到: {sys.executable}", "ERROR")
+        logger.log(f"  Python 解释器未找到: {Path(sys.executable).name}", "ERROR")
         return False
 
     if result.returncode == 0:
@@ -237,6 +262,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-config", dest="no_config", action="store_true",
                    help="跳过配置同步（Excel → JSON），用于直接改 JSON 的场景")
     p.add_argument("--list", dest="list_steps", action="store_true", help="列出所有可用步骤")
+    p.add_argument("--ignore-data-issues", dest="ignore_data_issues", action="store_true",
+                   help="存在关键来源读取失败（ERROR）时也返回 0（数据仍会缺，仅用于应急出图）")
     return p
 
 
@@ -253,6 +280,43 @@ def resolve_steps(args) -> list[dict]:
             return []
         return STEPS[start_idx : end_idx + 1]
     return STEPS  # 默认全部
+
+
+def diagnostics_summary(logger: Logger, ignore_issues: bool = False) -> int:
+    """收尾：合并各步骤写出的中间件 → **产出唯一一份报告** → 打印汇总 → 返回退出码（0 或 4）
+
+    各步骤在独立子进程里跑（带本次运行号 VD_RUN_ID），只把诊断写进中间件 JSON；
+    这里 `finalize()` 合并成 `output/数据校验/数据质量摘要_<运行号>.xlsx`（概览/问题清单/丢弃汇总/未匹配明细）
+    并把中间件删掉 —— 一次运行在数据校验目录只留一个文件。
+    """
+    try:
+        if str(BASE_DIR) not in sys.path:
+            sys.path.insert(0, str(BASE_DIR))
+        from engine.core.diagnostics import finalize, output_dir
+        cfg = json.loads((BASE_DIR / "config" / "清洗配置" / "cleaning_config.json").read_text(encoding="utf-8"))
+        out = output_dir(cfg, BASE_DIR)
+        merged, report = finalize(out, CURRENT_RUN_ID or None)
+        if report is not None:
+            # 报告可能落在项目外（如测试重定向到临时目录）→ relative_to 会抛错，这里容错
+            try:
+                shown = report.relative_to(BASE_DIR)
+            except ValueError:
+                shown = report
+            logger.log(f"  数据校验报告: {shown}（概览/问题清单/丢弃汇总/未匹配明细）")
+    except Exception as e:  # 摘要读不到不该影响主流程
+        logger.log(f"  数据质量摘要读取失败（忽略）: {e}", "WARN")
+        return 0
+
+    logger.log("#" * 60)
+    logger.log("📋 数据质量汇总（各步骤合并）")
+    for line in merged.summary_lines():
+        logger.log("  " + line)
+    logger.log("#" * 60)
+    if merged.has_error() and not ignore_issues:
+        logger.log("❌ 存在关键来源 ERROR → 本次运行判定为失败（退出码 4）", "ERROR")
+        logger.log("   应急出图可加 --ignore-data-issues（数据仍缺，请先修数据源）")
+        return 4
+    return 0
 
 
 def main(argv=None) -> int:
@@ -287,7 +351,9 @@ def main(argv=None) -> int:
         print("\n✅ 预检通过（dry-run 模式，不执行实际命令）")
         print("\n将执行以下步骤：")
         for s in steps_to_run:
-            print(f"  - {' '.join(build_command(s, args.type))}")
+            cmd = build_command(s, args.type)
+            cmd[0] = Path(sys.executable).name  # 预览只显示解释器文件名，不暴露绝对路径
+            print(f"  - {' '.join(cmd)}")
         return 0
 
     # 启动日志
@@ -295,10 +361,14 @@ def main(argv=None) -> int:
     log_path = LOGS_DIR / f"run_{ts}.log"
     logger = Logger(log_path)
 
+    global CURRENT_RUN_ID
+    CURRENT_RUN_ID = ts          # 本次运行号 → 子进程只写中间件，收尾合并成唯一报告
+    os.environ[RUN_ID_ENV] = ts
+
     logger.log("#" * 60)
     logger.log("Visual Dashboard System — 启动")
     logger.log(f"  时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.log(f"  工作目录: {BASE_DIR}")
+    logger.log(f"  工作目录: {BASE_DIR.name}（项目根；日志内路径均相对它显示）")
     logger.log(f"  日志文件: {log_path.relative_to(BASE_DIR)}")
     logger.log(f"  执行步骤: {[s['key'] for s in steps_to_run]}")
     if any(s["key"] == "config" for s in steps_to_run):
@@ -318,6 +388,9 @@ def main(argv=None) -> int:
             failed_step = step
             break  # 任一步骤失败则终止后续
 
+    # 收尾：数据质量汇总（各步骤合并）→ 退出码
+    diag_rc = diagnostics_summary(logger, args.ignore_data_issues)
+
     # 总结
     logger.log("#" * 60)
     if failed_step:
@@ -325,19 +398,26 @@ def main(argv=None) -> int:
             f"❌ 流程中断：{failed_step['key']} 失败，已执行 {success_count}/{len(steps_to_run)} 步",
             "ERROR",
         )
-        logger.log(f"   查看日志: {log_path}")
+        logger.log(f"   查看日志: {rel_path(log_path)}")
         logger.log(f"   修复后可用 --from={failed_step['key']} 重试")
         logger.log("#" * 60)
         logger.close()
         return 3
-    else:
+    if diag_rc:
         logger.log(
-            f"✅ 全部完成：{success_count}/{len(steps_to_run)} 步成功",
-            "OK",
+            f"⚠️ 步骤全部完成（{success_count}/{len(steps_to_run)}），但存在数据质量问题 → 退出码 {diag_rc}",
+            "ERROR",
         )
         logger.log("#" * 60)
         logger.close()
-        return 0
+        return diag_rc
+    logger.log(
+        f"✅ 全部完成：{success_count}/{len(steps_to_run)} 步成功",
+        "OK",
+    )
+    logger.log("#" * 60)
+    logger.close()
+    return 0
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@
     python scripts/config_excel_to_json.py --init       # 首次创建 Excel 模板（从当前 JSON 导出）
     python scripts/config_excel_to_json.py --init-map   # 只刷新「字段映射」sheet（其余 sheet 不动）
     python scripts/config_excel_to_json.py --init-rules # 只刷新「展示规则」sheet
+    python scripts/config_excel_to_json.py --refresh-notes  # 只把「说明」sheet 的新增分节补到末尾
 
 设计原则：
     - Excel 是「编辑层」，JSON 是「事实源」（系统只读 JSON）
@@ -38,6 +39,12 @@ except ImportError:
     sys.exit(1)
 
 BASE_DIR = Path(__file__).parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from engine.core import business_rules as br  # noqa: E402
+from engine.core.utils import rel_path  # noqa: E402  （提示路径统一相对项目根显示）
+
 EXCEL_PATH = BASE_DIR / "config" / "配置编辑器.xlsx"
 CLEANING_CFG = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
 DISPLAY_RULES_CFG = BASE_DIR / "config" / "前端渲染" / "展示规则.json"
@@ -49,6 +56,20 @@ TIME_KEYS = ["年度累计", "月度数据", "季度累计筛选", "年基线数
 # dynamic 策略白名单（与 engine/core/config.py _STRATEGY_REGISTRY 对应）
 DYNAMIC_STRATEGIES = ["last_full_month", "last_full_quarter"]
 
+# ── 「模式」「动态策略」在 Excel 里显示中文（2026-09-30 用户口径：英文术语看不懂）──
+#    Excel（编辑层，中文）↔ 内部值（JSON 事实源，英文）双向映射；
+#    旧文件里的 static / dynamic / last_full_month / last_full_quarter 继续兼容解析。
+MODE_LABELS = {"static": "手填日期", "dynamic": "自动计算"}
+MODE_ALIASES = {
+    "static": "static", "手填日期": "static", "手填": "static",
+    "dynamic": "dynamic", "自动计算": "dynamic", "自动": "dynamic",
+}
+STRATEGY_LABELS = {"last_full_month": "最近完整月", "last_full_quarter": "最近完整季度"}
+STRATEGY_ALIASES = {
+    "last_full_month": "last_full_month", "最近完整月": "last_full_month",
+    "last_full_quarter": "last_full_quarter", "最近完整季度": "last_full_quarter",
+}
+
 HEADERS = ["配置名", "模式", "动态策略", "开始日期", "结束日期", "年份", "月份范围", "说明"]
 
 # 展示规则：sheet 结构 / 解析 / 校验 / 下拉 全在 scripts/display_rules_sheet.py
@@ -59,11 +80,22 @@ RULE_PAGES = ["数据总览", "年度达成", "月度达成", "季度达成", "�
 # 销售归属 sheet 列
 ATT_HEADERS = ["母公司", "子公司", "指标", "部门", "销售", "比例", "说明"]
 
-# 指标取值（收入,回款 表示同时写入两个指标）
-METRIC_VALUES = ["收入", "回款", "收入,回款"]
+# 指标取值（「收入/回款」= 斜杠分隔，表示同时写入两个指标；下拉用它，逗号不再是分隔符）
+METRIC_SEP = "/"
+METRIC_VALUES = ["收入", "回款", "收入/回款"]
+METRIC_BOTH = METRIC_VALUES[-1]  # 收入与回款归属一致时用这一行（模板/自动归入都写它）
 
-# 部门取值
-DEPT_VALUES = ["检测", "信息", "能源", "海外"]
+
+def split_metric_value(value: str) -> list[str]:
+    """拆分「指标」列取值 → 指标名列表
+
+    现行写法用斜杠：`收入/回款`；历史文件的逗号写法（`收入,回款`）继续兼容。
+    斜杠不会和 Excel 下拉的内联列表分隔符（逗号）冲突，否则下拉里选不到合并项。
+    """
+    return [p.strip() for p in re.split(r"[/,，、]+", value or "") if p.strip()]
+
+# 部门取值（唯一来源 业务规则.json → 部门.列表，与看板/引擎同一套）
+DEPT_VALUES = br.departments()
 
 # KPI 指标 sheet（单独 sheet，控制 Hero 圆环的指标总数，万元）
 # 值留空 = 不覆盖（用指标文件合计）；填数字 = 覆盖 KPI 卡片显示
@@ -92,6 +124,44 @@ UNIT_NOTE_LINES: list[list[str]] = [
     ["   - 变更记录: 2026-09-28 南方韶关 收入+回款 两个 Sheet 单位均改为「元」→ 金额乘数由 {收入:1, 回款:10000} 简化为 1"],
     ["   - ⚠ 本编辑器「字段映射」sheet 的候选列名（如 金额(元) / 金额(万元)）只决定「能否匹配上源文件列名」，不参与单位换算；"],
     ["     名字对上了但单位没同步改「金额乘数」，金额会差 10000 倍"],
+]
+
+# 「说明」sheet 第 10 节：名称匹配（全角半角/空白差异）—— 2026-09-29 新增
+# 供 `--init` 生成模板、以及刷新现有 Excel 说明页时共用，避免两处文案漂移
+NAME_NOTE_LINES: list[list[str]] = [
+    ["10. 名称匹配（全角/半角符号差异）— 2026-09-29 起统一归一："],
+    ["   - 客户名/子公司名/法人主体名比较时，以下差异一律忽略：全角括号（）与半角括号()、全角字母数字、"],
+    ["     空格（含全角空格）、零宽字符、英文大小写。如 法雷奥汽车内部控制（深圳）有限公司 = 法雷奥汽车内部控制(深圳)有限公司"],
+    ["   - 不影响展示：表里显示的名字仍按配置/源表原样，不会被改写"],
+    ["   - ⚠ 但同一家公司不要在本表配置两遍（如一条全角括号、一条半角括号）："],
+    ["     运行时（配置同步 / 销售拆分）会打印「仅符号差异的重复写法 N 组」提示，请人工合并成一条"],
+    ["   - 不做的合并: 括号里的地名不同（（深圳）vs（上海））或增删后缀（有限公司）**不算同一个名字**，不会自动合并"],
+]
+
+# 「说明」sheet 第 11 节：数据质量与产物（2026-09-29 新增；同日改为「一次运行一个文件」）
+OUTPUT_NOTE_LINES: list[list[str]] = [
+    ["11. 数据质量与产物（2026-09-29 起）："],
+    ["   - 每次运行在 <输出目录>/数据校验/ 只留 **1 个** 文件：数据质量摘要_<运行号>.xlsx，含 4 个 sheet ——"],
+    ["     概览（各步骤 ERROR/WARN/丢弃行数）、问题清单、丢弃汇总、未匹配明细（来源/客户名/金额/日期）"],
+    ["   - 客户白名单未命中的行写进「未匹配明细」sheet，收尾打印「白名单未匹配丢弃: N 行 / X 万元」；"],
+    ["     各步骤中间件（数据质量摘要_<步骤>_<运行号>.json）在收尾合并后自动删除，超 14 天的旧报告自动清理"],
+    ["   - 关键来源（财务端主表 / 广东 / 湖南 / 南方韶关 / 运营端）读取失败 → ERROR：整次运行以非零退出码结束"],
+    ["     应急出图可加 --ignore-data-issues；空表只记 WARN（当月可能确实没数据）"],
+    ["   - 销售人名 / 父组名 / 法人主体 / 比亚迪子公司清单 已外置到 config/清洗配置/业务规则.json（改它即可，无需改代码）"],
+    ["   - 交付物校验（main.py 的 verify 步骤）：6 页看板 + 数据总表 + 销售完成度表 是否齐全且非空"],
+    ["   - 销售完成度表已并入主流程（main.py 的 report 步骤），不再由 run_all.bat 单独调用"],
+]
+
+# 「说明」sheet 第 12 节：业务规则.json（外部业务参数一览）
+BIZ_NOTE_LINES: list[list[str]] = [
+    ["12. 业务规则.json（config/清洗配置/，2026-09-29 起）—— 特殊口径都放这里，改它不用改代码："],
+    ["   - 销售人名 / 父组名（广东自有客户、零部件客户、比亚迪两父组、南方韶关）/ 法人主体（含深圳标记）"],
+    ["   - 部门列表（4 大事业部的列顺序）/ 事业部全称映射 / 法人简称映射"],
+    ["   - 广东自有客户自动归入：状态文件、最短客户名长度、黑名单、列名候选、内部交易标记值"],
+    ["   - 比亚迪子公司清单（同时挂两个父组时按法人主体区分销售）"],
+    ["   - 期初剔除默认标记值（初始化=√ 等；候选列名在「字段映射」sheet）"],
+    ["   - 归入规则：南方韶关 / 广东自有 / 零部件 / 比亚迪 / 科技公司 / 白名单 的口径说明（供交接排查）"],
+    ["   - 查看当前生效值（含默认值合并结果）：python -m engine.core.business_rules"],
 ]
 
 # 字段映射 sheet（清洗列名映射的编辑层，2026-09-17 新增）
@@ -135,11 +205,18 @@ except ImportError:  # 以包形式导入时（如单元测试）
 # Excel 读取 → 时间配置 dict
 # ──────────────────────────────────────────────────────────────
 def _parse_cell(value) -> str:
-    """单元格值 → 干净字符串（Excel 日期/数字转文本）"""
+    """单元格值 → 干净字符串（Excel 日期/数字转文本）
+
+    2026-09-30 修复：日期时间单元格原本只取「日期」部分，把 `2026-09-30 23:59:59`
+    截成 `2026-09-30` → 结束时间退化成当天 00:00:00，导致**当天数据被整段排除**。
+    现在：时分秒全为 0 → 仍输出 `YYYY-MM-DD`（保持简洁）；否则保留 `YYYY-MM-DD HH:MM:SS`。
+    """
     if value is None:
         return ""
     if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d")
+        if (value.hour, value.minute, value.second) == (0, 0, 0):
+            return value.strftime("%Y-%m-%d")
+        return value.strftime("%Y-%m-%d %H:%M:%S")
     return str(value).strip()
 
 
@@ -155,7 +232,33 @@ def _parse_month_range(raw: str) -> list[int]:
             nums.append(int(p))
         except ValueError:
             raise ValueError(f"月份范围格式错误: {raw!r}（应为 '1-8' 或 '1,8'）")
+    # 写 "1-9" 时若单元格不是文本格式，Excel 会当日期存成序列号（46031）→ 这里给出可操作的提示
+    if nums and (len(nums) != 2 or any(n < 1 or n > 12 for n in nums)):
+        raise ValueError(
+            f"月份范围格式错误: {raw!r}（应为 '1-8' 或 '1,8'）"
+            "；若该单元格显示成日期（如 2026/1/9），说明被 Excel 识别成了日期 —— "
+            "请把单元格格式设为「文本」后重新填 1-9"
+        )
     return nums
+
+
+# 「时间配置」开始/结束日期列的显示格式：两者都写到秒（2026-10-09 起，开始时间不再只显示到日）
+DATE_CELL_FMT = "yyyy-mm-dd hh:mm:ss"
+
+
+def _date_cell_value(raw):
+    """JSON 里的日期文本 → 写进 Excel 单元格的 datetime（配 DATE_CELL_FMT 显示到秒）
+
+    '2026-10-01' → datetime(2026,10,1,0,0)，单元格显示 `2026-10-01 00:00:00`；
+    '2026-10-31 23:59:59' 原样保留时分秒；解析不了的异常文本原样返回（由校验阶段报错）。
+    """
+    s = str(raw).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return raw
 
 
 def excel_to_time_config(sheet) -> dict:
@@ -185,8 +288,8 @@ def excel_to_time_config(sheet) -> dict:
             raise ValueError(f"时间配置存在重复键: {name}")
         seen.add(name)
 
-        mode = at(row, "模式") or "static"
-        strategy = at(row, "动态策略")
+        mode_raw = at(row, "模式") or "static"
+        strategy_raw = at(row, "动态策略")
         start = at(row, "开始日期")
         end = at(row, "结束日期")
         year = at(row, "年份")
@@ -195,7 +298,7 @@ def excel_to_time_config(sheet) -> dict:
 
         if name == "结算模式":
             # 特殊行：非日期范围，值为月底结算 / 常规（填在「模式」列）
-            settle = mode if mode != "static" else "常规"
+            settle = mode_raw if mode_raw not in ("static", "手填日期", "手填") else "常规"
             if settle not in ("月底结算", "常规"):
                 raise ValueError(f"{name}: 值应为「月底结算」或「常规」（填在「模式」列），当前: {settle!r}")
             result[name] = {
@@ -204,17 +307,27 @@ def excel_to_time_config(sheet) -> dict:
             }
             continue
 
+        # 中文标签（手填日期/自动计算）与英文旧值（static/dynamic）都接受
+        mode = MODE_ALIASES.get(mode_raw.strip())
+        if mode is None:
+            raise ValueError(
+                f"{name}: 未知模式 {mode_raw!r}（可选 {' / '.join(MODE_LABELS.values())}；"
+                f"旧写法 static / dynamic 也兼容）"
+            )
+        strategy = STRATEGY_ALIASES.get(strategy_raw.strip(), strategy_raw.strip())
+
         if mode == "dynamic":
             if strategy not in DYNAMIC_STRATEGIES:
                 raise ValueError(
-                    f"{name}: 未知动态策略 {strategy!r}，可选 {DYNAMIC_STRATEGIES}"
+                    f"{name}: 未知动态策略 {strategy!r}，可选 "
+                    f"{' / '.join(STRATEGY_LABELS.values())}（旧写法 {DYNAMIC_STRATEGIES} 也兼容）"
                 )
             cfg: dict = {"_mode": "dynamic", "_strategy": strategy}
-        elif mode == "static":
+        else:
             if name == "年基线数据":
                 # 年基线：年份 + 月份范围
                 if not year:
-                    raise ValueError(f"{name}: static 模式需填「年份」")
+                    raise ValueError(f"{name}: 手填日期模式需填「年份」")
                 months = _parse_month_range(month_range)
                 if len(months) != 2 or months[0] > months[1]:
                     raise ValueError(f"{name}: 月份范围应为 [起始月, 结束月]，如 1-8")
@@ -222,7 +335,7 @@ def excel_to_time_config(sheet) -> dict:
             else:
                 # 常规时间范围：开始/结束日期
                 if not start or not end:
-                    raise ValueError(f"{name}: static 模式需填「开始日期」和「结束日期」")
+                    raise ValueError(f"{name}: 手填日期模式需填「开始日期」和「结束日期」")
                 for v in (start, end):
                     try:
                         datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
@@ -232,8 +345,6 @@ def excel_to_time_config(sheet) -> dict:
                         except ValueError:
                             raise ValueError(f"{name}: 日期格式错误 {v!r}（应为 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）")
                 cfg = {"start_date": start, "end_date": end}
-        else:
-            raise ValueError(f"{name}: 未知模式 {mode!r}（应为 static 或 dynamic）")
 
         if note:
             cfg["_使用方"] = note
@@ -354,7 +465,7 @@ def _replace_time_range_block(text: str, time_config: dict) -> str:
 def update_cleaning_config(time_config: dict, dry_run: bool = False) -> dict:
     """把时间配置写回 cleaning_config.json 的「时间范围」部分（文本级替换，最小 diff）"""
     if not CLEANING_CFG.exists():
-        raise FileNotFoundError(f"cleaning_config.json 不存在: {CLEANING_CFG}")
+        raise FileNotFoundError(f"cleaning_config.json 不存在: {rel_path(CLEANING_CFG)}")
 
     text = CLEANING_CFG.read_text(encoding="utf-8")
     cfg = json.loads(text)
@@ -412,7 +523,7 @@ def update_display_rules(rules: dict, dry_run: bool = False) -> dict:
         3. 页面数据 100% 来自 Excel
     """
     if not DISPLAY_RULES_CFG.exists():
-        raise FileNotFoundError(f"展示规则.json 不存在: {DISPLAY_RULES_CFG}")
+        raise FileNotFoundError(f"展示规则.json 不存在: {rel_path(DISPLAY_RULES_CFG)}")
 
     text = DISPLAY_RULES_CFG.read_text(encoding="utf-8")
     cfg = json.loads(text)
@@ -443,7 +554,7 @@ def update_kpi_rules(kpi: dict, dry_run: bool = False) -> dict:
     其余配置不动；某页面收入/回款都留空时不写该区块（恢复指标文件合计）。
     """
     if not DISPLAY_RULES_CFG.exists():
-        raise FileNotFoundError(f"展示规则.json 不存在: {DISPLAY_RULES_CFG}")
+        raise FileNotFoundError(f"展示规则.json 不存在: {rel_path(DISPLAY_RULES_CFG)}")
 
     text = DISPLAY_RULES_CFG.read_text(encoding="utf-8")
     cfg = json.loads(text)
@@ -559,10 +670,10 @@ def excel_to_attribution(sheet) -> dict:
     # 构建嵌套结构
     result: dict = {}
     for r in rows:
-        metrics = [m.strip() for m in r["metric"].split(",") if m.strip()]
+        metrics = split_metric_value(r["metric"])
         for m in metrics:
             if m not in ("收入", "回款"):
-                raise ValueError(f"非法指标值: {m!r}（可选 收入/回款/收入,回款）")
+                raise ValueError(f"非法指标值: {m!r}（可选 收入 / 回款 / 收入/回款）")
         # 比例解析（支持整数/小数/百分比/空=1.0）
         ratio = r["ratio"]
         if ratio == "":
@@ -583,13 +694,35 @@ def excel_to_attribution(sheet) -> dict:
             if r["note"]:
                 sub_obj.setdefault("_说明", r["note"])
 
+    report_dup_names(result)
     return result
+
+
+def report_dup_names(attribution: dict) -> None:
+    """提示归属表里「同一家公司写成两遍」的条目（全角括号 vs 半角括号、空格差异等）
+
+    匹配已按 `engine.core.name_key` 归一（不会漏匹配），但同一家公司配两遍会让
+    父组/销售出现两份口径，建议人工合并 → 这里只提示、不改配置。
+
+    判定规则见 `engine.core.name_key.dup_name_groups`（多组配置不算重复）。
+    """
+    if str(BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(BASE_DIR))
+    try:
+        from engine.core.name_key import dup_name_groups, format_conflicts  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - 缺 engine 包时不阻断同步
+        return
+
+    problems = dup_name_groups(attribution)
+    if problems:
+        print(f"⚠ 归属表存在「同一家公司写成两遍」的条目 {len(problems)} 组"
+              f"（匹配会自动合并，建议合并成一条）: {format_conflicts(problems)}")
 
 
 def update_attribution(attribution: dict, dry_run: bool = False) -> dict:
     """把销售归属写回 客户销售归属.json（保留 _说明/_销售拆分，客户归属数据来自 Excel）"""
     if not ATTRIBUTION_CFG.exists():
-        raise FileNotFoundError(f"客户销售归属.json 不存在: {ATTRIBUTION_CFG}")
+        raise FileNotFoundError(f"客户销售归属.json 不存在: {rel_path(ATTRIBUTION_CFG)}")
 
     text = ATTRIBUTION_CFG.read_text(encoding="utf-8")
     cfg = json.loads(text)
@@ -634,8 +767,8 @@ def init_excel_template():
     from openpyxl.worksheet.datavalidation import DataValidation
 
     banner(ws, "改日期 → 保存 → 运行 启动系统.bat / run_all.bat 生效。"
-               "模式 static = 手填日期；dynamic = 自动取最近完整月/季度（填「动态策略」）；"
-               "「结算模式」行的值填在「模式」列。", len(HEADERS))
+               "「模式」选「手填日期」= 自己填开始/结束日期；选「自动计算」= 系统按「动态策略」自动算"
+               "（最近完整月 / 最近完整季度），不用填日期；「结算模式」行的值填在「模式」列。", len(HEADERS))
     header_row(ws, HEADERS, row=2)
 
     row_idx = 3
@@ -643,32 +776,44 @@ def init_excel_template():
         spec = tr.get(key, {})
         fill_color = _cell_fill(key)
         if spec.get("_mode") == "dynamic":
-            values = [key, "dynamic", spec.get("_strategy", ""), "", "", "", "", spec.get("_使用方", "")]
+            values = [key, MODE_LABELS["dynamic"],
+                      STRATEGY_LABELS.get(spec.get("_strategy", ""), spec.get("_strategy", "")),
+                      "", "", "", "", spec.get("_使用方", "")]
         elif key == "年基线数据":
             months = spec.get("月份范围", [])
             values = [
-                key, "static", "",
+                key, MODE_LABELS["static"], "",
                 "", "", spec.get("年份", ""),
                 f"{months[0]}-{months[1]}" if len(months) == 2 else "",
                 spec.get("_使用方", ""),
             ]
         else:
             values = [
-                key, "static", "",
+                key, MODE_LABELS["static"], "",
                 spec.get("start_date", ""), spec.get("end_date", ""),
                 "", "", spec.get("_使用方", ""),
             ]
         for col, v in enumerate(values, 1):
+            if col in (4, 5):
+                v = _date_cell_value(v)  # 开始/结束日期：写成 datetime，单元格显示到秒
             c = data_cell(ws, row_idx, col, v,
                           editable=col in (2, 3, 4, 5, 6, 7), readonly=(col == 8),
                           wrap=(col == 8))
+            if col in (4, 5) and isinstance(c.value, datetime):
+                c.number_format = DATE_CELL_FMT
+            elif col == 7:  # 月份范围：文本格式，防止 Excel 把 1-9 存成日期（2026/1/9）
+                c.number_format = "@"
             if col == 1:  # 配置名列保留按行的身份色（年度/月度/季度/年基线）
                 c.fill = PatternFill("solid", fgColor=fill_color)
         row_idx += 1
 
+    last_time_row = row_idx - 1   # 4 个配置行的最后一行（结算模式行不参与下面两个下拉）
+
     # 结算模式行（值填在「模式」列：月底结算 / 常规）
     settle = tr.get("结算模式", {})
+    settle_row = None
     if settle:
+        settle_row = row_idx
         values = [
             "结算模式", settle.get("值", "常规"), "",
             "", "", "", "",
@@ -683,16 +828,22 @@ def init_excel_template():
 
     set_widths(ws, [16, 12, 20, 18, 26, 8, 12, 46])
 
-    dv_mode = DataValidation(type="list", formula1='"static,dynamic"', allow_blank=True,
-                             promptTitle="怎么填",
-                             prompt="static = 手填开始/结束日期；dynamic = 自动算（再填「动态策略」）")
-    dv_mode.add(f"B3:B{row_idx + 50}")
+    dv_mode = DataValidation(type="list", formula1='"' + ",".join(MODE_LABELS.values()) + '"',
+                             allow_blank=True, promptTitle="怎么填（二选一）",
+                             prompt="手填日期 = 自己填「开始日期 / 结束日期」；"
+                                    "自动计算 = 按右侧「动态策略」自动算，不用填日期")
+    dv_mode.add(f"B3:B{last_time_row}")
     ws.add_data_validation(dv_mode)
-    dv_strat = DataValidation(type="list", formula1='"last_full_month,last_full_quarter"',
-                              allow_blank=True, promptTitle="怎么填",
-                              prompt="仅「模式=dynamic」时填：last_full_month 最近完整月 / last_full_quarter 最近完整季度")
-    dv_strat.add(f"C3:C{row_idx + 50}")
+    dv_strat = DataValidation(type="list", formula1='"' + ",".join(STRATEGY_LABELS.values()) + '"',
+                              allow_blank=True, promptTitle="怎么填（仅自动计算时用）",
+                              prompt="最近完整月 / 最近完整季度（例：9 月跑批 → 最近完整月 = 8 月）")
+    dv_strat.add(f"C3:C{last_time_row}")
     ws.add_data_validation(dv_strat)
+    if settle_row:  # 结算模式行单独给下拉（原先被普通模式下拉误罩，选不到合法值）
+        dv_settle = DataValidation(type="list", formula1='"月底结算,常规"', allow_blank=True,
+                                   promptTitle="怎么填", prompt="月底结算 / 常规")
+        dv_settle.add(f"B{settle_row}")
+        ws.add_data_validation(dv_settle)
     finish(ws, freeze="A3", autofilter="A2:H2", tab_color=TAB_COLORS["时间配置"])
 
     # ── Sheet 2: 展示规则 ──
@@ -712,14 +863,14 @@ def init_excel_template():
     for group_i, (parent, group) in enumerate(att.items()):
         band = (group_i % 2 == 1)
         for sub, sub_data in group.get("子公司", {}).items():
-            # 判断收入/回款是否同构：同构 → 指标=收入,回款 一行
+            # 判断收入/回款是否同构：同构 → 指标=收入/回款 一行
             inc = sub_data.get("收入", {})
             pay = sub_data.get("回款", {})
             if inc == pay and inc:
                 note = sub_data.get("_说明", "")
                 for dept, sales_map in inc.items():
                     for sales, ratio in sales_map.items():
-                        vals = [parent, sub, "收入,回款", dept, sales,
+                        vals = [parent, sub, METRIC_BOTH, dept, sales,
                                 f"{ratio:.15g}", note]
                         for c, v in enumerate(vals, 1):
                             data_cell(ws_a, att_row, c, v,
@@ -746,7 +897,7 @@ def init_excel_template():
     from openpyxl.worksheet.datavalidation import DataValidation
     dv_metric = DataValidation(type="list", formula1='"' + ",".join(METRIC_VALUES) + '"',
                                allow_blank=True, promptTitle="怎么填",
-                               prompt="收入 / 回款 / 收入,回款（收入与回款归属一致时填「收入,回款」一行搞定）")
+                               prompt="收入 / 回款 / 收入/回款（收入与回款归属一致时填「收入/回款」一行搞定）")
     dv_metric.add(f"C3:C{att_row + 50}")
     ws_a.add_data_validation(dv_metric)
     dv_dept = DataValidation(type="list", formula1='"' + ",".join(DEPT_VALUES) + '"',
@@ -804,17 +955,22 @@ def init_excel_template():
         [""],
         ["2. 「时间配置」sheet 列说明："],
         ["   - 配置名: 年度累计 / 月度数据 / 季度累计筛选 / 年基线数据（勿改）"],
-        ["   - 模式: static（手填日期）或 dynamic（自动计算）"],
-        ["   - 动态策略: 模式为 dynamic 时填写 last_full_month / last_full_quarter"],
-        ["   - 开始日期/结束日期: 格式 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS"],
+        ["   - 模式: 手填日期（默认：自己填开始/结束日期）或 自动计算（按「动态策略」自动算，不用填日期）"],
+        ["     · 兼容旧写法 static = 手填日期、dynamic = 自动计算，历史文件不用改"],
+        ["   - 动态策略: 仅在「模式 = 自动计算」时选：最近完整月 / 最近完整季度"],
+        ["     · 例：9 月跑批 → 最近完整月 = 8/1~8/31；最近完整季度 = 4/1~6/30"],
+        ["     · 注意：它取的是「上一个完整周期」，不是当月；要统计「当月」请继续用「手填日期」"],
+        ["   - 开始日期/结束日期: 格式 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS（两列都显示到秒，如 2026-10-01 00:00:00）"],
+        ["     · 结束只写到「日」时，系统按当天 23:59:59 处理（不会漏掉当天数据）"],
         ["   - 年份/月份范围: 仅年基线数据使用，如 2025 / 1-8"],
+        ["     · 月份范围单元格是文本格式，请勿改成日期格式（否则 1-9 会被存成 2026/1/9，同步会报错）"],
         ["   - 说明: 填写配置用途（可选）"],
         [""],
         *RULE_NOTE_LINES,
         ["4. 「销售归属」sheet 列说明："],
         ["   - 母公司: 客户归组的母公司名（如 广州小鹏汽车科技有限公司）"],
         ["   - 子公司: 实际结算主体名（=母公司时表示本部）"],
-        ["   - 指标: 收入 / 回款 / 收入,回款（收入回款同构时用后者，一行搞定）"],
+        ["   - 指标: 收入 / 回款 / 收入/回款（斜杠分隔 = 两个指标同构时用后者，一行搞定）"],
         ["   - 部门: 检测 / 信息 / 能源 / 海外"],
         ["   - 销售: 负责销售的姓名"],
         ["   - 比例: 分配比例，默认 1（全额）；拆分时填小数如 0.3 或百分比 30%"],
@@ -856,6 +1012,12 @@ def init_excel_template():
         ["   字段映射写回后 cleaning_config.json 会统一为标准 2 空格缩进格式（写前自动备份到 logs/）。"],
         [""],
         *UNIT_NOTE_LINES,
+        [""],
+        *NAME_NOTE_LINES,
+        [""],
+        *OUTPUT_NOTE_LINES,
+        [""],
+        *BIZ_NOTE_LINES,
     ]
     for row in lines:
         ws2.append(row)
@@ -895,15 +1057,92 @@ def init_excel_template():
 # ──────────────────────────────────────────────────────────────
 # 主入口
 # ──────────────────────────────────────────────────────────────
+def _note_blocks() -> list[list[list[str]]]:
+    """说明书里由代码维护的分节（顺序 = 写入顺序；每项是一个完整分节的行列表）"""
+    return [UNIT_NOTE_LINES, NAME_NOTE_LINES, OUTPUT_NOTE_LINES, BIZ_NOTE_LINES]
+
+
+def _sync_note_block(ws, block: list[list[str]]) -> str:
+    """让「说明」sheet 里某个分节与代码文案一致，返回 'updated' / 'appended' / 'same'
+
+    - 找不到该分节标题 → 追加到末尾（前空一行）
+    - 找到但正文有变（如「一次运行一个文件」改口径）→ **原地重写该分节**（不动其它行）
+    """
+    title = str(block[0][0]).strip()
+    rows = {r: str(ws.cell(row=r, column=1).value).strip() for r in range(1, ws.max_row + 1)}
+    start = next((r for r, v in rows.items() if v == title), None)
+
+    if start is None:
+        row = ws.max_row + 2
+        for line in block:
+            cell = ws.cell(row=row, column=1, value=line[0])
+            if re.match(r"^\d+\.", str(line[0]).strip()):
+                cell.font = Font(bold=True, color=COLOR_PRIMARY, size=11.5)
+                cell.fill = PatternFill("solid", fgColor=COLOR_BANNER_BG)
+            row += 1
+        return "appended"
+
+    # 该分节的行范围：标题 → 下一个分节标题（或表尾）之前，去掉尾部空行
+    # （分节之间的空行是排版，不属于分节内容 —— 否则每次刷新都会删掉一行，越刷越短）
+    end = ws.max_row
+    for r in range(start + 1, ws.max_row + 1):
+        if re.match(r"^\d+\.", rows.get(r, "")):
+            end = r - 1
+            break
+    while end > start and not str(ws.cell(row=end, column=1).value or "").strip():
+        end -= 1
+    have = [str(ws.cell(row=r, column=1).value) for r in range(start, end + 1)]
+    want = [line[0] for line in block]
+    if have == want:
+        return "same"
+
+    need, cur = len(want), len(have)
+    if need < cur:
+        ws.delete_rows(start + need, cur - need)
+    elif need > cur:
+        ws.insert_rows(start + cur, need - cur)
+    for i, text in enumerate(want):
+        cell = ws.cell(row=start + i, column=1, value=text)
+        if i == 0:
+            cell.font = Font(bold=True, color=COLOR_PRIMARY, size=11.5)
+            cell.fill = PatternFill("solid", fgColor=COLOR_BANNER_BG)
+        else:
+            cell.font = Font(size=11)
+    return "updated"
+
+
+def refresh_note_sheet() -> Path:
+    """让「说明」sheet 与代码里的文案同步：缺的分节追加、改过的分节原地重写
+
+    用途：说明书新增/修订章节（如第 11 节改「一次运行一个文件」）后不必跑 `--init`
+    重建整本（重建会覆盖手工编辑）；本命令只碰代码维护的那几个分节，其它内容一行不动。
+    """
+    wb = openpyxl.load_workbook(EXCEL_PATH)
+    if "说明" not in wb.sheetnames:
+        raise ValueError("工作簿缺少「说明」sheet")
+    ws = wb["说明"]
+    changed = [_sync_note_block(ws, block) for block in _note_blocks()]
+    if all(c == "same" for c in changed):
+        return EXCEL_PATH
+    wb.save(EXCEL_PATH)
+    return EXCEL_PATH
+
+
 def main():
     args = sys.argv[1:]
     init = "--init" in args
     init_map = "--init-map" in args
     init_rules = "--init-rules" in args
+    refresh_notes = "--refresh-notes" in args
     dry_run = "--dry-run" in args
 
     if init:
         init_excel_template()
+        return 0
+
+    if refresh_notes:
+        path = refresh_note_sheet()
+        print(f"✅ 已刷新「说明」sheet 新增分节（其余 sheet 未改动）: {path.relative_to(BASE_DIR)}")
         return 0
 
     if init_map:

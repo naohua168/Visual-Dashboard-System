@@ -19,21 +19,39 @@ REM 自动检测 Python 解释器
 REM ============================================
 set PYTHON=
 
-REM 0) 优先使用内置运行时（解压即用，无需安装 Python）
+REM 0) 用户自定义解释器目录（config\python_path.txt）—— 设了就优先用，没设则往下自动探测
+set "PY_DIR="
+if exist "%~dp0config\python_path.txt" (
+    for /f "usebackq eol=# tokens=*" %%L in ("%~dp0config\python_path.txt") do (
+        set "PY_DIR=%%L"
+        goto :got_pydir
+    )
+)
+:got_pydir
+if defined PY_DIR (
+    if exist "%PY_DIR%\python.exe" (
+        set "PYTHON=%PY_DIR%\python.exe"
+        echo [系统] 使用自定义 Python: %PY_DIR%\python.exe
+        goto :found_python
+    )
+    echo [警告] config\python_path.txt 里的路径无效: %PY_DIR%（继续自动探测）
+)
+
+REM 1) 内置运行时（解压即用，无需安装 Python）
 if exist "%~dp0runtime\python\python.exe" (
-    set PYTHON=%~dp0runtime\python\python.exe
+    set "PYTHON=%~dp0runtime\python\python.exe"
     echo [系统] 使用内置 Python 运行时（免安装）
     goto :found_python
 )
 
-REM 1) 尝试 Conda 环境
-if exist "C:\Users\%USERNAME%\.conda\envs\visual-dashboard-system\python.exe" (
-    set PYTHON=C:\Users\%USERNAME%\.conda\envs\visual-dashboard-system\python.exe
+REM 2) 本机 Conda 环境（系统内置变量 %USERPROFILE%，不写死盘符/目录）
+if exist "%USERPROFILE%\.conda\envs\visual-dashboard-system\python.exe" (
+    set "PYTHON=%USERPROFILE%\.conda\envs\visual-dashboard-system\python.exe"
     echo [系统] 使用 Conda 环境: visual-dashboard-system
     goto :found_python
 )
 
-REM 2) 尝试系统 Python
+REM 3) 尝试系统 Python
 for %%p in (python python3) do (
     where %%p >nul 2>&1
     if !errorlevel!==0 (
@@ -124,29 +142,9 @@ exit /b %MAIN_RC%
 :main_ok
 
 REM ============================================
-echo ═══ Phase 5: 生成销售完成度汇总表 ═══
-if exist "scripts\sales_summary_report.py" (
-    "%PYTHON%" scripts\sales_summary_report.py
-    if errorlevel 1 (
-        echo [警告] 销售完成度汇总表生成失败！
-    )
-) else (
-    echo [跳过] scripts\sales_summary_report.py 不存在
-)
-echo.
-
-REM ============================================
-echo ═══ Phase 6: 看板质量验证 ═══
-if exist "scripts\verify_dashboard.py" (
-    "%PYTHON%" scripts\verify_dashboard.py
-    if errorlevel 1 (
-        echo [警告] 看板验证发现问题，请检查 JS 语法或函数绑定！
-    )
-) else (
-    echo [跳过] scripts\verify_dashboard.py 不存在
-)
-echo.
-
+REM Phase 5/6（销售完成度汇总表 + 交付物校验）已并入 main.py 的 report/verify 步骤
+REM （2026-09-29），这里不再重复执行；单独跑用：
+REM   "%PYTHON%" main.py --step=report    /   "%PYTHON%" main.py --step=verify
 REM ============================================
 echo.
 echo ╔══════════════════════════════════════════════════════╗

@@ -173,12 +173,17 @@ def test_resolve_unknown_strategy_raises():
 
 
 def test_quarterly_time_range_uses_config():
-    """读取 cleaning_config.json 后，季度范围从配置读取（手动模式）"""
+    """读取 cleaning_config.json 后，季度范围从配置读取（手动模式）
+
+    日期不硬编码：配置由用户按结算周期手动维护（2026-10-09 改为跟随配置断言）。
+    """
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         config = json.load(f)
+    spec = config["时间范围"]["季度累计筛选"]
     r = get_quarterly_time_range(config, datetime(2026, 7, 29))
-    # 手动模式：直接使用配置中的日期
-    assert r["start_date"] == "2026-07-01"
+    # 手动模式：直接使用配置中的日期（结束时间只写到「日」时系统补 23:59:59）
+    assert r["start_date"] == spec["start_date"]
+    assert r["end_date"].startswith(str(spec["end_date"])[:10])
     assert r["_mode"] == "static"
 
 

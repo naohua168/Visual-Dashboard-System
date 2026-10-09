@@ -13,6 +13,8 @@
 3. **双击 `启动系统.bat`**（图形化控制台，推荐）或 `run_all.bat`（命令行），自动完成：配置同步 → 清洗 → 拆分 → 渲染 → 汇总 → 验证
 4. 打开 `output/看板/看板_YYYYMMDD.html` 查看看板
 
+> **想指定自己机器的 Python？** 编辑 `config/python_path.txt`，写一行 Python 所在目录（只写目录，不写 `python.exe`）即可，**优先级高于内置 `runtime/`**；留空（默认）= 直接用内置运行时。解释器选择顺序见 [docs/部署指南.md](docs/部署指南.md)「环境要求」。
+
 ### 开发者 / 命令行
 
 ```bash
@@ -431,7 +433,7 @@ ERP 系统导出，**当月单月**数据。金额单位：**元**（金额列�
 Visual Dashboard_system/
 ├── main.py                           # ★ 顶层调度器（argparse + subprocess）
 ├── 启动系统.bat                      # ★ 图形化控制台入口（双击，WPF，免装环境；pythonw → PowerShell 自动选择）
-├── run_all.bat                       # ★ Windows 命令行一键运行（配置同步 + 全流程 + 验证；优先用内置运行时）
+├── run_all.bat                       # ★ Windows 命令行一键运行（配置同步 + 全流程 + 验证；解释器顺序见部署指南「环境要求」）
 ├── package.bat                       #   打包脚本（生成交付 zip，含内置运行时）
 ├── runtime/                          #   内置 Python 运行时（免安装；由 scripts\prepare_runtime.bat 生成）
 ├── scripts/
@@ -444,6 +446,7 @@ Visual Dashboard_system/
 │   ├── sales_summary_report.py       #   销售完成度汇总表（Phase 5）
 │   └── verify_dashboard.py           #   看板质量验证（JS语法/onclick函数）
 ├── config/
+│   ├── python_path.txt              #   可选：手动指定 Python 目录（设了优先于内置 runtime；留空 = 自动探测）
 │   ├── 配置编辑器.xlsx               # ★ 配置编辑层（时间配置/展示规则/销售归属/KPI指标/字段映射/说明 6 sheet）
 │   ├── 清洗配置/
 │   │   ├── cleaning_config.json      # ★ 清洗核心配置（数据源/列映射/时间/输出）

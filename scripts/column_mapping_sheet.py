@@ -41,6 +41,16 @@ except ImportError:  # 以包形式导入时（如单元测试）
     )
 
 BASE_DIR = Path(__file__).parent.parent
+
+
+def _rel(p) -> str:
+    """路径 → 相对项目根显示（与 engine.core.utils.rel_path 同口径；本模块不依赖 engine）"""
+    try:
+        return str(Path(p).relative_to(BASE_DIR))
+    except (ValueError, TypeError):
+        return str(p)
+
+
 EXCEL_PATH = BASE_DIR / "config" / "配置编辑器.xlsx"
 CLEANING_CFG = BASE_DIR / "config" / "清洗配置" / "cleaning_config.json"
 HIT_LOG_DIR = BASE_DIR / "logs"
@@ -210,7 +220,7 @@ def update_column_mapping(mapping: dict, dry_run: bool = False,
     cfg_path = Path(cfg_path or CLEANING_CFG)
     backup_dir = Path(backup_dir or BACKUP_DIR)
     if not cfg_path.exists():
-        raise FileNotFoundError(f"cleaning_config.json 不存在: {cfg_path}")
+        raise FileNotFoundError(f"cleaning_config.json 不存在: {_rel(cfg_path)}")
 
     text = cfg_path.read_text(encoding="utf-8")
     cfg = json.loads(text)
@@ -346,7 +356,7 @@ def refresh_mapping_sheet(excel_path: Path | str | None = None,
     excel_path = Path(excel_path or EXCEL_PATH)
     cfg_path = Path(cfg_path or CLEANING_CFG)
     if not excel_path.exists():
-        raise FileNotFoundError(f"未找到配置编辑器: {excel_path}")
+        raise FileNotFoundError(f"未找到配置编辑器: {_rel(excel_path)}")
 
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     wb = openpyxl.load_workbook(excel_path)

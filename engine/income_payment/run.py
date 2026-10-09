@@ -28,12 +28,14 @@ from datetime import datetime
 import pandas as pd
 
 from ..core.config import (
+    end_of_day,
     load_config,
     get_output_path,
     load_clean_params,
     get_quarterly_time_range,
 )
-from ..core.utils import log_step
+from ..core.diagnostics import output_dir, print_summary, write_reports
+from ..core.utils import log_step, rel_path
 from .financial import clean_financial
 from .operations import clean_operations
 
@@ -63,11 +65,11 @@ def _parse_ops_date(s) -> str | None:
 
 
 def _filter_by_date_range(df: pd.DataFrame, start: str, end: str) -> pd.DataFrame:
-    """按日期范围筛选数据"""
+    """按日期范围筛选数据（结束时间只写到「日」时补到当天 23:59:59，避免漏掉当天数据）"""
     if len(df) == 0 or "日期" not in df.columns:
         return df.copy()
     dates = pd.to_datetime(df["日期"], errors="coerce")
-    mask = dates.notna() & (dates >= pd.Timestamp(start)) & (dates <= pd.Timestamp(end))
+    mask = dates.notna() & (dates >= pd.Timestamp(start)) & (dates <= pd.Timestamp(end_of_day(end)))
     return df[mask].copy()
 
 
@@ -85,11 +87,11 @@ def _write_output(df: pd.DataFrame, output_key: str, config: dict, label: str):
     except PermissionError as e:
         log_step(
             label,
-            f"❌ 写入失败：{path} 正被 Excel/WPS 等程序占用 → 请关闭该文件后重跑",
+            f"❌ 写入失败：{rel_path(path)} 正被 Excel/WPS 等程序占用 → 请关闭该文件后重跑",
             "ERROR",
         )
         raise SystemExit(3) from e
-    log_step(label, f"写入: {path} ({len(df)}行, 金额{df['金额'].sum():,.2f})", "OK")
+    log_step(label, f"写入: {rel_path(path)} ({len(df)}行, 金额{df['金额'].sum():,.2f})", "OK")
 
 
 def _get_settle_mode(config: dict) -> str:
@@ -133,7 +135,7 @@ def run_clean(file_type, config=None):
     log_step(f"财务端{file_type}", f"财务端数据 = {len(df_financial)}行, 金额{df_financial['金额'].sum():,.2f}（当月）")
 
     # ── Phase 2: 运营端（当年累计，含1-4月合计+5月…） ──
-    df_operations = clean_operations(config, mapper, matcher, file_type)
+    df_operations = clean_operations(config, mapper, file_type)
     log_step(f"运营端{file_type}", f"运营端数据 = {len(df_operations)}行, 金额{df_operations['金额'].sum():,.2f}（当年累计）")
 
     # ── Phase 3: 三路合并输出 ──
@@ -183,6 +185,7 @@ def run_clean(file_type, config=None):
 def main():
     args = sys.argv[1:]
     file_types = []
+    ignore_issues = "--ignore-data-issues" in args
 
     for arg in args:
         if arg.startswith("--type="):
@@ -213,6 +216,14 @@ def main():
         print(f"    ├─ 季度累计{ft}: {yearly_desc}")
         print(f"    └─ 当年累计{ft}: {yearly_desc}")
     print(f"{'#'*60}")
+
+    # ── 收尾：数据质量报告（丢弃行落盘 output/数据校验/ + 问题汇总）──────────
+    # 这里只落盘 + 打印；是否判定整次运行失败由 main.py 收尾统一决定（保证看板/报表仍能产出）
+    out_dir = output_dir(config)
+    for p in write_reports(out_dir, step="清洗"):
+        print(f"  📄 已写入: {p}")
+    if print_summary("收入/回款清洗 · 数据质量汇总") and not ignore_issues:
+        print("   ❌ 存在关键来源读取失败（ERROR）→ 收尾会以非零退出码结束（加 --ignore-data-issues 可忽略）")
     return results
 
 

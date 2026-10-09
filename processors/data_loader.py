@@ -10,6 +10,16 @@ from pathlib import Path
 
 import pandas as pd
 
+_BASE_DIR = Path(__file__).resolve().parent.parent   # 项目根（processors/ 的上一级）
+
+
+def _rel(p) -> str:
+    """路径 → 相对项目根显示（提示用；项目外路径原样返回）"""
+    try:
+        return str(Path(p).relative_to(_BASE_DIR))
+    except (ValueError, TypeError):
+        return str(p)
+
 
 # ──────────────────────────────────────────────────────────────
 # 客户统称映射器已移除 — 不再使用客户统称名单.json
@@ -95,7 +105,7 @@ def _require_xlsx(folder: Path, label: str) -> Path:
     """读取必需表，缺失时抛出指明目录的错误"""
     path = _find_xlsx(folder)
     if path is None:
-        raise FileNotFoundError(f"缺少必需数据: {folder}（{label}）")
+        raise FileNotFoundError(f"缺少必需数据: {_rel(folder)}（{label}）")
     return path
 
 

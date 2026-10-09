@@ -16,12 +16,27 @@ cd /d "%~dp0"
 
 set PYTHONW=
 
-rem 1) 内置 Python 运行时（交付包自带，免安装）
-if exist "%~dp0runtime\python\pythonw.exe" set PYTHONW=%~dp0runtime\python\pythonw.exe
+rem 0) 用户自定义解释器目录（config\python_path.txt）—— 设了就优先用，没设则往下自动探测
+set "PY_DIR="
+if exist "%~dp0config\python_path.txt" (
+    for /f "usebackq eol=# tokens=*" %%L in ("%~dp0config\python_path.txt") do (
+        set "PY_DIR=%%L"
+        goto :got_pydir
+    )
+)
+:got_pydir
+if defined PY_DIR (
+    if exist "%PY_DIR%\pythonw.exe" set "PYTHONW=%PY_DIR%\pythonw.exe"
+    if not defined PYTHONW echo [警告] config\python_path.txt 里的路径无效: %PY_DIR%（继续自动探测）
+)
 if defined PYTHONW goto :launch_python
 
-rem 2) 本机 Conda 环境
-if exist "C:\Users\%USERNAME%\.conda\envs\visual-dashboard-system\pythonw.exe" set PYTHONW=C:\Users\%USERNAME%\.conda\envs\visual-dashboard-system\pythonw.exe
+rem 1) 内置 Python 运行时（交付包自带，免安装）
+if exist "%~dp0runtime\python\pythonw.exe" set "PYTHONW=%~dp0runtime\python\pythonw.exe"
+if defined PYTHONW goto :launch_python
+
+rem 2) 本机 Conda 环境（系统内置变量 %USERPROFILE%，不写死盘符/目录）
+if exist "%USERPROFILE%\.conda\envs\visual-dashboard-system\pythonw.exe" set "PYTHONW=%USERPROFILE%\.conda\envs\visual-dashboard-system\pythonw.exe"
 if defined PYTHONW goto :launch_python
 
 rem 3) 系统 PATH 中的 pythonw

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import calendar
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -126,6 +127,20 @@ def _compute_last_full_quarter(now: datetime | None = None) -> dict:
     return {"start_date": start, "end_date": end}
 
 
+_DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def end_of_day(value) -> str:
+    """结束时间补全：只写到「日」（YYYY-MM-DD）时补到当天 23:59:59
+
+    背景（2026-09-30）：时间配置里手填 `2026-09-30`（无时分秒）会被 pd.to_datetime
+    解析成当天 00:00:00，导致**当天数据被整段排除**（财务端收入曾因此漏掉 9/30 的 259 行）。
+    dynamic 策略（自动算最近完整月/季）本就补了 23:59:59，这里让手填日期口径一致。
+    """
+    s = str(value).strip()
+    return f"{s} 23:59:59" if _DATE_ONLY_RE.match(s) else s
+
+
 _STRATEGY_REGISTRY = {
     "last_full_month": _compute_last_full_month,
     "last_full_quarter": _compute_last_full_quarter,
@@ -156,10 +171,10 @@ def resolve_time_range(range_spec: dict, now: datetime | None = None) -> dict:
         result["_resolved"] = True
         return result
 
-    # static 模式：直接使用配置值
+    # static 模式：直接使用配置值（end_date 只写到「日」时补到当天 23:59:59，避免漏掉当天数据）
     return {
         "start_date": range_spec["start_date"],
-        "end_date": range_spec["end_date"],
+        "end_date": end_of_day(range_spec["end_date"]),
         "_mode": "static",
         "_resolved": False,
     }

@@ -88,7 +88,7 @@ class YoyPage(BaseRenderer):
             f'<div class="alert-banner" style="background:#fff7ed;border-left:4px solid #f59e0b">'
             f'<span style="font-size:14px">&#9888;</span>'
             f'<div style="flex:1"><strong>同比分析暂不可用</strong><br>'
-            f'<span style="font-size:11px;color:var(--text-secondary)">缺少 2024 年基线数据，以下展示 {d.cur_year} 年各部门实际数据。</span></div>'
+            f'<span style="font-size:11px;color:var(--text-secondary)">缺少 {d.prev_year} 年基线数据，以下展示 {d.cur_year} 年各部门实际数据。</span></div>'
             f'</div>'
             + f'<div class="cols-3 kpi-strip">'
             f'<div class="card text-center"><div class="label-text">{d.cur_year}年收入</div><div class="kpi-value">{fmt_wan(d.ci)}<span class="unit">万</span></div></div>'

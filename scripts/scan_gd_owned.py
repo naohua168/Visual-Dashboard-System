@@ -9,7 +9,7 @@
     （`是否属于内部单位/内部款项` == 是），或出现在内部交易排除名单
     （`部门事业部映射.json → excluded_internal_companies`）→ **整家公司不进入候选**
   → 追加到 `config/配置编辑器.xlsx` 的「销售归属」sheet：
-     母公司=广东自有客户 / 指标=收入,回款 / 部门=检测,信息,能源,海外 / 销售=黎国键 / 比例=1
+     母公司=广东自有客户 / 指标=收入/回款 / 部门=检测,信息,能源,海外 / 销售=黎国键 / 比例=1
 
 为什么需要状态文件：
   人工若把某行从 Excel 里删掉（不想让它归入），下一轮扫描不应该又加回来
@@ -33,33 +33,29 @@ import pandas as pd
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
+from engine.core import business_rules as br  # noqa: E402
+from engine.core.business_rules import is_gd_legal  # noqa: E402
 from engine.core.config import get_data_path, load_config  # noqa: E402
+from engine.core.name_key import key_set, match_key  # noqa: E402
 
-GD_LEGAL = "广东汽车检测中心有限公司"
-GD_PARENT = "广东自有客户"
-GD_SALES = "黎国键"
-DEPTS = ["检测", "信息", "能源", "海外"]
+# 2026-09-29 起：法人主体 / 父组 / 销售 / 部门 / 黑名单 / 列名候选 / 内部交易标记值
+# 全部配置驱动（config/清洗配置/业务规则.json → 广东自有归入），人员或口径调整不必改代码。
+GD_LEGAL = br.legal_gd()
+GD_PARENT = br.parent_gd_self()
+GD_SALES = br.sales_gd_self()
+DEPTS = br.departments()
 EXCEL_PATH = BASE_DIR / "config" / "配置编辑器.xlsx"
 ATTR_PATH = BASE_DIR / "config" / "清洗配置" / "客户销售归属.json"
-STATE_PATH = BASE_DIR / "data" / "mappings" / "广东自有" / "已自动归入.json"
+STATE_PATH = br.gd_state_path()          # 「已自动归入」状态文件（企业已单独删掉的不会再加回）
 
-LEGAL_COLS = ["法人主体", "核算单位", "所属单位"]
-CUST_COLS = ["客户", "客户名称"]
-INT_COLS = [
-    "是否属于内部交易", "是否属于内部单位", "是否内部交易", "内部交易",
-    "是否属于内部款项", "是否内部款项",
-]
-INTERNAL_VALUES = {"是", "内部", "Y", "y", "√"}
+LEGAL_COLS = br.gd_legal_cols()
+CUST_COLS = br.gd_customer_cols()
+INT_COLS = br.gd_internal_cols()
+INTERNAL_VALUES = br.gd_internal_values()
 
-# 明显不是"客户"的名字（自身法人名 / 源表占位行 / 汇总行）→ 不写入销售归属
-BLACKLIST_NAMES = {
-    "广东公司",
-    "广东汽车检测中心有限公司",
-    "南方（韶关）智能网联新能源汽车试验检测中心有限公司",
-    "南方(韶关)智能网联新能源汽车试验检测中心有限公司",
-    "合计", "小计", "总计", "其他", "无", "内部", "内部交易",
-}
-MIN_NAME_LEN = 5
+# 明显不是"客户"的名字（源表占位行 / 汇总行 / 自身法人名）→ 不写入销售归属
+BLACKLIST_NAMES = br.gd_blacklist()
+MIN_NAME_LEN = br.gd_min_name_len()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -112,7 +108,7 @@ def collect_from_operations(cfg) -> dict[str, dict]:
         p = BASE_DIR / "data" / "mappings" / "部门事业部映射" / "部门事业部映射.json"
         raw = json.loads(p.read_text(encoding="utf-8")).get("excluded_internal_companies", {})
         items = raw if isinstance(raw, list) else raw.get("companies", [])
-        excluded = {str(x).strip() for x in items}
+        excluded = key_set(items)  # 匹配键集合（与清洗层 mapper 同口径）
     except Exception:
         excluded = set()
 
@@ -130,14 +126,15 @@ def collect_from_operations(cfg) -> dict[str, dict]:
             cust = _pick_col(df.columns, CUST_COLS)
             if not legal or not cust:
                 continue
-            sub = df[df[legal].astype(str).str.strip() == GD_LEGAL].copy()
+            # 法人主体按匹配键判定（全角半角/空白差异不影响，2026-09-29）
+            sub = df[df[legal].map(is_gd_legal)].copy()
             if sub.empty:
                 continue
             int_col = _pick_col(df.columns, INT_COLS)
             if int_col is not None:
                 flag = sub[int_col].astype(str).str.strip().isin(INTERNAL_VALUES)
-                # ① 公司级：只要出现过内部交易标记 → 整家公司排除
-                internal_companies |= set(sub.loc[flag, cust].astype(str).str.strip())
+                # ① 公司级：只要出现过内部交易标记 → 整家公司排除（按匹配键记录）
+                internal_companies |= key_set(sub.loc[flag, cust].astype(str).str.strip())
                 # ② 行级：内部交易行本身也不计入行数/金额
                 sub = sub[~flag]
             if sub.empty:
@@ -152,10 +149,11 @@ def collect_from_operations(cfg) -> dict[str, dict]:
                 rec["行数"] += len(g)
                 rec["金额"] += float(g["_amt"].sum())
 
-    drop = (internal_companies | excluded) & set(found)
-    for name in sorted(drop):
-        print("  ⏭️  公司级排除（内部交易/排除名单）: %s" % name)
+    # 排除判定按匹配键（全角半角/空白差异不影响），展示/返回仍是原客户名
+    drop_keys = (internal_companies | excluded) & key_set(found)
+    drop = [name for name in sorted(found) if match_key(name) in drop_keys]
     for name in drop:
+        print("  ⏭️  公司级排除（内部交易/排除名单）: %s" % name)
         found.pop(name, None)
     return found
 
@@ -174,10 +172,15 @@ def collect_candidates(cfg) -> dict[str, dict]:
 def plan_additions(cands: dict[str, dict], configured: set[str], state: dict) -> tuple[list[tuple[str, dict]], list[str]]:
     """返回 (需要新增的 [(客户名, 概览)], 被跳过的原因列表)"""
     todo, skipped = [], []
+    # 已配置 / 曾经归入 / 黑名单 一律按匹配键判定（全角半角、空白差异不影响，2026-09-29）
+    configured_keys = {match_key(x) for x in configured}
+    state_keys = {match_key(x) for x in state}
+    blacklist_keys = {match_key(x) for x in BLACKLIST_NAMES}
     for name, rec in sorted(cands.items(), key=lambda kv: -kv[1]["金额"]):
-        if name in configured or name in state:
+        key = match_key(name)
+        if key in configured_keys or key in state_keys:
             continue
-        if name in BLACKLIST_NAMES:
+        if key in blacklist_keys:
             skipped.append(f"{name}（自身法人/占位行，已排除）")
             continue
         if len(name) < MIN_NAME_LEN:
@@ -199,14 +202,15 @@ def append_to_excel(names: list[str], note: str) -> int:
     if "销售归属" not in wb.sheetnames:
         raise RuntimeError("配置编辑器缺少「销售归属」sheet")
     ws = wb["销售归属"]
-    existing = {str(r[1]).strip() for r in ws.iter_rows(min_row=2, values_only=True) if r[1]}
+    # 已存在判定按匹配键（同一家公司写成全角/半角括号时不再重复追加，2026-09-29）
+    existing_keys = {match_key(r[1]) for r in ws.iter_rows(min_row=2, values_only=True) if r[1]}
 
     rows = []
     for name in names:
-        if name in existing:
+        if match_key(name) in existing_keys:
             continue
         for dept in DEPTS:
-            rows.append([GD_PARENT, name, "收入,回款", dept, GD_SALES, 1.0, note])
+            rows.append([GD_PARENT, name, "收入/回款", dept, GD_SALES, 1.0, note])
     if not rows:
         return 0
 

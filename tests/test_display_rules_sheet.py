@@ -42,6 +42,26 @@ def _sheet(rows: list[list]):
     return ws
 
 
+def _covered_rows(sqref, col: str = "E") -> set[int]:
+    """把数据验证的 sqref 展开成行号集合
+
+    Excel 保存后会把连续的单格范围归一化成区间（如 `E8:E28`），
+    这里两种写法都要能解析。
+    """
+    rows: set[int] = set()
+    for ref in str(sqref).split():
+        if not ref.upper().startswith(col.upper()):
+            continue
+        head, _, tail = ref.partition(":")
+        try:
+            a = int(head[len(col):])
+            b = int(tail[len(col):]) if tail else a
+        except ValueError:  # 整列/整行等异常写法，跳过
+            continue
+        rows.update(range(min(a, b), max(a, b) + 1))
+    return rows
+
+
 def _roundtrip(rules: dict) -> dict:
     """JSON → sheet 行 → 解析回 dict（新结构往返）"""
     ws = _sheet([list(RULE_HEADERS)] + [list(r) for r in build_rows(rules)])
@@ -274,9 +294,8 @@ class TestRealWorkbook:
                 spec_map_rows[r] = row[3]
         assert spec_map_rows, "未找到 优先展示/客户筛选 行"
         for dv in dvs:
-            covered = {int(x[1:]) for x in str(dv.sqref).split() if x.startswith("E")}
             if dv.type == "list":
-                assert not (covered & set(spec_map_rows)), "优先展示/客户筛选 不应有下拉"
+                assert not (_covered_rows(dv.sqref) & set(spec_map_rows)), "优先展示/客户筛选 不应有下拉"
 
     def test_names_prompt_available(self):
         """客户名行带输入提示（怎么填），但允许自由输入"""

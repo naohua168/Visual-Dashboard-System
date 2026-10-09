@@ -14,16 +14,14 @@ from pathlib import Path
 
 import pandas as pd
 
+from ..core import business_rules as br
 from ..core.config import BASE_DIR, CONFIG_PATH, get_yearly_baseline_path
-from ..core.utils import log_step
+from ..core.io_utils import ExcelBusyError, save_excel
+from ..core.name_key import match_key
+from ..core.utils import log_step, rel_path
 
-# 事业部全名→简称
-DEPT_MAP = {
-    "检测工程事业部": "检测",
-    "信息智能事业部": "信息",
-    "能源动力事业部": "能源",
-    "海外事业部": "海外",
-}
+# 事业部全名→简称（config/清洗配置/业务规则.json → 事业部全称映射，2026-09-29）
+DEPT_MAP = br.dept_full_map()
 
 STD_COLS = ["事业部", "金额", "客户", "法人主体", "日期"]
 
@@ -86,10 +84,7 @@ def _parse_yearly_date(val, default_year: int = 2024) -> str | None:
 # ──────────────────────────────────────────────────────────────
 # 法人主体简称→全称（通用映射，适用于新老数据）
 # ──────────────────────────────────────────────────────────────
-_ENTITY_FULL = {
-    "广东公司": "广东汽车检测中心有限公司",
-    "湖南公司": "中汽院智能网联汽车检测中心（湖南）有限公司",
-}
+_ENTITY_FULL = br.entity_alias()  # 配置驱动（业务规则.json → 法人简称映射）
 
 
 def _clean_single(label, file_path, mapper=None):
@@ -100,7 +95,7 @@ def _clean_single(label, file_path, mapper=None):
       - 回款: 事业部/核算单位/到款时间/客户/到款
     """
     if not file_path.exists():
-        log_step("年%s" % label, "文件未找到: %s" % file_path, "WARN")
+        log_step("年%s" % label, "文件未找到: %s" % rel_path(file_path), "WARN")
         return None
 
     log_step("年%s" % label, "读取 %s" % file_path.name)
@@ -126,10 +121,10 @@ def _clean_single(label, file_path, mapper=None):
     if "法人主体" not in df.columns:
         df["法人主体"] = ""
 
-    # 简称→全称映射
-    df["法人主体"] = (
-        df["法人主体"].astype(str).str.strip()
-        .map(_ENTITY_FULL).fillna(df["法人主体"])
+    # 简称→全称映射（按匹配键查表：全角半角/空白差异也能命中）
+    entity_keys = {match_key(k): v for k, v in _ENTITY_FULL.items()}
+    df["法人主体"] = df["法人主体"].map(
+        lambda v: entity_keys.get(match_key(v), v)
     )
 
     # 客户名
@@ -231,10 +226,10 @@ def clean_yearly(source_dir=None, mapper=None):
 
     # 校验文件存在
     if inc_path and not inc_path.exists():
-        log_step("年基线", f"收入文件不存在: {inc_path}", "WARN")
+        log_step("年基线", f"收入文件不存在: {rel_path(inc_path)}", "WARN")
         inc_path = None
     if pay_path and not pay_path.exists():
-        log_step("年基线", f"回款文件不存在: {pay_path}", "WARN")
+        log_step("年基线", f"回款文件不存在: {rel_path(pay_path)}", "WARN")
         pay_path = None
 
     if inc_path is None and pay_path is None:
@@ -283,9 +278,12 @@ def run_clean(mapper=None):
     for label, df in results.items():
         dir_name = _LABEL_MAP.get(label, label)
         out_dir = out_base.get(label, BASE_DIR / "data" / "sheets" / "系统数据清理" / dir_name)
-        out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / ("%s.xlsx" % dir_name)
-        df.to_excel(out_path, index=False)
+        try:
+            save_excel(df, out_path)  # 被 Excel 占用 → 友好提示 + 退出码 3
+        except ExcelBusyError as e:
+            log_step("年%s" % label, "❌ 写入失败：%s" % e, "ERROR")
+            raise SystemExit(3) from e
         log_step("年%s" % label,
                  "写入: %s (%d行, 金额%.2f)" % (out_path, len(df), df["金额"].sum()), "OK")
 

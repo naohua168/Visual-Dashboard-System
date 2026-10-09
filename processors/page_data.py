@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from engine.core.name_key import KeyedLookup, pair_key
+from engine.core.utils import log_step
 from .utils import safe_float, get_config_range
 from .config_loader import CustomerFilter
 from .page_data_utils import (
@@ -424,23 +426,34 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d = QuarterlyData()
 
     # 保留原始数据（未 consolidate）供子公司弹窗使用
+    # 季度累计为空 = 本季度还没有数据（财务端当月未更新 + 运营端未出季度内月份）。
+    # 2026-10-09 起不再回退到「当年累计」：回退会把全年累计当季报（如 2026Q4 初期
+    # 季度指标 2.1 亿 vs 全年累计 6.9 亿 → 328%），与月度页「无数据即空表」口径一致。
+    EMPTY_COLS = ["事业部", "金额", "客户", "法人主体", "日期"]
     q_inc_raw = data.quarterly_income
     q_pay_raw = data.quarterly_payment
-    if q_inc_raw is None or q_inc_raw.empty or q_pay_raw is None or q_pay_raw.empty:
-        q_inc_raw = data.income.copy()
-        q_pay_raw = data.payment.copy()
+    for _label, _frame in (("季度累计收入", q_inc_raw), ("季度累计回款", q_pay_raw)):
+        if _frame is None:
+            log_step("渲染", f"{_label} 缺失 → 季度页按空表渲染（否决不回退当年累计）", "WARN")
+        elif len(_frame) == 0:
+            log_step("渲染", f"{_label} 无数据（本季度暂无财务端/运营端数据）→ 季度页按空表渲染", "WARN")
+    if q_inc_raw is None or len(q_inc_raw) == 0:
+        q_inc_raw = pd.DataFrame(columns=EMPTY_COLS)
+    if q_pay_raw is None or len(q_pay_raw) == 0:
+        q_pay_raw = pd.DataFrame(columns=EMPTY_COLS)
 
     # 南方韶关母公司行：法人主体=南方（韶关）且无销售归属的行 → 归入「南方韶关」
     q_inc = _consolidate_customers(_add_wan(q_inc_raw.copy()), "收入")
     q_pay = _consolidate_customers(_add_wan(q_pay_raw.copy()), "回款")
 
-    latest_date = pd.to_datetime(q_inc["日期"].max(), errors="coerce")
-    d.quarter = int(latest_date.quarter) if pd.notna(latest_date) else 2
-
     inc_tgt = _consolidate_target(data.quarterly_income_targets.copy())
     pay_tgt = _consolidate_target(data.quarterly_payment_targets.copy())
 
     d.q_start, d.q_end = _parse_month_range(base_dir, "季度累计筛选")
+    # 「第 N 季度」标签：有数据按数据实际月份，无数据按配置的季度窗口（原来无脑回退第 2 季度）
+    latest_date = pd.to_datetime(q_inc["日期"].max(), errors="coerce")
+    d.quarter = (int(latest_date.quarter) if pd.notna(latest_date)
+                 else ((d.q_start - 1) // 3 + 1 if d.q_start else 2))
     if (d.q_start, d.q_end) == (1, 6):  # 未读到配置，推算
         d.q_start = (d.quarter - 1) * 3 + 1
         d.q_end = d.q_start + 2
@@ -556,8 +569,10 @@ class SalesData:
     # 按销售拆分的客户目标（销售详情弹窗/矩阵用）
     sc3_tgts_by_sales: dict = field(default_factory=dict)  # {sales: {cust: {inc/pay: {dept:val,total}}}}
     # card3 母公司聚合
-    sub_to_parent: dict[str, str] = field(default_factory=dict)   # 子公司→母公司（后写覆盖，仅用于无销售歧义时）
-    sub_sales_to_parent: dict[tuple[str, str], str] = field(default_factory=dict)  # (子公司,销售)→父组，重叠客户按销售归属父组
+    # 子公司→母公司（后写覆盖，仅用于无销售歧义时）；KeyedLookup：查表忽略全角半角/空白差异
+    sub_to_parent: dict[str, str] = field(default_factory=KeyedLookup)
+    # (子公司,销售)→父组，重叠客户按销售归属父组（键 = pair_key）
+    sub_sales_to_parent: dict[tuple[str, str], str] = field(default_factory=lambda: KeyedLookup(pair_key))
     sc3_by_parent: dict = field(default_factory=dict)    # {sales: {parent: {sub: {inc/pay: {dept:val}}}}}
     sc3_tgts_by_parent: dict = field(default_factory=dict)   # {parent: {inc/pay: {dept:val}}}（全销售聚合，兼容）
     # 按销售拆分的母公司目标（销售详情弹窗/矩阵用）
