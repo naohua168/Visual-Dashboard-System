@@ -391,6 +391,45 @@ def test_init_template_design(tmp_path, monkeypatch):
     assert any("/" in str(v) for v in metric_vals), f"模板未使用斜杠指标: {metric_vals}"
 
 
+def test_blank_never_written_as_text(tmp_path, monkeypatch):
+    """空值只能写成真空单元格，不能写成字符串 "None"（2026-10-10 审计固化）
+
+    起因：核对"生成版工作簿"与"人工编辑版"时发现 2561 格不同，一度怀疑空值被写成 "None"。
+    逐格核对结论：差异全部是「人工编辑版（Excel 保存过）里是空字符串、生成版是真空单元格」——
+    两者在 Excel 里显示一致，且解析结果逐字节一致（不构成缺陷）。本测试把"不许写 None 文本"钉住。
+    """
+    out = tmp_path / "editor_blank.xlsx"
+    monkeypatch.setattr(cej, "EXCEL_PATH", out)
+    cej.init_excel_template()
+
+    bad = []
+    for ws in openpyxl.load_workbook(out).worksheets:
+        for row in ws.iter_rows():
+            for c in row:
+                if isinstance(c.value, str) and c.value.strip() in ("None", "nan", "NaN", "NaT"):
+                    bad.append(f"{ws.title}!{c.coordinate}={c.value!r}")
+    assert not bad, f"模板把空值写成了文本: {bad[:8]}"
+
+    # 空字符串与真空单元格必须解析成同一个结果（Excel 存过的文件里两种都会出现）
+    kpi_heads = ["页面", "指标", "值(万元)", "说明"]
+    as_empty = [["年度达成", "收入", "", ""], ["月度达成", "收入", "", ""]]
+    as_none = [["年度达成", "收入", None, None], ["月度达成", "收入", None, None]]
+    assert cej.excel_to_kpi(_sheet(as_empty, "横幅", kpi_heads)) == \
+        cej.excel_to_kpi(_sheet(as_none, "横幅", kpi_heads))
+    assert cej.excel_to_kpi(_sheet(as_empty, "横幅", kpi_heads))["月度达成"]["收入"] is None
+
+    time_heads = ["配置名", "模式", "动态策略", "开始日期", "结束日期", "年份", "月份范围", "说明"]
+    rows_T = [("年度累计", "2026-01-01", "2026-09-30"),
+              ("月度数据", "2026-10-01", "2026-10-31"),
+              ("季度累计筛选", "2026-10-01", "2026-12-31")]
+    t_empty = [[k, "手填日期", "", s, e, "", "", ""] for k, s, e in rows_T]
+    t_empty.append(["年基线数据", "手填日期", "", "", "", 2025, "1-9", ""])
+    t_none = [[k, "手填日期", None, s, e, None, None, None] for k, s, e in rows_T]
+    t_none.append(["年基线数据", "手填日期", None, None, None, 2025, "1-9", None])
+    assert cej.excel_to_time_config(_sheet(t_empty, "横幅", time_heads)) == \
+        cej.excel_to_time_config(_sheet(t_none, "横幅", time_heads))
+
+
 def _make_note_workbook(path: Path, head: list[str]) -> None:
     """造一个只有「说明」sheet 的临时工作簿（模拟"旧版说明书"）"""
     wb = openpyxl.Workbook()
