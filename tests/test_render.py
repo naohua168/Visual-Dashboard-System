@@ -34,9 +34,11 @@ def test_render_generates_html(tmp_path):
     # 6 个页面
     for page_id in ["overview", "annual", "monthly", "sales", "yoy", "quarterly"]:
         assert f'id="{page_id}"' in html, f"缺少页面 {page_id}"
-    # 6 个导航项（<a data-target="...">）
-    nav_count = html.count('<a data-target="')
+    # 6 个导航项（2026-10-10 起用 <button class="nav-link" data-target="..."> 而非 <a href="#">：
+    # 避免悬停弹出地址预览、点击后 URL 多一个 #）
+    nav_count = html.count('<button type="button" data-target="')
     assert nav_count == 6, f"应有 6 个导航项，实际 {nav_count}"
+    assert '<a data-target=' not in html, "导航不应再使用 <a>（会显示地址预览）"
     # Chart.js 引用
     assert "chart.js" in html
     # P4 年基线检查

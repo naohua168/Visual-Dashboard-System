@@ -140,28 +140,28 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
 }}
 /* ═══ 右侧滑入面板 ═══ */
 .pnd-panel{{
-  width:min(860px,92vw);height:100vh;max-height:100vh;
-  background:#fff;box-shadow:-8px 0 40px rgba(0,0,0,.15);
+  width:min(53.75rem,92vw);height:100vh;max-height:100vh;
+  background:#fff;box-shadow:-0.5rem 0 2.5rem rgba(0,0,0,.15);
   display:flex;flex-direction:column;
   animation:pndSlideIn .35s var(--ease-spring);
   overflow:hidden;
 }}
 /* ═══ 头部 ═══ */
 .pnd-header{{
-  padding:18px 24px;display:flex;align-items:center;justify-content:space-between;
+  padding:1.125rem 1.5rem;display:flex;align-items:center;justify-content:space-between;
   border-bottom:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;
 }}
-.pnd-header-left{{display:flex;align-items:center;gap:14px}}
+.pnd-header-left{{display:flex;align-items:center;gap:0.875rem}}
 .pnd-header-icon{{
-  width:40px;height:40px;border-radius:10px;
+  width:2.5rem;height:2.5rem;border-radius:0.625rem;
   background:linear-gradient(135deg,#fbbf24,#f59e0b);
   display:flex;align-items:center;justify-content:center;color:#fff;
   flex-shrink:0;
 }}
-.pnd-title{{font-size:17px;font-weight:800;color:#0f172a;line-height:1.3}}
-.pnd-subtitle{{font-size:12px;color:#64748b;margin-top:1px}}
+.pnd-title{{font-size:1.0625rem;font-weight:800;color:#0f172a;line-height:1.3}}
+.pnd-subtitle{{font-size:0.75rem;color:#64748b;margin-top:1px}}
 .pnd-close{{
-  width:36px;height:36px;border-radius:8px;border:none;background:transparent;
+  width:2.25rem;height:2.25rem;border-radius:0.5rem;border:none;background:transparent;
   color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center;
   transition:all .15s;flex-shrink:0;
 }}
@@ -172,82 +172,81 @@ def build_pending_modal(pending: pd.DataFrame, pending_count: int,
   border-bottom:1px solid #e2e8f0;flex-shrink:0;
 }}
 .pnd-kpi-item{{
-  background:#fff;padding:12px 14px;text-align:center;
+  background:#fff;padding:0.75rem 0.875rem;text-align:center;
 }}
 .pnd-kpi-item:not(:last-child){{border-right:1px solid #e2e8f0}}
-.pnd-kpi-num{{font-size:20px;font-weight:800;color:#0f172a;line-height:1.2}}
-.pnd-kpi-lbl{{font-size:11px;color:#64748b;margin-top:2px;font-weight:600}}
+.pnd-kpi-num{{font-size:1.25rem;font-weight:800;color:#0f172a;line-height:1.2}}
+.pnd-kpi-lbl{{font-size:0.6875rem;color:#64748b;margin-top:0.125rem;font-weight:600}}
 /* ═══ 内容滚动区 ═══ */
-.pnd-body{{flex:1;overflow-y:auto;padding:16px 24px 24px}}
-.pnd-section{{margin-bottom:20px}}
+.pnd-body{{flex:1;overflow-y:auto;padding:1rem 1.5rem 1.5rem}}
+.pnd-section{{margin-bottom:1.25rem}}
 .pnd-section-title{{
-  font-size:13px;font-weight:800;color:#1e293b;margin-bottom:10px;
-  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:0.8125rem;font-weight:800;color:#1e293b;margin-bottom:0.625rem;
+  display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;
 }}
 .pnd-section-title::before{{
-  content:'';width:3px;height:14px;background:#3b82f6;border-radius:2px;
+  content:'';width:0.1875rem;height:0.875rem;background:#3b82f6;border-radius:0.125rem;
   display:inline-block;flex-shrink:0;
 }}
 .pnd-badge{{
-  font-size:11px;font-weight:500;color:#64748b;background:#f1f5f9;
-  padding:2px 8px;border-radius:10px;white-space:nowrap;
+  font-size:0.6875rem;font-weight:500;color:#64748b;background:#f1f5f9;
+  padding:0.125rem 0.5rem;border-radius:0.625rem;white-space:nowrap;
 }}
 /* ═══ 条形图 ═══ */
-.pnd-chart{{display:flex;flex-direction:column;gap:5px}}
+.pnd-chart{{display:flex;flex-direction:column;gap:0.3125rem}}
 .pnd-row{{
-  display:flex;align-items:center;gap:8px;font-size:12px;
-  padding:4px 8px;border-radius:4px;transition:background .12s;
+  display:flex;align-items:center;gap:0.5rem;font-size:0.75rem;
+  padding:0.25rem 0.5rem;border-radius:0.25rem;transition:background .12s;
 }}
 .pnd-row:hover{{background:#f1f5f9}}
 .pnd-row.rk-hl{{background:#fefce8}}
 .pnd-lbl{{font-weight:600;color:#334155;flex-shrink:0}}
-.pnd-num{{font-size:11px;color:#94a3b8;flex-shrink:0}}
+.pnd-num{{font-size:0.6875rem;color:#94a3b8;flex-shrink:0}}
 .pnd-bar{{
-  flex:1;height:20px;background:#f1f5f9;border-radius:4px;overflow:hidden;
-  position:relative;min-width:60px;
+  flex:1;height:1.25rem;background:#f1f5f9;border-radius:0.25rem;overflow:hidden;
+  position:relative;min-width:3.75rem;
 }}
 .pnd-fill{{
-  height:100%;border-radius:4px;display:flex;align-items:center;justify-content:flex-end;
-  padding:0 8px;transition:width .4s cubic-bezier(.4,0,.2,1);
+  height:100%;border-radius:0.25rem;display:flex;align-items:center;justify-content:flex-end;
+  padding:0 0.5rem;transition:width .4s cubic-bezier(.4,0,.2,1);
   background:linear-gradient(90deg,#3b82f6,#60a5fa);
 }}
-.pnd-fill-amt{{font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.15)}}
-.pnd-pct{{font-size:11px;color:#64748b;font-weight:700;width:44px;text-align:right;flex-shrink:0}}
-.pnd-sub{{font-size:10px;color:#94a3b8;flex-shrink:0}}
-.pnd-rank{{font-weight:800;color:#f59e0b;width:20px;text-align:center;font-size:13px;flex-shrink:0}}
-.pnd-dept{{font-size:11px;font-weight:700;text-align:center;flex-shrink:0}}
+.pnd-fill-amt{{font-size:0.6875rem;font-weight:700;color:#fff;text-shadow:0 1px 0.125rem rgba(0,0,0,.15)}}
+.pnd-pct{{font-size:0.6875rem;color:#64748b;font-weight:700;width:2.75rem;text-align:right;flex-shrink:0}}
+.pnd-sub{{font-size:0.625rem;color:#94a3b8;flex-shrink:0}}
+.pnd-rank{{font-weight:800;color:#f59e0b;width:1.25rem;text-align:center;font-size:0.8125rem;flex-shrink:0}}
+.pnd-dept{{font-size:0.6875rem;font-weight:700;text-align:center;flex-shrink:0}}
 /* ═══ 三象限 ═══ */
-.pnd-quad-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}}
+.pnd-quad-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem}}
 .pnd-quad-cell{{
-  background:#f8fafc;padding:12px 10px;border-radius:6px;text-align:center;
+  background:#f8fafc;padding:0.75rem 0.625rem;border-radius:0.375rem;text-align:center;
   border:1px solid #e2e8f0;transition:box-shadow .15s;
 }}
-.pnd-quad-cell:hover{{box-shadow:0 2px 8px rgba(0,0,0,.06)}}
-.pnd-quad-num{{font-size:20px;font-weight:800;color:#0f172a}}
-.pnd-quad-lbl{{font-size:11px;color:#64748b;margin:3px 0}}
-.pnd-quad-amt{{font-size:13px;font-weight:700;color:#475569}}
-.pnd-quad-pct{{font-size:10px;color:#94a3b8}}
+.pnd-quad-cell:hover{{box-shadow:0 0.125rem 0.5rem rgba(0,0,0,.06)}}
+.pnd-quad-num{{font-size:1.25rem;font-weight:800;color:#0f172a}}
+.pnd-quad-lbl{{font-size:0.6875rem;color:#64748b;margin:0.1875rem 0}}
+.pnd-quad-amt{{font-size:0.8125rem;font-weight:700;color:#475569}}
+.pnd-quad-pct{{font-size:0.625rem;color:#94a3b8}}
 /* ═══ 明细表 ═══ */
-.pnd-table-wrap{{max-height:360px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px}}
-.pnd-table{{width:100%;border-collapse:collapse;font-size:12px}}
+.pnd-table-wrap{{max-height:22.5rem;overflow-y:auto;border:1px solid #e2e8f0;border-radius:0.375rem}}
+.pnd-table{{width:100%;border-collapse:collapse;font-size:0.75rem}}
 .pnd-table thead{{position:sticky;top:0;z-index:2}}
 .pnd-table th{{
-  background:#f1f5f9;padding:8px 10px;text-align:left;font-weight:700;
-  color:#475569;border-bottom:2px solid #e2e8f0;font-size:11px;white-space:nowrap;
+  background:#f1f5f9;padding:0.5rem 0.625rem;text-align:left;font-weight:700;
+  color:#475569;border-bottom:0.125rem solid #e2e8f0;font-size:0.6875rem;white-space:nowrap;
 }}
-.pnd-th-name{{min-width:140px}}
+.pnd-th-name{{min-width:8.75rem}}
 .pnd-table td{{
-  padding:7px 10px;border-bottom:1px solid #f1f5f9;color:#334155;
+  padding:0.4375rem 0.625rem;border-bottom:1px solid #f1f5f9;color:#334155;
 }}
 .pnd-table tbody tr:hover{{background:#f8fafc}}
 .pnd-table tbody tr:last-child td{{border-bottom:none}}
 .pnd-table .row-total td{{
-  font-weight:700;background:#fafafa;border-top:2px solid #e2e8f0;color:#1e293b;
+  font-weight:700;background:#fafafa;border-top:0.125rem solid #e2e8f0;color:#1e293b;
 }}
 /* ═══ 动画 ═══ */
 @keyframes pndFadeIn{{from{{opacity:0}}to{{opacity:1}}}}
-@keyframes pndSlideIn{{from{{transform:translateX(24px);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
-</style>
+@keyframes pndSlideIn{{from{{transform:translateX(1.5rem);opacity:0}}to{{transform:translateX(0);opacity:1}}}}</style>
 <script>
 function openPendingModal(){{
   document.getElementById('pendingModal').style.display='flex';

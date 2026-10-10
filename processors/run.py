@@ -91,9 +91,12 @@ def build_html(data, title: str, frontend_cfg: dict) -> str:
         for p in pages
     )
     page_html = tpls + '<script>setTimeout(window.__resizeAllCharts, 200);</script>'
+    # 导航用 <button> 而不是 <a href="#">：避免悬停时浏览器左下角弹出 "file:///…html#" 地址预览，
+    # 也避免点击后 URL 尾巴多一个 #（2026-10-10 用户要求）
     nav_items = "".join(
-        f'<a data-target="{p.page_id}" href="#" class="{"active" if i == 0 else ""}" '
-        f'onclick="showPage(\'{p.page_id}\'); return false;">{p.nav_name}</a>'
+        f'<button type="button" data-target="{p.page_id}" '
+        f'class="nav-link{" active" if i == 0 else ""}" '
+        f'onclick="showPage(\'{p.page_id}\')">{p.nav_name}</button>'
         for i, p in enumerate(pages)
     )
     today = datetime.date.today().strftime("%Y-%m-%d")
