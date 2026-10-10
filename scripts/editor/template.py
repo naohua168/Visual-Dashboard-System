@@ -38,12 +38,14 @@ except ImportError:  # 以包形式导入时（如单元测试）
 try:  # 直接以脚本方式运行时
     from sheet_style import (
         COLOR_BANNER_BG, COLOR_PRIMARY, TAB_COLORS, banner, data_cell, finish,
-        header_row, locate_header_row, set_widths,
+        fit_row_height, header_row, locate_header_row, new_workbook,
+        save_workbook, set_widths, WB_FONT_NAME,
     )
 except ImportError:  # 以包形式导入时（如单元测试）
     from scripts.sheet_style import (  # type: ignore[no-redef]
         COLOR_BANNER_BG, COLOR_PRIMARY, TAB_COLORS, banner, data_cell, finish,
-        header_row, locate_header_row, set_widths,
+        fit_row_height, header_row, locate_header_row, new_workbook,
+        save_workbook, set_widths, WB_FONT_NAME,
     )
 from .constants import TIME_KEYS, MODE_LABELS, STRATEGY_LABELS, DATE_CELL_FMT, BASE_DIR, EXCEL_PATH, CLEANING_CFG, DISPLAY_RULES_CFG, ATTRIBUTION_CFG, TIME_KEYS, MODE_LABELS, STRATEGY_LABELS, HEADERS, ATT_HEADERS, METRIC_VALUES, METRIC_BOTH, DEPT_VALUES, KPI_PAGES, KPI_METRICS, KPI_HEADERS, GROUP_NOTE_LINES, UNIT_NOTE_LINES, NAME_NOTE_LINES, OUTPUT_NOTE_LINES, BIZ_NOTE_LINES, DATE_CELL_FMT
 from .paths import BASE_DIR, EXCEL_PATH, CLEANING_CFG, DISPLAY_RULES_CFG, ATTRIBUTION_CFG
@@ -65,7 +67,7 @@ def init_excel_template():
     cfg = json.loads(CLEANING_CFG.read_text(encoding="utf-8"))
     tr = cfg.get("时间范围", {})
 
-    wb = openpyxl.Workbook()
+    wb = new_workbook()   # 默认字体（宋体）+ 固定文档属性，见 sheet_style
 
     # ── Sheet 1: 时间配置 ──
     ws = wb.active
@@ -130,9 +132,12 @@ def init_excel_template():
                           wrap=(col == 8))
             if col == 1:
                 c.fill = PatternFill("solid", fgColor="FCE4D6")
+        # 说明列要换行显示：按文本长度估个行高（编辑版里 Excel 自适应为 42）
+        fit_row_height(ws, settle_row, [(values[7], 46)])
         row_idx += 1
 
-    set_widths(ws, [16, 12, 20, 18, 26, 8, 12, 46])
+    # D 列 = 开始日期（显示到秒，如 2026-10-01 00:00:00）：宽度取编辑版的实际值，避免被截断
+    set_widths(ws, [16, 12, 20, 21.909, 26, 8, 12, 46])
 
     dv_mode = DataValidation(type="list", formula1='"' + ",".join(MODE_LABELS.values()) + '"',
                              allow_blank=True, promptTitle="怎么填（二选一）",
@@ -150,7 +155,8 @@ def init_excel_template():
                                    promptTitle="怎么填", prompt="月底结算 / 常规")
         dv_settle.add(f"B{settle_row}")
         ws.add_data_validation(dv_settle)
-    finish(ws, freeze="A3", autofilter="A2:H2", tab_color=TAB_COLORS["时间配置"])
+    # 筛选覆盖到最后一个数据行（含结算模式行）—— 编辑版把筛选拖到了全部行，生成器对齐
+    finish(ws, freeze="A3", autofilter=f"A2:H{row_idx - 1}", tab_color=TAB_COLORS["时间配置"])
 
     # ── Sheet 2: 展示规则 ──
     # （2026-09-28 重做：序号/页面/区块/配置项/值/可选值/说明 + 下拉验证，见 display_rules_sheet.py）
@@ -181,6 +187,7 @@ def init_excel_template():
                         for c, v in enumerate(vals, 1):
                             data_cell(ws_a, att_row, c, v,
                                       editable=c in (5, 6), band=band, wrap=(c == 7))
+                        fit_row_height(ws_a, att_row, [(note, 30)])   # 长备注行给足行高
                         att_row += 1
             else:
                 # 结构不同：收入/回款分开行
@@ -195,6 +202,7 @@ def init_excel_template():
                             for c, v in enumerate(vals, 1):
                                 data_cell(ws_a, att_row, c, v,
                                           editable=c in (5, 6), band=band, wrap=(c == 7))
+                            fit_row_height(ws_a, att_row, [(note, 30)])   # 长备注行给足行高
                             att_row += 1
 
     set_widths(ws_a, [26, 36, 14, 10, 12, 10, 30])
@@ -212,7 +220,8 @@ def init_excel_template():
     dv_dept.add(f"D3:D{att_row + 50}")
     ws_a.add_data_validation(dv_dept)
 
-    finish(ws_a, freeze="C3", autofilter="A2:G2", tab_color=TAB_COLORS["销售归属"])
+    # 同上：筛选覆盖全部归属行（编辑版为 A2:G2438）
+    finish(ws_a, freeze="C3", autofilter=f"A2:G{att_row - 1}", tab_color=TAB_COLORS["销售归属"])
 
     # ── Sheet 4: KPI指标（Hero 圆环指标总数覆盖，万元）──
     rules_now = json.loads(DISPLAY_RULES_CFG.read_text(encoding="utf-8"))
@@ -255,6 +264,8 @@ def init_excel_template():
         [""],
         ["1. 本 Excel 是「编辑层」，改完保存后运行生成器写回 JSON，系统读取 JSON。"],
         ["   运行: python scripts/config_excel_to_json.py"],
+        ["   重建/规范化: --init（从 JSON 重建整本，与生成版逐字节一致；会覆盖 Excel 侧手工微调）"],
+        ["                --normalize（不重建，只把 Excel 存盘残留的空字符串清成真空 + 固定属性，样式一行不动）"],
         ["   统一设计(2026-09-28): 每张表 第1行=蓝色提示(这张表怎么用)、第2行=表头；【浅黄底=可编辑列】，浅灰底=只读/参考列。"],
         ["   销售归属表按母公司分块浅蓝斑马纹；时间配置/销售归属/字段映射 表头带筛选按钮、已冻结窗格；各表标签页颜色区分。"],
         ["   下拉只给取值有限的项（模式/动态策略/指标/部门/排序），客户名等自由文本自己填。"],
@@ -328,7 +339,7 @@ def init_excel_template():
     for row in lines:
         ws2.append(row)
     ws2.column_dimensions["A"].width = 110
-    ws2["A1"].font = Font(bold=True, size=14, color=COLOR_PRIMARY)
+    ws2["A1"].font = Font(name=WB_FONT_NAME, bold=True, size=14, color=COLOR_PRIMARY)
     ws2["A1"].fill = PatternFill("solid", fgColor=COLOR_BANNER_BG)
     ws2.row_dimensions[1].height = 28
     # 分节标题（"1." / "2." … 开头的行）加粗 + 浅蓝底，便于扫读
@@ -336,7 +347,7 @@ def init_excel_template():
         v = ws2.cell(row=i, column=1).value
         if isinstance(v, str) and re.match(r"^\d+\.", v.strip()):
             c = ws2.cell(row=i, column=1)
-            c.font = Font(bold=True, color=COLOR_PRIMARY, size=11.5)
+            c.font = Font(name=WB_FONT_NAME, bold=True, color=COLOR_PRIMARY, size=11.5)
             c.fill = PatternFill("solid", fgColor=COLOR_BANNER_BG)
             ws2.row_dimensions[i].height = 20
     finish(ws2, tab_color=TAB_COLORS["说明"])
@@ -352,7 +363,7 @@ def init_excel_template():
     if "说明" in wb.sheetnames and wb.sheetnames[-1] != "说明":
         wb.move_sheet("说明", offset=len(wb.sheetnames) - 1 - wb.sheetnames.index("说明"))
 
-    wb.save(EXCEL_PATH)
+    save_workbook(wb, EXCEL_PATH)
     try:
         shown = EXCEL_PATH.relative_to(BASE_DIR)
     except ValueError:  # 测试/自定义路径（不在项目内）
@@ -380,7 +391,7 @@ def _sync_note_block(ws, block: list[list[str]]) -> str:
         for line in block:
             cell = ws.cell(row=row, column=1, value=line[0])
             if re.match(r"^\d+\.", str(line[0]).strip()):
-                cell.font = Font(bold=True, color=COLOR_PRIMARY, size=11.5)
+                cell.font = Font(name=WB_FONT_NAME, bold=True, color=COLOR_PRIMARY, size=11.5)
                 cell.fill = PatternFill("solid", fgColor=COLOR_BANNER_BG)
             row += 1
         return "appended"
@@ -407,10 +418,10 @@ def _sync_note_block(ws, block: list[list[str]]) -> str:
     for i, text in enumerate(want):
         cell = ws.cell(row=start + i, column=1, value=text)
         if i == 0:
-            cell.font = Font(bold=True, color=COLOR_PRIMARY, size=11.5)
+            cell.font = Font(name=WB_FONT_NAME, bold=True, color=COLOR_PRIMARY, size=11.5)
             cell.fill = PatternFill("solid", fgColor=COLOR_BANNER_BG)
         else:
-            cell.font = Font(size=11)
+            cell.font = Font(name=WB_FONT_NAME, size=11)
     return "updated"
 
 
@@ -427,5 +438,5 @@ def refresh_note_sheet() -> Path:
     changed = [_sync_note_block(ws, block) for block in _note_blocks()]
     if all(c == "same" for c in changed):
         return EXCEL_PATH
-    wb.save(EXCEL_PATH)
+    save_workbook(wb, EXCEL_PATH)
     return EXCEL_PATH

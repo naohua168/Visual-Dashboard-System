@@ -198,6 +198,8 @@ def append_to_excel(names: list[str], note: str) -> int:
     from copy import copy
     from openpyxl.styles import Alignment
 
+    from scripts.sheet_style import save_workbook   # 确定性保存（固定属性 + 规范化 zip）
+
     wb = openpyxl.load_workbook(EXCEL_PATH)
     if "销售归属" not in wb.sheetnames:
         raise RuntimeError("配置编辑器缺少「销售归属」sheet")
@@ -223,7 +225,7 @@ def append_to_excel(names: list[str], note: str) -> int:
             except Exception:
                 pass
             ws.cell(row=last + i, column=c).alignment = Alignment(horizontal="left", vertical="center")
-    wb.save(EXCEL_PATH)
+    save_workbook(wb, EXCEL_PATH)
     return len(rows)
 
 

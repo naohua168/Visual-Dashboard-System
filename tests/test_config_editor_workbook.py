@@ -430,6 +430,62 @@ def test_blank_never_written_as_text(tmp_path, monkeypatch):
         cej.excel_to_time_config(_sheet(t_none, "横幅", time_heads))
 
 
+def test_init_template_is_byte_stable(tmp_path, monkeypatch):
+    """同一份配置两次生成，xlsx **逐字节一致**（2026-10-10）
+
+    做法：固定文档属性（作者/创建与修改时间）+ 规范化 zip（条目排序、固定时间戳、
+    钉死 docProps/core.xml 里被 openpyxl 强制改写的 dcterms:modified）。
+    作用：可以拿 sha256 判断"生成版有没有被人手改过 / 生成器有没有意外改动设计"。
+    """
+    outs = [tmp_path / "gen1.xlsx", tmp_path / "gen2.xlsx"]
+    for out in outs:
+        monkeypatch.setattr(cej, "EXCEL_PATH", out)
+        cej.init_excel_template()
+    b1, b2 = outs[0].read_bytes(), outs[1].read_bytes()
+    assert len(b1) == len(b2), f"两次生成大小不同: {len(b1)} vs {len(b2)}"
+    assert b1 == b2, "两次生成字节不同（生成不确定：检查文档属性/zip 时间戳是否被固定）"
+
+    # 生成版里不允许出现空字符串单元格（Excel 存盘会留下这种残留，生成器统一写真空）
+    wb = openpyxl.load_workbook(outs[0])
+    blanks = [f"{ws.title}!{c.coordinate}"
+              for ws in wb.worksheets for row in ws.iter_rows() for c in row
+              if isinstance(c.value, str) and c.value == ""]
+    assert not blanks, f"生成的工作簿存在空字符串单元格: {blanks[:8]}"
+
+
+def test_canonicalize_workbook_inplace(tmp_path):
+    """--normalize：清空字符串单元格 + 内容不动 + 重复规范化字节不变
+
+    注意：openpyxl 赋 `""` 等于赋空（单元格都不会建），所以"空字符串单元格"只能在
+    已读出的工作簿对象上直接塞（Excel 存盘的共享字符串读出来正是 `''`）。
+    """
+    from scripts.sheet_style import canonicalize_workbook, clear_blank_strings, new_workbook
+
+    # ① 空字符串清理：只动值，其他内容原地保留
+    wb = new_workbook()
+    ws = wb.active
+    ws["A1"] = "客户"
+    ws["A2"] = "上海某某有限公司"
+    blank = ws.cell(row=3, column=4)
+    blank._value = ""                       # 模拟 Excel 存盘读出来的空字符串
+    assert clear_blank_strings(wb) == 1
+    assert ws["D3"].value is None
+    assert ws["A2"].value == "上海某某有限公司"
+
+    # ② 原地规范化：无空串时报告 0，且重复执行字节不变（幂等）
+    from scripts.sheet_style import save_workbook
+
+    path = tmp_path / "edit.xlsx"
+    save_workbook(wb, path)
+    stat = canonicalize_workbook(path)
+    assert stat["blank_cleared"] == 0
+    assert openpyxl.load_workbook(path).active["A2"].value == "上海某某有限公司"
+
+    once = path.read_bytes()
+    canonicalize_workbook(path)
+    assert path.read_bytes() == once, "重复规范化会改动文件字节"
+
+
 def _make_note_workbook(path: Path, head: list[str]) -> None:
     """造一个只有「说明」sheet 的临时工作簿（模拟"旧版说明书"）"""
     wb = openpyxl.Workbook()

@@ -33,11 +33,13 @@ except ImportError:  # pragma: no cover
 # 统一样式（横幅/表头/可编辑底色/只读灰底/表头行定位）
 try:
     from sheet_style import (
-        TAB_COLORS, banner, data_cell, finish, header_row, locate_header_row, set_widths,
+        TAB_COLORS, banner, data_cell, finish, fit_row_height, header_row,
+        locate_header_row, save_workbook, set_widths,
     )
 except ImportError:  # 以包形式导入时（如单元测试）
     from scripts.sheet_style import (  # type: ignore[no-redef]
-        TAB_COLORS, banner, data_cell, finish, header_row, locate_header_row, set_widths,
+        TAB_COLORS, banner, data_cell, finish, fit_row_height, header_row,
+        locate_header_row, save_workbook, set_widths,
     )
 
 BASE_DIR = Path(__file__).parent.parent
@@ -340,9 +342,12 @@ def attach_mapping_sheet(wb, cfg: dict, hits: dict | None = None):
                 readonly=head in KEY_COLS or head == HIT_COL,
                 wrap=(head in (HIT_COL, NOTE_COL)),
             )
+        # 长说明/候选备注行给足行高（[当前命中, 说明] 是 row 的最后两列）
+        fit_row_height(ws, r_off, [(row[-2], 24), (row[-1], 46)])
 
     set_widths(ws, [10, 12, 12] + [22] * CAND_MAX + [24, 46])
-    ws.auto_filter.ref = f"A2:{get_column_letter(len(MAP_HEADERS))}2"
+    # 筛选覆盖到最后一个字段行（编辑版为 A2:J37），不只是表头行
+    ws.auto_filter.ref = f"A2:{get_column_letter(len(MAP_HEADERS))}{len(rows) + 1}"
     ws.freeze_panes = "D3"
     ws.sheet_properties.tabColor = TAB_COLORS.get(MAP_SHEET_NAME, TAB_COLORS["说明"])
     return ws
@@ -361,5 +366,5 @@ def refresh_mapping_sheet(excel_path: Path | str | None = None,
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     wb = openpyxl.load_workbook(excel_path)
     attach_mapping_sheet(wb, cfg, read_latest_hits())
-    wb.save(excel_path)
+    save_workbook(wb, excel_path)
     return excel_path

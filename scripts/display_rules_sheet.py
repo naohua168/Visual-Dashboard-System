@@ -42,11 +42,13 @@ except ImportError:  # pragma: no cover
 # 统一样式（横幅 / 表头 / 段标题 / 可编辑底色 / 斑马纹 / 冻结筛选）
 try:  # 直接以脚本方式运行时
     from sheet_style import (
-        TAB_COLORS, banner, data_cell, finish, header_row, section_row, set_widths,
+        TAB_COLORS, banner, data_cell, finish, fit_row_height, header_row,
+        save_workbook, section_row, set_widths,
     )
 except ImportError:  # 以包形式导入时（如单元测试）
     from scripts.sheet_style import (  # type: ignore[no-redef]
-        TAB_COLORS, banner, data_cell, finish, header_row, section_row, set_widths,
+        TAB_COLORS, banner, data_cell, finish, fit_row_height, header_row,
+        save_workbook, section_row, set_widths,
     )
 
 BASE_DIR = Path(__file__).parent.parent
@@ -505,13 +507,15 @@ def attach_rules_sheet(wb, rules: dict):
                 data_cell(ws, row_idx, col, v,
                           editable=(col == 5), readonly=(col == 6),
                           wrap=(col in (6, 7)), center=(col in (1, 2, 3, 4)))
+            fit_row_height(ws, row_idx, [(options, 38), (note, 62)])   # 长说明行给足行高
             spec = spec_map.get((page, section, key))
             if spec:
                 dv_rows[spec["kind"]].append(row_idx)
         row_idx += 1
 
     set_widths(ws, [6, 12, 14, 14, 34, 38, 62])
-    finish(ws, freeze="E3", tab_color=TAB_COLORS[RULE_SHEET_NAME])
+    # 冻结位置跟编辑版一致（E8：横幅+表头+前几行配置一起钉住）
+    finish(ws, freeze="E8", tab_color=TAB_COLORS[RULE_SHEET_NAME])
 
     # ④ 数据验证（下拉）
     if dv_rows["sort"]:
@@ -560,5 +564,5 @@ def refresh_rules_sheet(excel_path: Path | str | None = None,
     rules = json.loads(cfg_path.read_text(encoding="utf-8"))
     wb = _xl.load_workbook(excel_path)
     attach_rules_sheet(wb, rules)
-    wb.save(excel_path)
+    save_workbook(wb, excel_path)
     return excel_path

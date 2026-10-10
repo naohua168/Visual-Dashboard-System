@@ -40,6 +40,11 @@ from .paths import BASE_DIR, EXCEL_PATH, CLEANING_CFG
 from .template import init_excel_template, refresh_note_sheet
 from .time_config import excel_to_time_config, update_cleaning_config
 
+try:  # 直接以脚本方式运行时
+    from sheet_style import canonicalize_workbook
+except ImportError:  # 以包形式导入时（如单元测试）
+    from scripts.sheet_style import canonicalize_workbook  # type: ignore[no-redef]
+
 
 def main():
     args = sys.argv[1:]
@@ -47,10 +52,19 @@ def main():
     init_map = "--init-map" in args
     init_rules = "--init-rules" in args
     refresh_notes = "--refresh-notes" in args
+    normalize = "--normalize" in args
     dry_run = "--dry-run" in args
 
     if init:
         init_excel_template()
+        return 0
+
+    if normalize:
+        # 原地无损规范化：空字符串清成真空 + 固定文档属性 + 规范化 zip
+        # （样式/列宽/行高/冻结/筛选都保留；让"生成版 vs 编辑版"不再出现假差异，且每次保存字节一致）
+        stat = canonicalize_workbook(EXCEL_PATH)
+        print(f"✅ 已规范化配置编辑器（空字符串清成真空 {stat['blank_cleared']} 格，"
+              f"{stat['sheets']} 个 sheet；内容未改动）: {EXCEL_PATH.relative_to(BASE_DIR)}")
         return 0
 
     if refresh_notes:

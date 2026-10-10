@@ -9,6 +9,7 @@
     python scripts/config_excel_to_json.py --init-map   # 只刷新「字段映射」sheet
     python scripts/config_excel_to_json.py --init-rules # 只刷新「展示规则」sheet
     python scripts/config_excel_to_json.py --refresh-notes  # 补「说明」sheet 分节
+    python scripts/config_excel_to_json.py --normalize  # 原地规范化（空字符串清成真空 + 固定属性/zip）
 """
 from __future__ import annotations
 
