@@ -52,7 +52,7 @@ CSS = r"""
     flex-direction:column;align-items:flex-end;justify-content:center;gap:0.0625rem;
   }
   table.ann-matrix td.cb .ct .cm, .ann-matrix td.cb .ct .cm{align-items:flex-end;}
-  table.ann-matrix .th-name, .ann-matrix .th-name{width:22%;}
+  /* 客户名列宽度保持 28rem（不再在窄屏压到 22%）：客户名单行优先，宽度不足靠 .table-wrap 横滑 */
   table.ann-matrix thead th, .ann-matrix thead th{padding:0.5rem 0.25rem !important;}
 }
 """

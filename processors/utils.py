@@ -83,9 +83,11 @@ _BREAK_AFTER = "、，,；;）)】」》 　·-—_/"
 _BREAK_BEFORE = "（(【「《"
 
 
-def wrap_name(name, width: int = 20) -> str:
+def wrap_name(name, width: int = 25) -> str:
     """长名称按「每行最多 width 字」折行，返回带 <br> 的 HTML 片段
 
+    - 默认 25 字（2026-10-10 由 20 改）：客户名尽量单行显示，**只有超过 25 字才强制折行**
+      （对应的客户列宽度是 28rem，够 25 个汉字；见 static/css/matrix.py）
     - 优先在自然断点（顿号/逗号/括号/空格/连字符）处折行，找不到断点则按 width 硬切
     - 每行字符数 ≤ width；名称本身不超过 width 时原样返回
     - 仅供**展示**：点击事件/弹窗参数等仍应传原始名称（不要传本函数结果）

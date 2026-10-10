@@ -10,12 +10,17 @@ table.ann-matrix, .table-wrap table.ann-matrix, .ann-matrix{
   width:100%;border-collapse:separate;border-spacing:0;font-size:1.5rem;background:#fff;
   border:1px solid #e2e5ed;
 }
-/* 盒式列宽（2026-10-10）：列宽按比例分配（客户/合计各 20%，4 部门均分），不再由内容撑破容器。
-   最小宽度 64rem：≥1220 时单格横排（百分比+实际/目标 ≈158px），<1220 格内改上下两行（≈125px），
-   两种情况都够用；再窄（手机）就在 .table-wrap 内横滑，数据一个不少 */
+/* 盒式列宽（2026-10-10）：列宽不再由内容撑破容器。
+   客户名列固定 28rem（≈25 个汉字，名字不到 25 字不换行；超过 25 字由 wrap_name 插 <br> 强制折行）；
+   合计列固定 12rem（要放得下"16,919/12,000"）；4 个部门列均分剩余宽度。
+   最小宽度 84rem：保证部门格也放得下"11,545/40,867"+百分比（之前按百分比给列会把金额挤掉一截）；
+   窗口不够宽时在 .table-wrap 内横滑，数据一个不少 */
 table.ann-matrix, .ann-matrix, table.yoy-dept-table, .yoy-dept-table{table-layout:fixed;}
-table.ann-matrix, .ann-matrix{min-width:64rem;}
+table.ann-matrix, .ann-matrix{min-width:84rem;}
 table.ann-matrix .th-name, .ann-matrix .th-name{width:20%;min-width:0;}
+/* 客户名列（第一列）固定 28rem；合计表头带 .th-total，单独 12rem */
+table.ann-matrix .th-name:not(.th-total), .ann-matrix .th-name:not(.th-total){width:28rem;}
+table.ann-matrix .th-name.th-total, .ann-matrix .th-name.th-total{width:12rem;}
 table.ann-matrix th, table.ann-matrix td,
 .ann-matrix th, .ann-matrix td{
   /* 2026-10-10：内边距 12/20px → 10/12px，配合格内字号收紧，让 6 列在 1093 逻辑宽下也能一屏排下 */
@@ -60,15 +65,22 @@ table.ann-matrix thead tr.detail-row th,
   background:#1e293b;
 }
 table.ann-matrix .th-name, .ann-matrix .th-name{text-align:center;min-width:10rem;font-weight:800;}
-/* 客户名列 */
+/* 客户名列（2026-10-10 二轮：行内更宽松，名字单行显示）
+   行高 1.35→1.5、内边距 10/12px→12/14px，客户行不再拥挤；
+   只有 wrap_name() 在 25 字处插的 <br> 才会折行（普通换行留给极窄窗口兜底） */
 table.ann-matrix .td-name, .ann-matrix .td-name{
   text-align:left;font-weight:600;color:#0f172a;font-size:1.125rem;
-  white-space:normal;line-height:1.35;vertical-align:middle;
+  white-space:normal;line-height:1.5;vertical-align:middle;
+  padding:0.75rem 0.875rem;
 }
 table.ann-matrix .td-name .row-num, .ann-matrix .td-name .row-num{
   display:inline-flex;width:1.75rem;height:1.75rem;align-items:center;justify-content:center;
   font-size:1rem;font-weight:800;color:#fff;background:#94a3b8;
   border-radius:0.25rem;margin-right:0.5rem;flex-shrink:0;
+}
+/* 「▾ N/M家」展开提示：始终与客户名同一行（不再被挤到第二行） */
+table.ann-matrix .td-name .expand-hint, .ann-matrix .td-name .expand-hint{
+  white-space:nowrap;font-size:0.9375rem;font-weight:600;color:#64748b;
 }
 /* 行高亮 —— 深色背景 + 左侧高亮条（Excel 选中效果）*/
 table.ann-matrix tbody tr:hover td, .ann-matrix tbody tr:hover td{
@@ -125,7 +137,8 @@ table.ann-matrix .td-total, .ann-matrix .td-total{font-weight:700;}
 .cell-sub{font-size:0.625rem;color:var(--text-muted);margin-top:1px;line-height:1.2;}
 /* ══════════ 格子背景填充（CSS类优化版）══════════ */
 td.cb{
-  position:relative;padding:0.4375rem 0.5rem;overflow:hidden;
+  /* 上下内边距 7px→9px：客户行更透气（2026-10-10 二轮） */
+  position:relative;padding:0.5625rem 0.5rem;overflow:hidden;
   border:1px solid #cbd5e1;background:#f8fafc;vertical-align:middle;
 }
 /* 填充条（::before伪元素替代fill-bg div） */
