@@ -13,12 +13,14 @@ from engine.core.diagnostics import note_issue, output_dir, print_summary, write
 from engine.core.io_utils import ExcelBusyError, save_excel
 from .data_loader import load_all
 from .base import GLOBAL_CSS, GLOBAL_JS, GLOBAL_OV_CSS
-from .page_overview import OverviewPage
-from .page_annual import AnnualPage
-from .page_yoy import YoyPage
-from .page_quarterly import QuarterlyPage
-from .page_monthly import MonthlyPage
-from .page_sales import SalesPage
+from .pages import (
+    AnnualPage,
+    MonthlyPage,
+    OverviewPage,
+    QuarterlyPage,
+    SalesPage,
+    YoyPage,
+)
 
 BASE_DIR = Path(__file__).parent.parent.resolve()
 CHART_JS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"

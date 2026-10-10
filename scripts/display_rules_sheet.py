@@ -91,13 +91,13 @@ SPEC: list[dict] = [
         "page": "数据总览", "section": "", "key": "销售TopN", "kind": "int",
         "options": "整数 ≥ 0（0 = 显示全部）",
         "note": "数据总览页右半区『销售年度收入/回款达成度景观』显示前 N 名销售",
-        "read_by": "processors/page_overview.py",
+        "read_by": "processors/pages/overview.py",
     },
     *[
         {
             "page": page, "section": "客户矩阵", "key": key,
             "kind": kind, "options": options, "note": note,
-            "read_by": "processors/page_data.py → config_loader.CustomerFilter",
+            "read_by": "processors/data_prep（各页）→ config_loader.CustomerFilter",
         }
         for page in ("年度达成", "月度达成", "季度达成")
         for key, kind, options, note in (
@@ -115,7 +115,7 @@ SPEC: list[dict] = [
         {
             "page": "年度同比", "section": "", "key": key, "kind": kind,
             "options": options, "note": note,
-            "read_by": "processors/page_data.py → config_loader.CustomerFilter",
+            "read_by": "processors/data_prep（各页）→ config_loader.CustomerFilter",
         }
         for key, kind, options, note in (
             ("最大行数", "int", "整数 ≥ 0（0 = 不限）", "重要客户同比矩阵显示的行数"),

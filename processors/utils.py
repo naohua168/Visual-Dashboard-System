@@ -8,7 +8,7 @@ import math
 def fmt_wan(amount: float | int | None) -> str:
     """金额格式化为万元展示（千分位、无小数）
 
-    输入金额单位：万元（page_data_utils._add_wan 已做 ÷10000 转换）
+    输入金额单位：万元（data_utils.metrics._add_wan 已做 ÷10000 转换）
     本函数仅做千分位格式化，不改变数值。
 
     特殊规则：0 < 金额 < 1（万）时显示 ">0"，避免四舍五入成 0 造成

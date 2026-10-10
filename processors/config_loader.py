@@ -90,6 +90,39 @@ def get_value(base_dir: Path, page_key: str, key: str, default=None):
 # ═══════════════════════════════════════════════════════════
 # 组名展开：母公司组名 → 子公司客户名列表
 # ═══════════════════════════════════════════════════════════
+def expand_to_customer_names_ordered(base_dir: Path, names: list[str]) -> list[str]:
+    """同 expand_to_customer_names，但**按书写顺序**返回（同名/同子公司在首次出现处去重）
+
+    用途：需要"按配置顺序"影响展示位置的场景（如优先展示名单追加到矩阵末尾）。
+    集合的迭代顺序随进程哈希种子变化，直接迭代 set 会让同一个名单每次渲染出不同行序
+    （2026-10-10 定位并修复：年度/销售页客户行序每次渲染都变）。
+    """
+    ownership = _load_ownership(base_dir).get("客户归属", {})
+    parents = {match_key(p): p for p in ownership.keys()}
+    dotted = dotted_parent_patterns(dotted_parent_names(ownership.keys()))
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(name: str) -> None:
+        if name and name not in seen:
+            seen.add(name)
+            out.append(name)
+
+    for n in names:
+        n = (n or "").strip()
+        if not n:
+            continue
+        group = parents.get(match_key(n))
+        if group is not None:
+            for sub_name in ownership[group].get("子公司", {}).keys():
+                _add(sub_name)
+            if "·" in str(group):      # 「父组名自带销售」：这一行本身也要选中
+                _add(group)
+        else:
+            _add(normalize_known_parent(n, dotted) or n)
+    return out
+
+
 def expand_to_customer_names(base_dir: Path, names: list[str]) -> set[str]:
     """将混合的【母公司组名 + 客户名】展开成所有底层子客户名集合
 
@@ -184,6 +217,10 @@ class CustomerFilter:
     def get_priority_names(self, base_dir: Path) -> set[str]:
         """获取展开后的优先展示客户名集合（母公司名→子公司展开）"""
         return expand_to_customer_names(base_dir, self.priority)
+
+    def get_priority_names_ordered(self, base_dir: Path) -> list[str]:
+        """同 get_priority_names，但保持配置书写顺序 —— 需要按顺序追加行时用这个"""
+        return expand_to_customer_names_ordered(base_dir, self.priority)
 
     def apply(self, customers: list[str],
               piv: Any = None, tgt: Any = None,

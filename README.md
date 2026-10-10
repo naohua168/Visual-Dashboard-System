@@ -44,6 +44,7 @@ run_all.bat
 | **数据清洗展示逻辑** | **每个页面**的清洗/聚合/展示逻辑（数据链路、客户聚合、6页各自逻辑、口径速查） | [docs/数据清洗展示逻辑.md](docs/数据清洗展示逻辑.md) |
 | **部署指南** | 环境要求 / 安装步骤 / 数据准备 / **配置方式** / 运行 / 输出 / **VirtualBox 验收** / 故障排查 | [docs/部署指南.md](docs/部署指南.md) |
 | **维护指南** | 日常维护操作（换数据/改指标/改配置/看日志/数据锁定规则） | [docs/维护指南.md](docs/维护指南.md) |
+| **代码结构与模块约定** | 目录职责 / 模块划分约定（兼容层·状态·路径）/ **常见改动去哪改** / 改完怎么验收 | [docs/代码结构与模块约定.md](docs/代码结构与模块约定.md) |
 
 **按主题快速定位：**
 
@@ -319,7 +320,7 @@ ERP 系统导出，**当月单月**数据。金额单位：**元**（金额列�
 > - `法人主体 = 南方（韶关）智能网联新能源汽车试验检测中心有限公司` **且** 该行在该口径（收入/回款）+ 部门下**无销售归属** → 归入母公司行 **`南方韶关`**（点开可见各子公司明细）；
 > - 有销售归属的韶关行 → 保持原客户行（走销售）；法人主体非南方韶关 → 不归拢。
 >
-> 实现：`page_data_utils.filter_sg_by_legal()`，由年/月/季度页的 `_consolidate_customers(df, "收入"/"回款")` 触发；总览/同比不做该归拢。
+> 实现：`processors/data_utils/consolidate.py::filter_sg_by_legal()`，由年/月/季度页的 `_consolidate_customers(df, "收入"/"回款")` 触发；总览/同比不做该归拢。
 
 | 通用列名 | Excel 候选列名 |
 |----------|---------------|
@@ -475,18 +476,32 @@ Visual Dashboard_system/
 ├── processors/                       # ★ 渲染层（6 页看板）
 │   ├── run.py                        #   主入口（合并6页 → HTML + Excel总表）
 │   ├── data_loader.py                #   数据加载（CustomerUnifier 统称归并）
-│   ├── page_data.py / page_data_utils.py   #   数据层 + 共享工具
-│   ├── page_overview.py              #   数据总览
-│   ├── page_annual.py                #   年度达成
-│   ├── page_monthly.py               #   月度达成
-│   ├── page_quarterly.py             #   季度达成
-│   ├── page_sales.py                 #   销售达成（3 卡片 + 右侧抽屉弹窗）
-│   ├── page_yoy.py                   #   年度同比
+│   ├── data_prep/                    #   取数包（每页一个模块：dataclass + prepare_*_data）
+│   │   ├── overview.py / annual.py / monthly.py / quarterly.py / sales.py / yoy.py
+│   ├── data_utils/                   #   数据层共享工具包
+│   │   ├── keys.py                   #     拆分键 / 点号父组 / 名称归一
+│   │   ├── loading.py                #     归属与映射加载（客户销售归属、子公司→母公司）
+│   │   ├── consolidate.py            #     母公司归并 / 法人过滤 / 弹窗子公司明细
+│   │   ├── metrics.py                #     指标、月份范围、同比、客户透视与排序
+│   │   └── constants.py              #     部门与各类名单常量（含 PROJECT_ROOT）
+│   ├── pages/                        #   页面包（每页一个模块）
+│   │   ├── overview.py               #     数据总览
+│   │   ├── annual.py                 #     年度达成
+│   │   ├── monthly.py                #     月度达成
+│   │   ├── quarterly.py              #     季度达成
+│   │   ├── sales.py                  #     销售达成（3 卡片 + 右侧抽屉弹窗）
+│   │   └── yoy.py                    #     年度同比
+│   ├── page_*.py                     #   兼容层：旧导入路径 re-export → pages/（新代码请用 processors.pages）
 │   ├── sales_pending.py              #   待确认客户弹窗
 │   ├── components.py / config_loader.py / base.py / hero.py / utils.py
-│   └── static/                       #   CSS/JS/图标/Chart.js（含 icons.py、chart.umd.min.js）
-├── tests/                            # 27 文件，360 passed（含 conftest.py）
-├── docs/                             # 数据系统设计 / 字段映射 / 部署指南 / 维护指南
+│   └── static/                       #   CSS/JS/图标/Chart.js
+│       ├── css/                      #   样式包：variables/layout/kpi/tables/cards/yoy/widgets/
+│       │                             #           hero/annual/matrix/yoy_tables/overview/responsive/animations
+│       ├── js/                       #   脚本包：nav/page_switch/counters/text/charts/tables/tabs
+│       └── icons.py / chart.umd.min.js
+├── tests/                            # 28 文件（531 passed / 1 xfailed）
+├── docs/                             # 数据系统设计 / 字段映射 / 部署指南 / 维护指南 /
+│                                     # 代码结构与模块约定（重构后的目录与维护规则）
 ├── output/                           # ★ 看板输出（不上传 Git）
 │   ├── 看板/看板_YYYYMMDD.html        #   6 页可视化看板
 │   ├── 数据/data_YYYYMMDD.xlsx        #   16 Sheet 数据总表（sheet名=data/sheets/文件夹名）
