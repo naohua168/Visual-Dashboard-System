@@ -5,8 +5,11 @@
 """
 from __future__ import annotations
 
+import calendar
 import json
-from datetime import datetime
+import re
+from datetime import date, datetime, timedelta
+
 from engine.core.utils import rel_path
 try:  # 直接以脚本方式运行时
     from sheet_style import (
@@ -25,11 +28,15 @@ from .paths import CLEANING_CFG
 
 
 def _parse_month_range(raw: str) -> list[int]:
-    """解析月份范围列：'1-8' / '1,8' → [1, 8]"""
-    raw = raw.strip().strip("[]").replace("，", ",")
+    """解析月份范围列：'1-8' / '1,8' → [1, 8]
+
+    容错（2026-10-10）：全角数字/全角逗号、'1月-8月'、'1~8' / '1～8' / '1到8' 都认。
+    """
+    raw = str(raw).strip().translate(_FULLWIDTH_MAP).strip("[]").replace("，", ",")
+    raw = raw.replace("～", "~").replace("到", "~").replace("月", " ")
     if not raw:
         return []
-    parts = [p.strip() for p in raw.replace("-", ",").split(",") if p.strip()]
+    parts = [p.strip() for p in re.split(r"[-~,]", raw) if p.strip()]
     nums = []
     for p in parts:
         try:
@@ -46,6 +53,89 @@ def _parse_month_range(raw: str) -> list[int]:
     return nums
 
 
+# ── 日期文本的宽松解析（2026-10-10 增加容错）──────────────────────────────
+# 背景：结束日期被填成 `2026/9/31 23:59:59`（斜杠 + 单位月，且 9 月没有 31 号），
+# 解析直接抛错 → 流水线在第①步「配置同步」就中断（logs/run_20261010_143802.log）。
+# 现在：常见写法都认（斜杠/点号/中文年月日/单位月/全角/可省秒），非法日历日期按该月
+# 最后一天截断并打印醒目提示（既不静默改数、也不让整条流水线停摆）。
+_FULLWIDTH_MAP = str.maketrans("０１２３４５６７８９／．：", "0123456789/.:")
+_DATE_SEP = r"[-/.]"
+DATE_TEXT_RE = re.compile(
+    rf"^(\d{{4}})\s*(?:年|{_DATE_SEP})\s*(\d{{1,2}})\s*(?:月|{_DATE_SEP})\s*(\d{{1,2}})\s*日?"
+    r"(?:[ T]\s*(\d{1,2})\s*[:：]\s*(\d{1,2})\s*(?:[:：]\s*(\d{1,2}))?)?$"
+)
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$")
+_EXCEL_EPOCH = datetime(1899, 12, 30)     # Excel 序列号基准（含 1900 闰年 bug 的通用修正）
+_SERIAL_RANGE = (20000.0, 80000.0)        # ≈1954~2119 年，该区间外的纯数字不当日期
+
+
+def month_last_day(year: int, month: int) -> int:
+    return calendar.monthrange(year, month)[1]
+
+
+def parse_date_text(raw, field: str = "日期") -> datetime:
+    """宽松解析日期（文本 / date·datetime 对象 / Excel 日期序列号）→ datetime
+
+    - 认这些写法：`2026-09-30`、`2026/9/30`、`2026.9.30`、`2026年9月30日`，可带时间
+      `23:59` / `23:59:59`（时分秒分隔符全角半角都行），也认 ISO 的 `T` 分隔
+    - 非法日历日期（如 `2026/9/31`）→ 按该月最后一天截断并打印提示，不抛错
+    - 无法识别 → ValueError（消息里给出支持的写法，便于自查）
+    """
+    if isinstance(raw, datetime):
+        return raw
+    if isinstance(raw, date):
+        return datetime(raw.year, raw.month, raw.day)
+
+    s = str(raw).strip().translate(_FULLWIDTH_MAP)
+    if not s:
+        raise ValueError(f"{field}: 日期为空")
+
+    m = DATE_TEXT_RE.match(s)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        hh, mi, ss = int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0)
+    else:
+        # 纯数字 → Excel 日期序列号（单元格被设成「常规」时，日期会以序列号形式读出）
+        if re.fullmatch(r"\d+(?:\.\d+)?", s) and _SERIAL_RANGE[0] <= float(s) <= _SERIAL_RANGE[1]:
+            dt = _EXCEL_EPOCH + timedelta(days=float(s))
+            print(f"  ⚠️ {field}: {str(raw).strip()!r} 被当作 Excel 日期序列号 → "
+                  f"{dt:%Y-%m-%d %H:%M:%S}；建议把该单元格格式设为「日期」或按 YYYY-MM-DD 填写")
+            return dt.replace(microsecond=0)
+        raise ValueError(
+            f"{field}: 日期格式无法识别 {str(raw).strip()!r}；支持 2026-09-30 / 2026/9/30 / "
+            "2026.9.30 / 2026年9月30日（可带时间，如 2026/9/30 23:59:59）"
+        )
+
+    if not 1 <= mo <= 12:
+        raise ValueError(f"{field}: 月份非法 {mo}（{str(raw).strip()!r}）")
+    if not (0 <= hh <= 23 and 0 <= mi <= 59 and 0 <= ss <= 59):
+        raise ValueError(f"{field}: 时间非法（{str(raw).strip()!r}）")
+
+    last = month_last_day(y, mo)
+    if not 1 <= d <= last:
+        fixed = min(max(d, 1), last)
+        print(f"  ⚠️ {field}: {str(raw).strip()!r} 不是有效日期（{y} 年 {mo} 月没有 {d} 号）"
+              f" → 按该月最后一天 {fixed} 号处理，请核对时间配置")
+        d = fixed
+    return datetime(y, mo, d, hh, mi, ss)
+
+
+def normalize_date_text(raw, field: str = "日期") -> str:
+    """日期文本规范成 `YYYY-MM-DD` / `YYYY-MM-DD HH:MM:SS`
+
+    已经是规范形态的原样返回（保证不改动现有配置的 JSON 文本）；其它写法解析后规范化 ——
+    下游 `end_of_day()` 与 `pd.to_datetime` 只认规范形态，`2026/9/30` 这类文本会被当成
+    当天 00:00:00，从而漏掉当天数据。
+    """
+    s = str(raw).strip()
+    if _ISO_DATE_RE.match(s):
+        return s
+    dt = parse_date_text(s, field=field)
+    if (dt.hour, dt.minute, dt.second) == (0, 0, 0):
+        return dt.strftime("%Y-%m-%d")
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _date_cell_value(raw):
     """JSON 里的日期文本 → 写进 Excel 单元格的 datetime（配 DATE_CELL_FMT 显示到秒）
 
@@ -53,12 +143,12 @@ def _date_cell_value(raw):
     '2026-10-31 23:59:59' 原样保留时分秒；解析不了的异常文本原样返回（由校验阶段报错）。
     """
     s = str(raw).strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    return raw
+    if not s:
+        return raw
+    try:
+        return parse_date_text(s, field="日期配置")
+    except ValueError:
+        return raw        # 异常文本原样写入单元格，交给读取阶段给出可操作提示
 
 
 def excel_to_time_config(sheet) -> dict:
@@ -128,23 +218,25 @@ def excel_to_time_config(sheet) -> dict:
                 # 年基线：年份 + 月份范围
                 if not year:
                     raise ValueError(f"{name}: 手填日期模式需填「年份」")
+                year_digits = re.sub(r"\D", "", str(year))   # 容错："2025 年" / "2,025"
+                if len(year_digits) != 4:
+                    raise ValueError(
+                        f"{name}: 年份应为 4 位数字（如 2025），当前: {str(year).strip()!r}"
+                    )
                 months = _parse_month_range(month_range)
                 if len(months) != 2 or months[0] > months[1]:
                     raise ValueError(f"{name}: 月份范围应为 [起始月, 结束月]，如 1-8")
-                cfg = {"年份": int(year), "月份范围": months}
+                cfg = {"年份": int(year_digits), "月份范围": months}
             else:
                 # 常规时间范围：开始/结束日期
                 if not start or not end:
                     raise ValueError(f"{name}: 手填日期模式需填「开始日期」和「结束日期」")
-                for v in (start, end):
-                    try:
-                        datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
-                    except ValueError:
-                        try:
-                            datetime.strptime(v, "%Y-%m-%d")
-                        except ValueError:
-                            raise ValueError(f"{name}: 日期格式错误 {v!r}（应为 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）")
-                cfg = {"start_date": start, "end_date": end}
+                # 日期容错（2026-10-10）：斜杠/点号/中文年月日/单位月/全角/序列号都认；
+                # 非法日历日期（9/31）按月末截断并提示；解析结果规范化后写入 JSON
+                cfg = {
+                    "start_date": normalize_date_text(start, field=f"{name} 开始日期"),
+                    "end_date": normalize_date_text(end, field=f"{name} 结束日期"),
+                }
 
         if note:
             cfg["_使用方"] = note

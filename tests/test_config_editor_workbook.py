@@ -9,7 +9,7 @@
 """
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import openpyxl
@@ -335,6 +335,95 @@ class TestRealWorkbookDesign:
         assert sections, "说明页缺少分节标题"
         for r in sections:
             assert ws.cell(row=r, column=1).font.bold, f"说明页第 {r} 行分节标题未加粗"
+
+
+# ══════════════════════════════════════════════════════════════
+# 日期容错（2026-10-10）：斜杠/中文/单位月/全角/序列号，非法日历日期按月末截断
+# ══════════════════════════════════════════════════════════════
+class TestDateTolerance:
+    def test_common_formats(self):
+        from datetime import datetime as dt
+        from scripts.editor.time_config import parse_date_text
+
+        cases = {
+            "2026-09-30": dt(2026, 9, 30),
+            "2026-9-30": dt(2026, 9, 30),
+            "2026/9/30": dt(2026, 9, 30),
+            "2026/09/30": dt(2026, 9, 30),
+            "2026.9.30": dt(2026, 9, 30),
+            "2026年9月30日": dt(2026, 9, 30),
+            "2026年9月30": dt(2026, 9, 30),
+            "２０２６／９／３０": dt(2026, 9, 30),          # 全角
+            "2026/9/30 23:59": dt(2026, 9, 30, 23, 59),
+            "2026/9/30 23:59:59": dt(2026, 9, 30, 23, 59, 59),
+            "2026-09-30T23:59:59": dt(2026, 9, 30, 23, 59, 59),
+            "2026/9/30 9:05:00": dt(2026, 9, 30, 9, 5),
+            " 2026-09-30 ": dt(2026, 9, 30),
+        }
+        for text, expect in cases.items():
+            assert parse_date_text(text) == expect, f"{text!r} 解析错误"
+        assert parse_date_text(dt(2026, 9, 30, 12, 0)) == dt(2026, 9, 30, 12, 0)
+        assert parse_date_text(date(2026, 9, 30)) == dt(2026, 9, 30)
+
+    def test_excel_serial_number(self, capsys):
+        from datetime import datetime as dt, timedelta
+        from scripts.editor.time_config import parse_date_text
+
+        assert parse_date_text("46031") == dt(1899, 12, 30) + timedelta(days=46031)
+        assert "序列号" in capsys.readouterr().out     # 提示单元格格式该设成日期
+
+    def test_invalid_day_clamped_to_month_end(self, capsys):
+        """日志里的真实值：2026/9/31 23:59:59（9 月没有 31 号）→ 按月末截断并提示"""
+        from datetime import datetime as dt
+        from scripts.editor.time_config import parse_date_text
+
+        assert parse_date_text("2026/9/31 23:59:59") == dt(2026, 9, 30, 23, 59, 59)
+        out = capsys.readouterr().out
+        assert "不是有效日期" in out and "2026 年 9 月没有 31 号" in out
+
+    def test_unrecognizable_reports_supported_forms(self):
+        from scripts.editor.time_config import parse_date_text
+
+        for bad in ("下周", "2026-13-01", "2026/9/30 25:00", "2026年9月", ""):
+            with pytest.raises(ValueError) as e:
+                parse_date_text(bad)
+            assert "日期" in str(e.value)
+
+    def test_normalize_keeps_iso_and_fixes_others(self):
+        from scripts.editor.time_config import normalize_date_text
+
+        # 规范形态原样返回（保证不改现有配置的 JSON 文本）
+        assert normalize_date_text("2026-10-01") == "2026-10-01"
+        assert normalize_date_text("2026-10-31 23:59:59") == "2026-10-31 23:59:59"
+        # 其它写法规范化（下游 end_of_day / pd.to_datetime 只认规范形态）
+        assert normalize_date_text("2026/10/1") == "2026-10-01"
+        assert normalize_date_text("2026年10月1日 08:30") == "2026-10-01 08:30:00"
+
+    def test_time_config_accepts_slash_date(self, capsys):
+        """整条解析走一遍：斜杠日期不再中断配置同步，写回 JSON 的是规范形态"""
+        heads = ["配置名", "模式", "动态策略", "开始日期", "结束日期", "年份", "月份范围", "说明"]
+        rows = [
+            ["年度累计", "手填日期", "", "2026/9/1", "2026/9/31 23:59:59", "", "", "数据总览"],
+            ["月度数据", "手填日期", "", "2026/9/1", "2026/9/30", "", "", "月度达成页"],
+            ["季度累计筛选", "手填日期", "", "2026/7/1", "2026/9/30", "", "", "季度达成页"],
+            ["年基线数据", "手填日期", "", "", "", "2025年", "1~8", "Phase 0"],
+            ["结算模式", "常规", "", "", "", "", "", ""],
+        ]
+        cfg = cej.excel_to_time_config(_sheet(rows, "横幅", heads))
+        assert cfg["年度累计"]["end_date"] == "2026-09-30 23:59:59"    # 月末截断 + 规范化
+        assert cfg["季度累计筛选"]["start_date"] == "2026-07-01"
+        assert cfg["年基线数据"]["年份"] == 2025
+        assert cfg["年基线数据"]["月份范围"] == [1, 8]
+        assert "不是有效日期" in capsys.readouterr().out
+
+    def test_date_cell_value_is_tolerant(self):
+        """写方向：斜杠日期也写成真正的日期单元格（不落成文本）"""
+        from datetime import datetime as dt
+        from scripts.editor.time_config import _date_cell_value
+
+        assert _date_cell_value("2026/10/1") == dt(2026, 10, 1)
+        assert _date_cell_value("2026-10-31 23:59:59") == dt(2026, 10, 31, 23, 59, 59)
+        assert _date_cell_value("下周一") == "下周一"      # 认不出就原样返回，由读取阶段报错
 
 
 # ══════════════════════════════════════════════════════════════
