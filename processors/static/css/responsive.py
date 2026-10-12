@@ -60,7 +60,7 @@ CSS = r"""
   /* 「▾N/M家」提示在窄屏收小（选择器加 tbody 提优先级，否则被 matrix.py 同优先级规则盖掉）：
      实测 1100px 时提示会把名字顶到第二行（名字 222px + 提示 78px + 徽标 30px > 可用 294px） */
   table.ann-matrix tbody td.td-name .expand-hint,
-  .ann-matrix tbody td.td-name .expand-hint{font-size:0.6875rem;}
+  .ann-matrix tbody td.td-name .expand-hint{font-size:0.5625rem;}
   table.ann-matrix thead th, .ann-matrix thead th{padding:0.5rem 0.25rem !important;}
 }
 """
