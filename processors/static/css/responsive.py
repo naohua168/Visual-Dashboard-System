@@ -52,7 +52,15 @@ CSS = r"""
     flex-direction:column;align-items:flex-end;justify-content:center;gap:0.0625rem;
   }
   table.ann-matrix td.cb .ct .cm, .ann-matrix td.cb .ct .cm{align-items:flex-end;}
-  /* 客户名列宽度保持 28rem（不再在窄屏压到 22%）：客户名单行优先，宽度不足靠 .table-wrap 横滑 */
+  /* 窄屏（≤1220）：客户列 29%→34%，合计 16%→15%
+     这一档部门格本来就走"上下两行"（见上），扛得住变窄；把宽度让给客户列，
+     保证「客户名 + ▾N/M家」仍然同一行（实测 1100px 时 29% 会让提示掉到第二行） */
+  table.ann-matrix .th-name:not(.th-total), .ann-matrix .th-name:not(.th-total){width:38%;}
+  table.ann-matrix .th-name.th-total, .ann-matrix .th-name.th-total{width:15%;}
+  /* 「▾N/M家」提示在窄屏收小（选择器加 tbody 提优先级，否则被 matrix.py 同优先级规则盖掉）：
+     实测 1100px 时提示会把名字顶到第二行（名字 222px + 提示 78px + 徽标 30px > 可用 294px） */
+  table.ann-matrix tbody td.td-name .expand-hint,
+  .ann-matrix tbody td.td-name .expand-hint{font-size:0.75rem;}
   table.ann-matrix thead th, .ann-matrix thead th{padding:0.5rem 0.25rem !important;}
 }
 """

@@ -10,17 +10,21 @@ table.ann-matrix, .table-wrap table.ann-matrix, .ann-matrix{
   width:100%;border-collapse:separate;border-spacing:0;font-size:1.5rem;background:#fff;
   border:1px solid #e2e5ed;
 }
-/* 盒式列宽（2026-10-10）：列宽不再由内容撑破容器。
-   客户名列固定 28rem（≈25 个汉字，名字不到 25 字不换行；超过 25 字由 wrap_name 插 <br> 强制折行）；
-   合计列固定 12rem（要放得下"16,919/12,000"）；4 个部门列均分剩余宽度。
-   最小宽度 84rem：保证部门格也放得下"11,545/40,867"+百分比（之前按百分比给列会把金额挤掉一截）；
-   窗口不够宽时在 .table-wrap 内横滑，数据一个不少 */
+/* 盒式列宽（2026-10-10）：列宽按比例分配，不写死像素/固定 rem，随窗口等比缩放。
+   客户名列 29%（9/30 那版的设计比例）+ 28rem 下限（≈25 个汉字，窄屏也不会把名字挤换行；
+   超过 25 字由 wrap_name() 在第 25 字插 <br> 强制折行）；合计列 16%，同样带下限。
+   下限只在小窗口生效（此时 .table-wrap 内横滑），大窗口完全按比例走。
+   最小宽度 64rem：<64rem 时横滑，数据一个不少 */
 table.ann-matrix, .ann-matrix, table.yoy-dept-table, .yoy-dept-table{table-layout:fixed;}
-table.ann-matrix, .ann-matrix{min-width:84rem;}
+table.ann-matrix, .ann-matrix{min-width:64rem;}
 table.ann-matrix .th-name, .ann-matrix .th-name{width:20%;min-width:0;}
-/* 客户名列（第一列）固定 28rem；合计表头带 .th-total，单独 12rem */
-table.ann-matrix .th-name:not(.th-total), .ann-matrix .th-name:not(.th-total){width:28rem;}
-table.ann-matrix .th-name.th-total, .ann-matrix .th-name.th-total{width:12rem;}
+/* 客户名列（第一列）29%；合计列 16% —— 纯比例，不写死 rem/px
+   为什么不给下限：table-layout:fixed 下单元格的 min-width 不生效，max(%,rem) 会被当成等分，
+   实测两个都不行（列宽平均分 → 名字全换行）。真正保证"25 个字放得下"的是**流体的根字号**
+   （clamp(13.5px,0.38vw+8.7px,16px)）：窗口越窄字越小，29% 的列能放下的字数基本不变。
+   超 25 字的名字由 wrap_name() 在第 25 字插 <br> 强制折行 */
+table.ann-matrix .th-name:not(.th-total), .ann-matrix .th-name:not(.th-total){width:29%;}
+table.ann-matrix .th-name.th-total, .ann-matrix .th-name.th-total{width:16%;}
 table.ann-matrix th, table.ann-matrix td,
 .ann-matrix th, .ann-matrix td{
   /* 2026-10-10：内边距 12/20px → 10/12px，配合格内字号收紧，让 6 列在 1093 逻辑宽下也能一屏排下 */
