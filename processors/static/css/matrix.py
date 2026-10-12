@@ -82,9 +82,11 @@ table.ann-matrix .td-name .row-num, .ann-matrix .td-name .row-num{
   font-size:1rem;font-weight:800;color:#fff;background:#94a3b8;
   border-radius:0.25rem;margin-right:0.5rem;flex-shrink:0;
 }
-/* 「▾ N/M家」展开提示：始终与客户名同一行（不再被挤到第二行） */
+/* 「▾ N/M家」展开提示：始终与客户名同一行（不再被挤到第二行）
+   字号 0.9375rem → 0.75rem（2026-10-12：用户反馈"占比标签有点大"，0.75rem ≈ 客户名的 2/3，
+   视觉上退到次要信息；同时更窄，窄屏也不易把名字顶到第二行） */
 table.ann-matrix .td-name .expand-hint, .ann-matrix .td-name .expand-hint{
-  white-space:nowrap;font-size:0.9375rem;font-weight:600;color:#64748b;
+  white-space:nowrap;font-size:0.75rem;font-weight:600;color:#64748b;
 }
 /* 行高亮 —— 深色背景 + 左侧高亮条（Excel 选中效果）*/
 table.ann-matrix tbody tr:hover td, .ann-matrix tbody tr:hover td{
