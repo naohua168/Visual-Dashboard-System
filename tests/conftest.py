@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent
 
-# 子进程（main.py / 各步骤）继承该变量 → 测试期间的报告落到临时目录，正式目录保持干净
+# 子进程（bin/main.py / 各步骤）继承该变量 → 测试期间的报告落到临时目录，正式目录保持干净
 os.environ["VD_DIAG_DIR"] = str(Path(tempfile.gettempdir()) / "vd_diag_pytest")
 SYS_DIR = BASE_DIR / "data" / "sheets" / "系统数据清理"
 MAN_DIR = BASE_DIR / "data" / "sheets" / "手动维护"

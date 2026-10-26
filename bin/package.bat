@@ -5,8 +5,10 @@ setlocal enabledelayedexpansion
 
 title Visual Dashboard System — 打包交付
 
-set ROOT=%~dp0
+REM 本脚本位于 bin/ 下 → 项目根 = 上一级（%CD% 取规范化后的绝对路径）
+set ROOT=%~dp0..
 cd /d "%ROOT%"
+set ROOT=%CD%\
 
 REM 获取当前日期（用 PowerShell，兼容 Win11 无 wmic）
 for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-Date).ToString('yyyyMMdd')"`) do set PKG_DATE=%%I
@@ -38,11 +40,10 @@ xcopy /e /i /q /y "processors" "%PKG_DIR%\processors" >nul
 REM 配置（含 配置编辑器.xlsx / cleaning_config.json / 客户销售归属.json / 展示规则）
 xcopy /e /i /q /y "config" "%PKG_DIR%\config" >nul
 
-REM 入口文件
-copy /y "main.py" "%PKG_DIR%\main.py" >nul
+REM 入口文件（命令行入口整包复制 bin/，含 __init__.py；双击入口在根）
+xcopy /e /i /q /y "bin" "%PKG_DIR%\bin" >nul
 copy /y "run_all.bat" "%PKG_DIR%\run_all.bat" >nul
 copy /y "启动系统.bat" "%PKG_DIR%\启动系统.bat" >nul
-copy /y "package.bat" "%PKG_DIR%\package.bat" >nul
 copy /y "requirements.txt" "%PKG_DIR%\requirements.txt" >nul
 copy /y "pytest.ini" "%PKG_DIR%\pytest.ini" >nul
 copy /y "README.md" "%PKG_DIR%\README.md" >nul
@@ -124,7 +125,7 @@ echo ║  ▪ processors/  渲染层 (22 模块)                    ║
 echo ║  ▪ scripts/     工具脚本 (启动器 + 配置同步 + 验证)  ║
 echo ║  ▪ config/      配置（含配置编辑器.xlsx + KPI指标）  ║
 echo ║  ▪ tests/       测试用例 (27 文件, 360 passed)      ║
-echo ║  ▪ main.py      调度器入口                          ║
+echo ║  ▪ bin/main.py  调度器入口                          ║
 echo ║  ▪ 启动系统.bat  双击 → 图形化控制台(推荐)           ║
 echo ║  ▪ run_all.bat  双击 → 命令行全流程                  ║
 echo ║  ▪ docs/        部署指南 + 设计 + 字段映射 + 维护    ║

@@ -2,14 +2,14 @@
 """
 Visual Dashboard System — 顶层调度器
 
-用法:
-    python main.py                          # 全流程：清洗 + 拆分
-    python main.py --type=收入              # 只处理收入链路
-    python main.py --step=clean             # 只执行清洗（Phase 1+2）
-    python main.py --step=split             # 只执行销售拆分（Phase 3）
-    python main.py --dry-run                # 预检模式（不写文件，仅检查依赖与配置）
-    python main.py --list                   # 列出所有可用步骤
-    python main.py --from=clean --to=split  # 区间执行
+用法（在项目根执行）:
+    python bin/main.py                          # 全流程：清洗 + 拆分
+    python bin/main.py --type=收入              # 只处理收入链路
+    python bin/main.py --step=clean             # 只执行清洗（Phase 1+2）
+    python bin/main.py --step=split             # 只执行销售拆分（Phase 3）
+    python bin/main.py --dry-run                # 预检模式（不写文件，仅检查依赖与配置）
+    python bin/main.py --list                   # 列出所有可用步骤
+    python bin/main.py --from=clean --to=split  # 区间执行
 
 特性:
     - argparse 标准参数解析
@@ -28,10 +28,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from engine.core.utils import rel_path  # 日志统一显示相对项目根的路径（无绝对路径）
+# 项目根目录（本文件在 bin/ 下，根目录是其上一级）
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:  # 允许 `python bin/main.py` 直接运行
+    sys.path.insert(0, str(BASE_DIR))
 
-# 项目根目录（main.py 所在目录）
-BASE_DIR = Path(__file__).parent.resolve()
+from engine.core.utils import rel_path  # noqa: E402  日志统一显示相对项目根的路径（无绝对路径）
+
 LOGS_DIR = BASE_DIR / "logs"
 
 # 本次运行号（与日志文件同名）：传给各步骤子进程，让它们只写中间件、
@@ -243,16 +246,16 @@ def run_step(step: dict, file_type: str | None, logger: Logger, dry_run: bool) -
 # ──────────────────────────────────────────────────────────────
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="main.py",
+        prog="bin/main.py",
         description="Visual Dashboard System 顶层调度器",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例:\n"
-        "  python main.py                    # 全流程\n"
-        "  python main.py --type=收入         # 只处理收入链路\n"
-        "  python main.py --step=clean       # 只清洗\n"
-        "  python main.py --from=clean --to=split\n"
-        "  python main.py --dry-run          # 预检\n"
-        "  python main.py --list             # 列出步骤",
+        "  python bin/main.py                    # 全流程\n"
+        "  python bin/main.py --type=收入         # 只处理收入链路\n"
+        "  python bin/main.py --step=clean       # 只清洗\n"
+        "  python bin/main.py --from=clean --to=split\n"
+        "  python bin/main.py --dry-run          # 预检\n"
+        "  python bin/main.py --list             # 列出步骤",
     )
     p.add_argument("--type", choices=["收入", "回款"], help="只处理某一表类型")
     p.add_argument("--step", choices=STEP_KEYS, help="只执行单个步骤")

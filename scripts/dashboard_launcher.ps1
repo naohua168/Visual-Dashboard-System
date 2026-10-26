@@ -474,7 +474,7 @@ Write-BootLog 'dispatcher handler ready'
                              Text="往上滚动看 [错误] 段,通常原因:原始 Excel 缺列、列名变化、JSON 损坏、磁盘空间不足。把日志发给开发者。"/>
                   <TextBlock Text="Q7: 杀软报脚本是木马?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
-                             Text="属启发式误报:1) 交付目录添加信任区;2) 解压后「解除锁定」;3) 用 run_all.bat 命令行入口;4) 全部脚本源码在 scripts/ 与 main.py 内可查,不含网络下载/注册表/计划任务行为。详见 docs/部署指南.md → 杀软误报处理。"/>
+                             Text="属启发式误报:1) 交付目录添加信任区;2) 解压后「解除锁定」;3) 用 run_all.bat 命令行入口;4) 全部脚本源码在 scripts/ 与 bin/main.py 内可查,不含网络下载/注册表/计划任务行为。详见 docs/部署指南.md → 杀软误报处理。"/>
                 </StackPanel>
               </Border>
             </StackPanel>
@@ -730,7 +730,7 @@ $controls.BtnSwitchFAQ.add_Click(  { Switch-Page 'faq' })
 # 说明:
 #   · Pattern     → 会被 [regex]::Escape 转义后按【字面量子串】匹配（不要写正则转义符）
 #   · DonePattern → 直接当【正则】用（含 + 等特殊字符必须转义）
-#   流程顺序（与 main.py / run_all.bat 一致）：
+#   流程顺序（与 bin/main.py / run_all.bat 一致）：
 #     预检 → 配置同步(Excel→JSON) → Phase 0 年基线 → Phase 1+2 清洗
 #          → Phase 3 拆分 → Phase 4 渲染 → Phase 5/6 汇总与验证
 $script:Phases = @(
@@ -1170,7 +1170,7 @@ $timer.Start()  # WPF DispatcherTimer 需要显式 Start(不是 WinForms Timer.E
 
 # ---------- 事件绑定 ----------
 $controls.BtnRun.add_Click({    Invoke-Bat '运行全流程 (run_all.bat)' 'run_all.bat' })
-$controls.BtnPack.add_Click({   Invoke-Bat '打包交付 (package.bat)' 'package.bat' })
+$controls.BtnPack.add_Click({   Invoke-Bat '打包交付 (bin\package.bat)' 'bin\package.bat' })
 $controls.BtnRefresh.add_Click({
     # 用户主动刷新:强制重算 + 重扫(忽略缓存)
     Preload-CachedData

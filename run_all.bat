@@ -88,7 +88,7 @@ echo   ✅ 依赖正常
 echo.
 
 echo ═══ 预检 ═══
-"%PYTHON%" main.py --dry-run
+"%PYTHON%" bin\main.py --dry-run
 if errorlevel 1 goto :preflight_bad
 goto :preflight_ok
 
@@ -117,24 +117,24 @@ REM   ② Phase 0    年基线清洗（往年收入/回款）
 REM   ③ Phase 1+2  收入/回款清洗
 REM   ④ Phase 3    销售拆分
 REM   ⑤ Phase 4    渲染看板 + 数据总表
-REM   由 main.py 统一调度，与「启动系统.bat」图形控制台走同一条链路
+REM   由 bin\main.py 统一调度，与「启动系统.bat」图形控制台走同一条链路
 REM ============================================
 echo   提示: 请先在 config\配置编辑器.xlsx 更新配置（时间/结算模式/展示规则/KPI/销售归属），保存后再运行
 echo   指标表: data\sheets\手动维护\ 6 张表；月度/季度表无销售列，客户名直接写 母公司·销售（分隔符任意）
 echo.
-echo ═══ 主流程（由 main.py 调度）═══
-"%PYTHON%" main.py
+echo ═══ 主流程（由 bin\main.py 调度）═══
+"%PYTHON%" bin\main.py
 set "MAIN_RC=%ERRORLEVEL%"
 if "%MAIN_RC%"=="0" goto :main_ok
 echo.
-echo [错误] 主流程中断（main.py 退出码 = %MAIN_RC%，详见上方输出或 logs\ 目录日志）
+echo [错误] 主流程中断（bin\main.py 退出码 = %MAIN_RC%，详见上方输出或 logs\ 目录日志）
 echo.
 echo   续跑方式（按失败步骤选择）：
-echo     "%PYTHON%" main.py --from=config    配置同步（Excel 到 JSON）
-echo     "%PYTHON%" main.py --from=yearly    年基线清洗
-echo     "%PYTHON%" main.py --from=clean     收入/回款清洗
-echo     "%PYTHON%" main.py --from=split     销售拆分
-echo     "%PYTHON%" main.py --from=render    渲染看板
+echo     "%PYTHON%" bin\main.py --from=config    配置同步（Excel 到 JSON）
+echo     "%PYTHON%" bin\main.py --from=yearly    年基线清洗
+echo     "%PYTHON%" bin\main.py --from=clean     收入/回款清洗
+echo     "%PYTHON%" bin\main.py --from=split     销售拆分
+echo     "%PYTHON%" bin\main.py --from=render    渲染看板
 echo.
 pause
 exit /b %MAIN_RC%
@@ -142,9 +142,9 @@ exit /b %MAIN_RC%
 :main_ok
 
 REM ============================================
-REM Phase 5/6（销售完成度汇总表 + 交付物校验）已并入 main.py 的 report/verify 步骤
+REM Phase 5/6（销售完成度汇总表 + 交付物校验）已并入 bin\main.py 的 report/verify 步骤
 REM （2026-09-29），这里不再重复执行；单独跑用：
-REM   "%PYTHON%" main.py --step=report    /   "%PYTHON%" main.py --step=verify
+REM   "%PYTHON%" bin\main.py --step=report    /   "%PYTHON%" bin\main.py --step=verify
 REM ============================================
 echo.
 echo ╔══════════════════════════════════════════════════════╗

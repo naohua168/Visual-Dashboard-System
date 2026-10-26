@@ -7,13 +7,13 @@
      收尾打印总行数与总金额；
   2. 关键来源（财务端主表 / 广东 / 湖南 / 南方韶关）**读取失败或空表**只在日志里 WARN → 现在记入问题清单，
      收尾统一红色汇总；
-  3. 只校验 HTML、不校验交付物是否齐全 → 由 `scripts/verify_dashboard.py` 与 `main.py` 收尾摘要承接。
+  3. 只校验 HTML、不校验交付物是否齐全 → 由 `scripts/verify_dashboard.py` 与 `bin/main.py` 收尾摘要承接。
 
 设计要点：
   · **一次运行只产出一个文件**（用户口径 2026-09-29）：`output/数据校验/数据质量摘要_<运行号>.xlsx`，
     含 概览 / 问题清单 / 丢弃汇总 / 未匹配明细 4 个 sheet；
   · 各步骤在**独立子进程**里跑，所以步骤先把诊断落成中间件 JSON（`数据质量摘要_<步骤>_<运行号>.json`），
-    由 `main.py` 收尾 `finalize()` 合并成那唯一一个 xlsx 并删除中间件；单独跑某一步时该步骤自己合并；
+    由 `bin/main.py` 收尾 `finalize()` 合并成那唯一一个 xlsx 并删除中间件；单独跑某一步时该步骤自己合并；
   · 级别：`ERROR` = 会导致数据不完整（读取失败等），收尾返回非零；`WARN` = 需要人看一眼（空表、丢弃行等）；
   · 落盘目录读配置 `输出.数据校验`，缺省回落 `output/数据校验/`。
 """
@@ -31,7 +31,7 @@ LEVEL_ORDER = {"INFO": 0, "WARN": 1, "ERROR": 2}
 DEFAULT_OUT_REL = "output/数据校验"
 DEFAULT_OUTPUT_DIR_NAME = "数据校验"
 SUMMARY_PREFIX = "数据质量摘要_"
-# 批处理运行号：main.py 启动时设置并传给子进程；单独跑某一步时为空（该步骤自己合并报告）
+# 批处理运行号：bin/main.py 启动时设置并传给子进程；单独跑某一步时为空（该步骤自己合并报告）
 RUN_ID_ENV = "VD_RUN_ID"
 # 数据校验目录重定向（测试/临时运行用，优先于配置）：填相对路径按项目根解析
 DIAG_DIR_ENV = "VD_DIAG_DIR"
@@ -132,8 +132,8 @@ class Diagnostics:
     def write_reports(self, out_dir, step: str = "清洗", stamp: str | None = None) -> list[Path]:
         """落盘本步骤诊断 → 返回**本次运行最终交付的那个文件**
 
-        批处理模式（main.py 已设 `VD_RUN_ID`）：只写中间件 JSON，返回 [json]；
-        由 main.py 收尾 `finalize()` 合并成唯一一个 xlsx 并删除中间件。
+        批处理模式（bin/main.py 已设 `VD_RUN_ID`）：只写中间件 JSON，返回 [json]；
+        由 bin/main.py 收尾 `finalize()` 合并成唯一一个 xlsx 并删除中间件。
         单独跑某一步（无运行号）：本步骤立刻合并，返回 [那一个 xlsx]。
 
         超过 RETENTION_DAYS 天的旧报告自动清理，目录不会无限堆积。
@@ -159,7 +159,7 @@ RETENTION_DAYS = 14      # 诊断文件保留天数（只清理本模块产出�
 
 
 def current_run_id() -> str:
-    """批处理运行号（main.py 通过环境变量传入）；单独跑某一步时为空串"""
+    """批处理运行号（bin/main.py 通过环境变量传入）；单独跑某一步时为空串"""
     return os.environ.get(RUN_ID_ENV, "").strip()
 
 
@@ -238,10 +238,13 @@ def prune_old_reports(out_dir, keep_days: int = RETENTION_DAYS) -> list[Path]:
     if not out.exists():
         return []
     cutoff = datetime.now() - timedelta(days=keep_days)
+    cur = current_run_id()   # 本次运行的中间件不能当"过期文件"删（文件名里的日期可能早于保留期）
     removed: list[Path] = []
     patterns = ("白名单未匹配行_*.xlsx", f"{SUMMARY_PREFIX}*.json", f"{SUMMARY_PREFIX}*.xlsx")
     for pattern in patterns:
         for f in out.glob(pattern):
+            if cur and cur in f.name:
+                continue
             m = re.search(r"(\d{8})_\d{6}", f.name)
             if not m:
                 continue

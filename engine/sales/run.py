@@ -367,7 +367,7 @@ def main():
         print(f"  销售{ft}: {len(df)}行, 金额{df['金额'].sum():,.2f}")
     print(f"{'#'*60}")
 
-    # 收尾：本步骤的数据质量摘要（写盘 + 打印；最终退出码由 main.py 统一决定）
+    # 收尾：本步骤的数据质量摘要（写盘 + 打印；最终退出码由 bin/main.py 统一决定）
     for p in write_reports(output_dir(config), step="销售拆分"):
         print(f"  📄 已写入: {p}")
     print_summary("销售拆分 · 数据质量汇总")

@@ -4,9 +4,9 @@ rem  Visual Dashboard System — 图形化运行入口
 rem  双击本文件弹出运行控制台窗口（免安装）
 rem  Author: naohua168 <bai_bai168@qq.com>
 rem
-rem  启动链（2026-09-24 抗误报改造）：
-rem    ① 找到 pythonw.exe → scripts\launcher.pyw（无控制台窗口）
-rem    ② 没找到 Python → 直接用 PowerShell 启动图形控制台
+rem  启动链（2026-10-19 改为 Python 原生界面）：
+rem    ① 找到 pythonw.exe → bin\app.py（tkinter 图形控制台，无控制台窗口）
+rem    ② 没找到 Python → 回退 PowerShell 启动旧版图形控制台（scripts\dashboard_launcher.ps1）
 rem  说明：旧方案用 VBS 隐藏窗口 + ExecutionPolicy Bypass，
 rem        该组合极易被 360/火绒等安全软件误判为木马，已停用。
 rem ============================================
@@ -51,5 +51,11 @@ start "" powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File "%~d
 exit /b
 
 :launch_python
-start "" "%PYTHONW%" "%~dp0scripts\launcher.pyw"
+rem 内置运行时(runtime)不含 tkinter → 先检测，不可用则回退传统 WPF 控制台
+"%PYTHONW%" -c "import tkinter" >nul 2>&1
+if errorlevel 1 (
+    start "" powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File "%~dp0scripts\dashboard_launcher.ps1"
+) else (
+    start "" "%PYTHONW%" "%~dp0bin\app.py"
+)
 exit /b

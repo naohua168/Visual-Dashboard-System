@@ -218,7 +218,7 @@ def main():
     print(f"{'#'*60}")
 
     # ── 收尾：数据质量报告（丢弃行落盘 output/数据校验/ + 问题汇总）──────────
-    # 这里只落盘 + 打印；是否判定整次运行失败由 main.py 收尾统一决定（保证看板/报表仍能产出）
+    # 这里只落盘 + 打印；是否判定整次运行失败由 bin/main.py 收尾统一决定（保证看板/报表仍能产出）
     out_dir = output_dir(config)
     for p in write_reports(out_dir, step="清洗"):
         print(f"  📄 已写入: {p}")

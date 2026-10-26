@@ -268,7 +268,7 @@ def main():
     print(f"     大小: {out.stat().st_size / 1024:.1f} KB")
     print(f"{'#' * 60}")
 
-    # 收尾：本步骤数据质量摘要（渲染层的 Excel 汇总失败会记 ERROR → 退出码由 main.py 决定）
+    # 收尾：本步骤数据质量摘要（渲染层的 Excel 汇总失败会记 ERROR → 退出码由 bin/main.py 决定）
     try:
         cfg = json.loads((BASE_DIR / "config" / "清洗配置" / "cleaning_config.json").read_text(encoding="utf-8"))
     except Exception:
