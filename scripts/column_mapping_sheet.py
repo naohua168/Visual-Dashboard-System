@@ -325,7 +325,11 @@ def attach_mapping_sheet(wb, cfg: dict, hits: dict | None = None):
     """在 workbook 中创建/替换「字段映射」sheet（原地修改，需调用方 save）"""
     if MAP_SHEET_NAME in wb.sheetnames:
         del wb[MAP_SHEET_NAME]
-    ws = wb.create_sheet(MAP_SHEET_NAME)
+    # 插到「说明」之前（生成器约定：说明固定放最后；create_sheet 默认追加末尾会破坏 sheet 顺序，
+    # 导致 test_config_editor_workbook::test_sheet_set_and_order 失败）
+    insert_at = (wb.sheetnames.index("说明")
+                 if "说明" in wb.sheetnames else len(wb.sheetnames))
+    ws = wb.create_sheet(MAP_SHEET_NAME, insert_at)
 
     banner(ws, "源表列名变了就在这里加候选列名（从左到右按序尝试）→ 保存后运行 run_all.bat。"
                "「候选1..N」= 可填；「当前命中(只读)」= 上次清洗实际命中的列，仅供参考。",
