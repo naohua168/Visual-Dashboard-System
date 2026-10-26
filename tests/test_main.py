@@ -1,15 +1,15 @@
 # Author: naohua168 <bai_bai168@qq.com>
-"""测试顶层调度器 main.py — 参数解析与预检"""
+"""测试顶层调度器 bin/main.py — 参数解析与预检"""
 import subprocess
 import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent
-MAIN_PY = BASE_DIR / "main.py"
+MAIN_PY = BASE_DIR / "bin" / "main.py"
 
 
 def run_main(args=None):
-    """以 subprocess 执行 main.py，返回 (returncode, stdout)"""
+    """以 subprocess 执行 bin/main.py，返回 (returncode, stdout)"""
     cmd = [sys.executable, str(MAIN_PY)]
     if args:
         cmd.extend(args)

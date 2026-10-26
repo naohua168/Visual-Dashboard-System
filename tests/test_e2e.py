@@ -72,9 +72,9 @@ class TestEndToEndSales:
 
 class TestEndToEndPipeline:
     def test_main_full_pipeline(self):
-        """python main.py 一键全流程"""
+        """python bin/main.py 一键全流程"""
         rc, out = subprocess.run(
-            [sys.executable, "main.py"],
+            [sys.executable, "bin/main.py"],
             cwd=str(BASE_DIR),
             capture_output=True,
             text=True,

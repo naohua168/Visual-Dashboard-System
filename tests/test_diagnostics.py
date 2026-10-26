@@ -4,6 +4,7 @@
 覆盖：问题记录/级别统计、白名单丢弃行落盘、摘要文案、步骤间 JSON 合并、目录解析。
 """
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -70,13 +71,14 @@ def test_single_step_run_writes_exactly_one_file(tmp_path, monkeypatch):
 
 
 def test_batch_run_defers_then_finalize_writes_one_file(tmp_path, monkeypatch):
-    """批处理（main.py 设 VD_RUN_ID）：各步骤只写中间件 → 收尾合并成唯一报告并删中间件"""
-    monkeypatch.setenv(dg.RUN_ID_ENV, "20260929_183000")
+    """批处理（bin/main.py 设 VD_RUN_ID）：各步骤只写中间件 → 收尾合并成唯一报告并删中间件"""
+    rid = datetime.now().strftime("%Y%m%d_%H%M%S")   # 用当天时间：否则会被 prune_old_reports 当过期清理
+    monkeypatch.setenv(dg.RUN_ID_ENV, rid)
 
     a = dg.Diagnostics()
     a.note("WARN", "广东收入", "空表")
     a.note_rejects("财务端收入", [{"客户名": "甲", "金额": 100.0}])
-    assert [p.name for p in a.write_reports(tmp_path, step="清洗")] == ["数据质量摘要_清洗_20260929_183000.json"]
+    assert [p.name for p in a.write_reports(tmp_path, step="清洗")] == [f"数据质量摘要_清洗_{rid}.json"]
 
     b = dg.Diagnostics()
     b.note("ERROR", "南方韶关回款", "读取失败")
@@ -84,7 +86,7 @@ def test_batch_run_defers_then_finalize_writes_one_file(tmp_path, monkeypatch):
     assert len(list(tmp_path.glob("*.json"))) == 2 and not list(tmp_path.glob("*.xlsx"))
 
     merged, report = dg.finalize(tmp_path)
-    assert report is not None and report.name == "数据质量摘要_20260929_183000.xlsx"
+    assert report is not None and report.name == f"数据质量摘要_{rid}.xlsx"
     assert merged.counts()["WARN"] == 1 and merged.counts()["ERROR"] == 1
     assert merged.reject_totals()[0] == 1
     assert [p.name for p in tmp_path.iterdir()] == [report.name], "收尾后目录里只剩那一个报告"
@@ -100,7 +102,8 @@ def test_finalize_without_pending_reports_writes_nothing(tmp_path, monkeypatch):
 
 def test_merge_and_collect_step_reports(tmp_path, monkeypatch):
     """只读合并（collect_step_reports）：按日期前缀取中间件，不写文件、不删除"""
-    monkeypatch.setenv(dg.RUN_ID_ENV, "20260929_010101")   # 批处理 → 只留中间件
+    rid = datetime.now().strftime("%Y%m%d_%H%M%S")
+    monkeypatch.setenv(dg.RUN_ID_ENV, rid)   # 批处理 → 只留中间件
     a, b = dg.Diagnostics(), dg.Diagnostics()
     a.note("WARN", "A", "空表")
     b.note("ERROR", "B", "读取失败")
@@ -108,11 +111,13 @@ def test_merge_and_collect_step_reports(tmp_path, monkeypatch):
     a.write_reports(tmp_path, step="清洗")
     b.write_reports(tmp_path, step="销售拆分")
 
-    merged = dg.collect_step_reports(tmp_path, date_prefix="20260929")
+    today = rid.split("_")[0]
+    merged = dg.collect_step_reports(tmp_path, date_prefix=today)
     assert merged.counts()["WARN"] == 1 and merged.counts()["ERROR"] == 1
     assert merged.reject_totals()[0] == 1
     # 换一天 → 不应合并到旧文件
-    assert dg.collect_step_reports(tmp_path, date_prefix="20260930").counts()["ERROR"] == 0
+    other = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+    assert dg.collect_step_reports(tmp_path, date_prefix=other).counts()["ERROR"] == 0
     # 只读：中间件仍在
     assert len(list(tmp_path.glob("*.json"))) == 2
 

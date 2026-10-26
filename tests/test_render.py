@@ -52,9 +52,9 @@ def test_render_generates_html(tmp_path):
 
 
 def test_render_with_main_pipeline():
-    """main.py render 步骤应成功"""
-    cmd = [sys.executable, "main.py", "--step=render"]
+    """bin/main.py render 步骤应成功"""
+    cmd = [sys.executable, "bin/main.py", "--step=render"]
     result = subprocess.run(
         cmd, cwd=str(BASE_DIR), capture_output=True, text=True, encoding="utf-8"
     )
-    assert result.returncode == 0, f"main.py render 失败:\n{result.stderr}"
+    assert result.returncode == 0, f"bin/main.py render 失败:\n{result.stderr}"
