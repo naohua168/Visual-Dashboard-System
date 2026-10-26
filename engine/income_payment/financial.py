@@ -11,6 +11,7 @@ from ..core.diagnostics import note_issue, note_rejects
 from ..core.utils import (
     log_step,
     filter_by_date,
+    filter_by_kept_values,
     standardize_output,
     read_excel_with_fallback,
     empty_standard_df as _empty_standard_df,
@@ -119,6 +120,9 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     df = extract_columns(df, src_config["列映射"], optional_fields=src_config.get("可选字段"))
     print_hit_columns(df, f"财务端{file_type}")
 
+    # 保留取值过滤（单据状态=已审核 / 委托类型=外部结算 等，命中即保留）
+    df = filter_by_kept_values(df, src_config, f"财务端{file_type}")
+
     # 日期筛选：`日期字段组` 内所有字段都必须落在时间范围内
     # （回款 = 业务日期 AND 收款日期 都在窗口内才收录，2026-09-18 口径）
     for f in src_config.get("日期字段组", ["日期"]):
@@ -196,6 +200,7 @@ def clean_guangdong(config, matcher, time_range, file_type):
     df = _exclude_marked_rows(df, src_config, f"广东{file_type}")
     df = extract_columns(df, src_config["列映射"])
     print_hit_columns(df, f"广东{file_type}")
+    df = filter_by_kept_values(df, src_config, f"广东{file_type}")
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"广东{file_type}", f"日期筛选后: {len(df)}行")
     if len(df) == 0:
@@ -234,6 +239,7 @@ def clean_hunan(config, matcher, time_range, file_type):
     df = _exclude_marked_rows(df, src_config, f"湖南{file_type}")
     df = extract_columns(df, src_config["列映射"])
     print_hit_columns(df, f"湖南{file_type}")
+    df = filter_by_kept_values(df, src_config, f"湖南{file_type}")
     df = filter_by_date(df, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"湖南{file_type}", f"日期筛选后: {len(df)}行")
     if len(df) == 0:
@@ -323,6 +329,7 @@ def clean_shaoguan(config, matcher, time_range, file_type):
         note_issue("WARN", f"南方韶关{file_type}", "无有效数据行（该来源本次为空）")
         return empty_df
 
+    out = filter_by_kept_values(out, src_config, f"南方韶关{file_type}")
     out = filter_by_date(out, "日期", time_range["start_date"], time_range["end_date"])
     log_step(f"南方韶关{file_type}", f"日期筛选后: {len(out)}行")
 

@@ -76,6 +76,44 @@ def filter_by_date(df, date_col, start_date, end_date):
     return df[mask].copy()
 
 
+# ── 保留取值过滤（2026-10-13 用户口径）────────────────────────────
+# 财务端「单据状态 = 已审核」「委托类型 = 外部结算」：命中即**保留**，其余（含空值）剔除。
+# 与「排除标记」（命中即剔除，列提取前按源列名过滤）方向相反，故单独配置键：
+#   数据源.<数据源>.<来源>.保留取值 = {"标准字段": ["允许值", ...]}
+# 字段必须登记在「列映射」（配置编辑器 →「字段映射」sheet 可维护候选列名），
+# 本过滤在**列提取之后**执行 —— 源表改名/多候选时走同一套命中日志。
+def filter_by_kept_values(df, src_config, label):
+    """仅保留指定字段取值命中白名单的行（配置键 `保留取值`）
+
+    - 多个字段之间是 **AND** 关系；每个字段独立出一行日志
+    - 值比较：`str.strip()` 后精确匹配（与「排除标记值」同口径）；空值视为不命中 → 剔除
+    - 字段未配置/源表无该列 → 跳过该字段并 WARN（可选字段语义），不中断清洗
+    """
+    spec = src_config.get("保留取值") or {}
+    if not spec or df is None or len(df) == 0:
+        return df
+    for field, values in spec.items():
+        if field not in df.columns:
+            log_step(label, f"保留取值: 源表未命中「{field}」列，跳过该字段筛选", "WARN")
+            continue
+        allowed = {str(v).strip() for v in (values or [])}
+        if not allowed:
+            continue
+        flag = df[field].astype(str).str.strip().isin(allowed)
+        n_keep, n_drop = int(flag.sum()), int((~flag).sum())
+        amt = 0.0
+        if "金额" in df.columns and n_drop:
+            amt = float(pd.to_numeric(df.loc[~flag, "金额"], errors="coerce").fillna(0).sum())
+        if n_drop == 0:
+            log_step(label, f"保留取值[{field}] ∈ {sorted(allowed)}: 全部 {n_keep} 行命中")
+            continue
+        log_step(label, f"保留取值[{field}] ∈ {sorted(allowed)}: 保留 {n_keep} 行 / "
+                        f"剔除 {n_drop} 行 / {amt:,.2f}（源表口径）",
+                 "WARN" if n_keep == 0 else "INFO")
+        df = df[flag]
+    return df
+
+
 def infer_company_type(entity):
     """根据法人主体名推断公司类型 (is_gd, is_sz)
 

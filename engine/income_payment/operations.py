@@ -10,6 +10,7 @@ from ..core.column_resolver import extract_columns, print_hit_columns
 from ..core.diagnostics import note_issue
 from ..core.utils import (
     log_step,
+    filter_by_kept_values,
     standardize_output,
     read_excel_with_fallback,
     empty_standard_df as _empty_standard_df,
@@ -81,6 +82,9 @@ def clean_operations_single(config, mapper, file_type):
     # 列名提取（冗余）
     df = extract_columns(df, src_config["列映射"])
     print_hit_columns(df, f"运营端{file_type}")
+
+    # 保留取值过滤（命中即保留，配置驱动；运营端当前未配置 → 无操作）
+    df = filter_by_kept_values(df, src_config, f"运营端{file_type}")
 
     # 内部交易过滤
     internal_col = "内部交易"
