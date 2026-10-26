@@ -13,6 +13,10 @@
 3. **双击 `启动系统.bat`**（图形化控制台，推荐）或 `run_all.bat`（命令行），自动完成：配置同步 → 清洗 → 拆分 → 渲染 → 汇总 → 验证
 4. 打开 `output/看板/看板_YYYYMMDD.html` 查看看板
 
+> **Python 原生入口**：`python bin/app.py` 打开 **tkinter 图形控制台**（不依赖 PowerShell / WPF，含进度、实时日志、一键运行 / 单步 / 打开产物）；`python bin/app.py run` 跑命令行全流程（同进程编排 8 步）；`python bin/app.py list` 列出步骤；`python bin/app.py board` 打开最新看板。双击 `启动系统.bat` 也走这个 Python 界面。
+>
+> ⚠️ **交付包的内置运行时（`runtime/python`）不带 tkinter** → 双击时会自动回退到传统 WPF 控制台（`scripts/dashboard_launcher.ps1`）；本机 Python / Conda 环境则使用 Python 界面。若希望交付包也用 Python 界面，需给 `runtime` 补 `tkinter`（`_tkinter.pyd` + `tcl/`）或让接收方使用本机 Python。
+
 > **想指定自己机器的 Python？** 编辑 `config/python_path.txt`，写一行 Python 所在目录（只写目录，不写 `python.exe`）即可，**优先级高于内置 `runtime/`**；留空（默认）= 直接用内置运行时。解释器选择顺序见 [docs/部署指南.md](docs/部署指南.md)「环境要求」。
 
 ### 开发者 / 命令行
@@ -22,10 +26,14 @@
 pip install -r requirements.txt
 
 # 预检（确认数据就绪）
-python main.py --dry-run
+python bin/main.py --dry-run
 
-# 全流程一键运行
-python main.py
+# 全流程一键运行（等价 python bin/main.py）
+python bin/app.py run
+
+# 或直接用调度器 / 用 Python 入口启动图形控制台
+python bin/main.py
+python bin/app.py
 
 # 或 Windows 双击
 run_all.bat
@@ -69,10 +77,10 @@ run_all.bat
 scripts\prepare_runtime.bat
 
 # 2) 打包（Windows 双击即可）
-package.bat
+bin/package.bat
 
 # 生成 Visual-Dashboard-System_vYYYYMMDD.zip
-# 包含全部代码 + 配置 + 内置运行时，接收方解压后双击 启动系统.bat（图形控制台，推荐）或 run_all.bat 即可，无需安装任何环境
+# 包含全部代码 + 配置 + 内置运行时，接收方解压后双击 启动系统.bat（Python 控制台，推荐）或 run_all.bat 即可，无需安装任何环境
 # 交付前建议在 VirtualBox 干净 Windows 客户机做一次验收 → docs/部署指南.md「七、VirtualBox 干净环境验收」
 ```
 
@@ -90,13 +98,13 @@ package.bat
 | 场景 | 操作 | 详述 |
 |------|------|------|
 | **首次部署** | `pip install -r requirements.txt` → 放数据 → 配置时间 | [部署指南 · 安装](docs/部署指南.md#一安装步骤) |
-| **日常出看板** | 双击 `启动系统.bat`（图形控制台）或 `run_all.bat`（自动：同步配置→清洗→拆分→渲染→销售完成度→验证） | [部署指南 · 运行](docs/部署指南.md#三运行) |
+| **日常出看板** | 双击 `启动系统.bat`（Python 控制台）或 `run_all.bat`（自动：同步配置→清洗→拆分→渲染→销售完成度→验证） | [部署指南 · 运行](docs/部署指南.md#三运行) |
 | **改时间范围** | 打开 `config/配置编辑器.xlsx` → 「时间配置」改日期 → 保存 | [部署指南 · 配置](docs/部署指南.md#二配置推荐用-excel-编辑器) |
 | **改销售归属** | `配置编辑器.xlsx` → 「销售归属」改 销售/比例 | [数据系统设计 · 销售归属](docs/数据系统设计.md#62-配置编辑器-config配置编辑器xlsx编辑层) |
 | **单独改 KPI 总数** | `配置编辑器.xlsx` → 「KPI指标」填万元值（留空=按指标合计） | [README KPI 指标总数](#kpi-指标总数excel-编辑) |
 | **换新一期数据** | 替换 `data/raw/` 文件 → 更新 6 张指标表 → 改时间 → 运行 | [部署指南 · 更新清单](docs/部署指南.md#五更新数据操作清单) |
-| **交付前验收** | VirtualBox 干净 Windows 客户机：解压 → 放数据 → 双击 `启动系统.bat` → 核对产物与 7 步全绿 | [部署指南 · VirtualBox 验收](docs/部署指南.md#七virtualbox-干净环境验收windows-客户机) |
-| **出问题排查** | 查 `logs/` 日志 / 预检 `python main.py --dry-run` | [部署指南 · 故障排查](docs/部署指南.md#八故障排查) |
+| **交付前验收** | VirtualBox 干净 Windows 客户机：解压 → 放数据 → 双击 `启动系统.bat` → 核对产物与 8 步全绿 | [部署指南 · VirtualBox 验收](docs/部署指南.md#七virtualbox-干净环境验收windows-客户机) |
+| **出问题排查** | 查 `logs/` 日志 / 预检 `python bin/main.py --dry-run` | [部署指南 · 故障排查](docs/部署指南.md#八故障排查) |
 
 ### 一次性配置（三步）
 
@@ -106,7 +114,7 @@ package.bat
 
 ### 日常运行（一步）
 
-**双击 `run_all.bat`**，自动执行 7 个阶段：
+**双击 `run_all.bat`**，自动执行 8 个阶段（含配置预扫描）：
 
 ```
 ① 预检        → 检查数据/配置/映射是否齐全
@@ -121,15 +129,20 @@ package.bat
 ### 命令行（开发/调试）
 
 ```bash
-python main.py                          # 全流程（不含配置同步）
-python main.py --step=yearly            # 只年基线
-python main.py --step=clean             # 只清洗 Phase 1+2
-python main.py --step=split             # 只销售拆分
-python main.py --step=render            # 只渲染
-python main.py --type=收入              # 只收入链路
-python main.py --from=clean --to=render # 区间执行
-python main.py --dry-run                # 预检（不写文件）
-python main.py --list                   # 列出所有步骤
+python bin/app.py                           # 启动图形控制台（= 启动系统.bat）
+python bin/app.py run                       # 全流程（= python bin/main.py）
+python bin/app.py run --from=clean          # 续跑（参数透传给 bin/main.py）
+python bin/app.py list                      # 列出步骤
+python bin/app.py board                     # 打开最新看板
+python bin/main.py                          # 全流程（不含配置同步）
+python bin/main.py --step=yearly            # 只年基线
+python bin/main.py --step=clean             # 只清洗 Phase 1+2
+python bin/main.py --step=split             # 只销售拆分
+python bin/main.py --step=render            # 只渲染
+python bin/main.py --type=收入              # 只收入链路
+python bin/main.py --from=clean --to=render # 区间执行
+python bin/main.py --dry-run                # 预检（不写文件）
+python bin/main.py --list                   # 列出所有步骤
 ```
 
 ### 工具脚本
@@ -263,7 +276,7 @@ cleaning_config.json / 展示规则.json / 客户销售归属.json (事实源)
 
 也可直接改 JSON：`config/清洗配置/客户销售归属.json`。
 
-> **机制**：Excel 是「编辑层」，JSON 是「事实源」。`run_all.bat` 自动同步；`python main.py` 不读 Excel。
+> **机制**：Excel 是「编辑层」，JSON 是「事实源」。`run_all.bat` 自动同步；`python bin/main.py` 不读 Excel。
 
 ---
 
@@ -432,14 +445,18 @@ ERP 系统导出，**当月单月**数据。金额单位：**元**（金额列�
 
 ```
 Visual Dashboard_system/
-├── main.py                           # ★ 顶层调度器（argparse + subprocess）
-├── 启动系统.bat                      # ★ 图形化控制台入口（双击，WPF，免装环境；pythonw → PowerShell 自动选择）
-├── run_all.bat                       # ★ Windows 命令行一键运行（配置同步 + 全流程 + 验证；解释器顺序见部署指南「环境要求」）
-├── package.bat                       #   打包脚本（生成交付 zip，含内置运行时）
+├── bin/                              # ★ 入口（在项目根执行 python bin/...）
+│   ├── app.py                        #   Python 统一入口（gui / run / list / board）
+│   ├── gui.py                        #   tkinter 图形控制台（双击 启动系统.bat 走这里）
+│   ├── runner.py                     #   8 步流程编排（GUI / CLI 共用，同进程调用引擎）
+│   ├── main.py                       #   顶层调度器（argparse + subprocess，排障/兼容用）
+│   └── package.bat                   #   打包脚本（生成交付 zip，含内置运行时）
+├── 启动系统.bat                      # ★ 图形入口（双击；Python tkinter 控制台）
+├── run_all.bat                       # ★ Windows 命令行一键运行（配置同步 + 全流程 + 验证）
 ├── runtime/                          #   内置 Python 运行时（免安装；由 scripts\prepare_runtime.bat 生成）
 ├── scripts/
-│   ├── launcher.pyw                  #   图形控制台启动器（pythonw 启动，无控制台窗口；抗杀软误报）
-│   ├── dashboard_launcher.ps1        #   WPF 图形控制台界面（7 阶段进度 / 日志 / 产物清单）
+│   ├── launcher.pyw                  #   传统控制台启动器（回退用；主入口已改为 bin/app.py）
+│   ├── dashboard_launcher.ps1        #   传统 WPF 控制台（Python 界面异常时的回退入口）
 │   ├── prepare_runtime.bat           #   构建内置运行时（下载嵌入式 Python + 装依赖）
 │   ├── config_excel_to_json.py       #   配置编辑器 Excel → JSON 同步
 │   ├── column_mapping_sheet.py       #   「字段映射」sheet 生成与回写
@@ -518,17 +535,17 @@ Visual Dashboard_system/
 run_all.bat
 
 # 全流程
-python main.py
-python main.py --dry-run                # 预检（不写文件）
-python main.py --list                   # 列出所有步骤
+python bin/main.py
+python bin/main.py --dry-run                # 预检（不写文件）
+python bin/main.py --list                   # 列出所有步骤
 
 # 分步
-python main.py --step=yearly            # 只年基线
-python main.py --step=clean             # 只清洗 Phase 1+2
-python main.py --step=split             # 只销售拆分
-python main.py --step=render            # 只渲染
-python main.py --type=收入              # 只收入链路
-python main.py --from=clean --to=render # 区间执行
+python bin/main.py --step=yearly            # 只年基线
+python bin/main.py --step=clean             # 只清洗 Phase 1+2
+python bin/main.py --step=split             # 只销售拆分
+python bin/main.py --step=render            # 只渲染
+python bin/main.py --type=收入              # 只收入链路
+python bin/main.py --from=clean --to=render # 区间执行
 
 # 调试用（等价于对应 step）
 python -m engine.yearly_baseline.run
@@ -544,7 +561,7 @@ python -m processors.run
 ### 3. 运行测试
 
 ```bash
-python -m pytest tests/ -v              # 360 passed
+python -m pytest tests/ -v              # 全部用例（含端到端）
 python -m pytest tests/ -k "splitter"   # 按关键字
 ```
 
