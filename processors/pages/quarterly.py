@@ -73,14 +73,14 @@ class QuarterlyPage(BaseRenderer):
             f"<th>{d}</th>" for d in DEPARTMENTS
         ) + '<th class="th-name th-total">合计</th></tr>'
 
+        # 合计行 = 全量透视表求和（含折叠/未展示客户）→ 与部门卡、数据总表一致（2026-10-29 口径）
         tc = [f'<td class="td-name td-total">合计</td>']
         for d in DEPARTMENTS:
-            a = sum(float(piv.loc[c, d]) for c in all_custs if c in piv.index and d in piv.columns) if all_custs else 0
-            tg = sum(float(tgt_grouped.loc[c, d]) for c in all_custs
-                     if c in tgt_grouped.index and d in tgt_grouped.columns)
+            a = float(piv[d].sum()) if piv is not None and d in piv.columns else 0.0
+            tg = float(tgt_grouped[d].sum()) if tgt_grouped is not None and d in tgt_grouped.columns else 0.0
             tc.append(cell_bg_html(a, tg))
-        imp_total = sum(float(piv.loc[c, "合计"]) for c in all_custs if c in piv.index)
-        imp_tgt = sum(float(tgt_grouped.loc[c, "合计"]) for c in all_custs if c in tgt_grouped.index)
+        imp_total = float(piv["合计"].sum()) if piv is not None and "合计" in piv.columns else 0.0
+        imp_tgt = float(tgt_grouped["合计"].sum()) if tgt_grouped is not None and "合计" in tgt_grouped.columns else 0.0
         tc.append(cell_bg_html(imp_total, imp_tgt, is_total_col=True))
         tr = f'<tr class="row-total">{"".join(tc)}</tr>'
 

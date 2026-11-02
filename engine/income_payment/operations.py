@@ -11,6 +11,7 @@ from ..core.diagnostics import note_issue
 from ..core.utils import (
     log_step,
     filter_by_kept_values,
+    filter_by_dept_keep,
     standardize_output,
     read_excel_with_fallback,
     empty_standard_df as _empty_standard_df,
@@ -59,6 +60,29 @@ def _parse_ops_date(s, year=None):
     return None if pd.isna(ts) else ts.normalize()
 
 
+def _filter_internal_trade(df, src_config, label):
+    """剔除内部交易行（配置键 `内部交易标记值`）
+
+    - 缺省（未配置）= ["是"]，保持历史行为
+    - 显式空列表 = 不过滤（内部交易行也保留）
+    - 源表没有「内部交易」列 → 原样返回
+    """
+    internal_col = "内部交易"
+    if internal_col not in df.columns:
+        return df
+    markers_cfg = src_config.get("内部交易标记值")
+    markers = (["是"] if markers_cfg is None
+               else [str(m).strip() for m in (markers_cfg or []) if str(m).strip()])
+    if not markers:
+        log_step(label, "内部交易标记值为空 → 不过滤（保留全部行）")
+        return df
+    before = len(df)
+    flag = df[internal_col].astype(str).str.strip().isin(markers)
+    df = df[~flag].copy()
+    log_step(label, f"内部交易过滤: 标记{markers} → 排除{before - len(df)}行, 保留{len(df)}行")
+    return df
+
+
 def clean_operations_single(config, mapper, file_type):
     """清洗单个运营端文件（运营端全量保留，不使用客户白名单 matcher）"""
     src_config = config["数据源"]["运营端"][file_type]
@@ -86,12 +110,8 @@ def clean_operations_single(config, mapper, file_type):
     # 保留取值过滤（命中即保留，配置驱动；运营端当前未配置 → 无操作）
     df = filter_by_kept_values(df, src_config, f"运营端{file_type}")
 
-    # 内部交易过滤
-    internal_col = "内部交易"
-    if internal_col in df.columns:
-        before = len(df)
-        df = df[(df[internal_col] != "是") | (df[internal_col].isna())].copy()
-        log_step(f"运营端{file_type}", f"内部交易过滤: 排除{before - len(df)}行, 保留{len(df)}行")
+    # 内部交易过滤（标记值来自配置；缺省 ["是"]，显式空列表 = 不过滤）
+    df = _filter_internal_trade(df, src_config, f"运营端{file_type}")
 
     # 金额保留原始值
     df["金额"] = df["金额"].fillna(0)
@@ -101,6 +121,8 @@ def clean_operations_single(config, mapper, file_type):
     before = len(df)
     df = df.dropna(subset=["事业部"])
     log_step(f"运营端{file_type}", f"事业部映射: 成功{len(df)}行, 丢弃{before - len(df)}行")
+    # 事业部取值（配置决定只取哪些事业部；缺省/空 = 不限制）
+    df = filter_by_dept_keep(df, src_config, mapper, f"运营端{file_type}", "income")
 
     # 日期赋值（优先使用真实日期列，支持 "1-4月"/"5月" 等运营端特有格式）
     date_col_found = None

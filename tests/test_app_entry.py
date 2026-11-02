@@ -65,6 +65,29 @@ def test_run_delegates_to_runner(monkeypatch):
     assert seen["keys"] == ["clean"]
 
 
+def _keys(steps):
+    return [s.key for s in steps]
+
+
+def test_sync_prereq_prepended_for_data_steps():
+    """分步跑数据处理时，自动补「配置预扫描 + 配置同步」在最前（2026-11-02 用户要求）"""
+    pick = lambda k: [s for s in runner.STEPS if s.key == k]  # noqa: E731
+    assert _keys(runner.with_sync_prereq(pick("render"), ["render"])) == ["scan", "config", "render"]
+    assert _keys(runner.with_sync_prereq(pick("clean") + pick("split"),
+                                         ["clean", "split"])) == ["scan", "config", "clean", "split"]
+    # 只跑同步类步骤（--to=config）→ 不重复插入
+    assert _keys(runner.with_sync_prereq(pick("scan") + pick("config"),
+                                         ["scan", "config"])) == ["scan", "config"]
+    # 全量运行（keys=None）→ 原样（本身已含两步）
+    assert _keys(runner.with_sync_prereq(list(runner.STEPS), None)) == _keys(runner.STEPS)
+
+
+def test_sync_prereq_skipped_when_no_data_step():
+    """只跑 verify / report 时不强行前置（它们不产生清洗结果）"""
+    pick = lambda k: [s for s in runner.STEPS if s.key == k]  # noqa: E731
+    assert _keys(runner.with_sync_prereq(pick("verify"), ["verify"])) == ["verify"]
+
+
 def test_board_without_files(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(app, "BASE_DIR", tmp_path)
     assert app.main(["board"]) == 2

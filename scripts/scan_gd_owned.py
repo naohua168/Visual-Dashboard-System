@@ -1,13 +1,17 @@
 # Author: naohua168 <bai_bai168@qq.com>
 """扫描「广东自有客户」应自动归入的公司，并写回配置编辑器（Excel）
 
-口径（2026-09-21 用户确认）：
-  · 法人主体 = 广东汽车检测中心有限公司（运营端看的 法人主体/核算单位/所属单位 列；
-    财务端「广东公司.xlsx」整表视为该法人）
+口径（2026-09-21 用户确认；2026-11-02 按 `业务规则.json → 广东自有归入._说明` 补齐来源）：
+  · **候选来源 = 运营端 收入/回款（.xls）+ 财务端「广东公司.xlsx」（收入/回款两个 Sheet）**
+    —— 2026-11-02 之前只扫运营端，与业务规则的说明不一致，现按说明统一
+  · 法人主体 = 广东汽车检测中心有限公司（运营端看 法人主体/核算单位/所属单位 列；
+    财务端「广东公司.xlsx」整表视为该法人，取值来自 `数据源.财务端.广东公司.法人主体`，
+    若配置成别的法人则整表跳过）
   · **不属于任何销售**：客户名在 `客户销售归属.json` 的所有父组里都没出现过（公司级判定）
   · **公司级**排除内部交易（2026-09-22 用户口径）：只要该公司在运营端有**任意一行**内部交易标记
     （`是否属于内部单位/内部款项` == 是），或出现在内部交易排除名单
     （`部门事业部映射.json → excluded_internal_companies`）→ **整家公司不进入候选**
+    （广东公司表若有同类列，按同一口径处理）
   → 追加到 `config/配置编辑器.xlsx` 的「销售归属」sheet：
      母公司=广东自有客户 / 指标=收入/回款 / 部门=检测,信息,能源,海外 / 销售=黎国键 / 比例=1
 
@@ -89,6 +93,28 @@ def _pick_col(cols, candidates):
     return next((c for c in candidates if c in cols), None)
 
 
+def _load_excluded_keys() -> set[str]:
+    """内部交易公司排除名单（与清洗层 mapper / 销售引擎同源，按匹配键）"""
+    try:
+        p = BASE_DIR / "data" / "mappings" / "部门事业部映射" / "部门事业部映射.json"
+        raw = json.loads(p.read_text(encoding="utf-8")).get("excluded_internal_companies", {})
+        items = raw if isinstance(raw, list) else raw.get("companies", [])
+        return key_set(items)
+    except Exception:
+        return set()
+
+
+def _amount_multiplier_of(src_config, file_type: str) -> float:
+    """读配置 `金额乘数`（数值 / 按 Sheet 的字典）；未配置按 1（仅用于日志概览，不参与判定）"""
+    raw = src_config.get("金额乘数")
+    if isinstance(raw, dict):
+        raw = raw.get(file_type)
+    try:
+        return float(raw) if raw is not None else 1.0
+    except (TypeError, ValueError):
+        return 1.0
+
+
 # ──────────────────────────────────────────────────────────────
 # 候选收集
 # ──────────────────────────────────────────────────────────────
@@ -103,14 +129,7 @@ def collect_from_operations(cfg) -> dict[str, dict]:
        → **整家公司不进入候选**（而不是只丢掉内部交易那几行）。
     """
     # 内部交易公司排除名单（与 engine/sales/run.py::_load_excluded_companies 同源）
-    excluded: set[str] = set()
-    try:
-        p = BASE_DIR / "data" / "mappings" / "部门事业部映射" / "部门事业部映射.json"
-        raw = json.loads(p.read_text(encoding="utf-8")).get("excluded_internal_companies", {})
-        items = raw if isinstance(raw, list) else raw.get("companies", [])
-        excluded = key_set(items)  # 匹配键集合（与清洗层 mapper 同口径）
-    except Exception:
-        excluded = set()
+    excluded: set[str] = _load_excluded_keys()
 
     found: dict[str, dict] = {}
     internal_companies: set[str] = set()
@@ -158,15 +177,100 @@ def collect_from_operations(cfg) -> dict[str, dict]:
     return found
 
 
-def collect_candidates(cfg) -> dict[str, dict]:
-    """候选来源 = **只扫运营端**（用户口径 2026-09-21：“运营端收入回款表里出现的”）
+def collect_from_financial_gd(cfg) -> dict[str, dict]:
+    """财务端「广东公司.xlsx」：整表法人 = 广东汽车检测中心（配置 `法人主体`）
 
-    ⚠️ 财务端「广东公司.xlsx」**不参与**判定：
-        它是独立格式来源、口径与运营端不同，纳入会把"当期窗口外 / 其它法人"的客户
-        也带进来（实测：上海北汇信息科技有限公司 因此被误加，并牵连出韶关归属问题）。
-        如需把该来源的客户也归入，请手工在「配置编辑器.xlsx → 销售归属」里添加。
+    2026-11-02 起与运营端一并作为候选来源（按 `业务规则.json → 广东自有归入._说明`）：
+      · 独立格式来源：金额单位万元（`金额乘数`）、事业部固定、不过客户白名单
+        —— 只贡献"客户名"，金额仅用于日志概览
+      · 客户列按 `数据源.财务端.广东公司.列映射.客户` 的候选取
+      · 法人按配置整表判定：配置的 `法人主体` 不是广东汽车检测中心 → 整表跳过
+      · 内部交易列若存在 → 公司级排除（与运营端同口径）
+      · **不按日期筛**：与运营端一致，只看"表里出现过这家客户"
     """
-    return collect_from_operations(cfg)
+    src_config = ((cfg.get("数据源") or {}).get("财务端") or {}).get("广东公司") or {}
+    if not src_config:
+        return {}
+    if not is_gd_legal(src_config.get("法人主体", GD_LEGAL)):
+        print("  ⏭️  广东公司：配置的法人主体不是广东汽车检测中心，跳过该来源")
+        return {}
+
+    try:
+        file_path = get_data_path(cfg, "财务端", "广东公司")
+    except Exception as e:
+        print(f"  ⚠️ 广东公司路径不可用，跳过该来源: {e}")
+        return {}
+    if not file_path.exists():
+        print(f"  ⚠️ 广东公司文件不存在，跳过该来源: {file_path.name}")
+        return {}
+
+    col_map = src_config.get("列映射") or {}
+    cust_cols = col_map.get("客户") or CUST_COLS
+    amt_cols = col_map.get("金额") or ["金额"]
+    excluded = _load_excluded_keys()
+
+    found: dict[str, dict] = {}
+    internal_companies: set[str] = set()
+
+    for ft in ["收入", "回款"]:
+        sheets = (src_config.get("Sheet") or {}).get(ft) or []
+        sheet = sheets[0] if sheets else ft
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet,
+                               engine=src_config.get("引擎", "openpyxl"))
+        except Exception as e:
+            print(f"  ⚠️ 广东公司[{sheet}] 读取失败，跳过: {e}")
+            continue
+
+        cust = _pick_col(df.columns, cust_cols)
+        if not cust:
+            continue
+        sub = df
+        int_col = _pick_col(df.columns, INT_COLS)
+        if int_col is not None:
+            flag = sub[int_col].astype(str).str.strip().isin(INTERNAL_VALUES)
+            # ① 公司级：只要出现过内部交易标记 → 整家公司排除
+            internal_companies |= key_set(sub.loc[flag, cust].astype(str).str.strip())
+            sub = sub[~flag]
+        if sub.empty:
+            continue
+
+        amt_col = _pick_col(sub.columns, amt_cols)
+        mult = _amount_multiplier_of(src_config, ft)
+        amt = (pd.to_numeric(sub[amt_col], errors="coerce").fillna(0) * mult) if amt_col else 0
+        sub = sub.assign(_amt=amt)
+        for name, g in sub.groupby(sub[cust].astype(str).str.strip()):
+            if not name:
+                continue
+            rec = found.setdefault(name, {"来源": [], "行数": 0, "金额": 0.0})
+            rec["来源"].append(f"广东公司-{ft}")
+            rec["行数"] += len(g)
+            rec["金额"] += float(g["_amt"].sum())
+
+    # 排除判定按匹配键（全角半角/空白差异不影响），展示/返回仍是原客户名
+    drop_keys = (internal_companies | excluded) & key_set(found)
+    for name in [n for n in sorted(found) if match_key(n) in drop_keys]:
+        print("  ⏭️  公司级排除（内部交易/排除名单）: %s" % name)
+        found.pop(name, None)
+    return found
+
+
+def collect_candidates(cfg) -> dict[str, dict]:
+    """候选来源 = 运营端（收入/回款 .xls）+ 财务端「广东公司.xlsx」
+
+    2026-11-02：原先只扫运营端，与 `业务规则.json → 广东自有归入._说明`
+    （"运营端/广东公司 中 法人=广东汽车检测中心 且无任何销售归属的客户"）不一致，
+    按该说明补齐广东公司来源。两个来源里的同一客户合并统计（来源/行数/金额累加）。
+    """
+    found = collect_from_operations(cfg)
+    for name, rec in collect_from_financial_gd(cfg).items():
+        cur = found.setdefault(name, {"来源": [], "行数": 0, "金额": 0.0})
+        for src in rec["来源"]:
+            if src not in cur["来源"]:
+                cur["来源"].append(src)
+        cur["行数"] += rec["行数"]
+        cur["金额"] += rec["金额"]
+    return found
 
 
 def plan_additions(cands: dict[str, dict], configured: set[str], state: dict) -> tuple[list[tuple[str, dict]], list[str]]:

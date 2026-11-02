@@ -85,6 +85,12 @@ _DEFAULTS: dict = {
         "名单文件": "data/mappings/部门事业部映射/部门事业部映射.json",
         "名单字段": "excluded_internal_companies",
     },
+    # 客户名单自动同步（销售归属 → 客户名单，只加不删；详见 scripts/sync_customer_list.py）
+    "客户名单同步": {
+        "排除父组": [],
+        "排除客户": [],
+        "备份保留份数": 5,
+    },
     "归入规则": {},
 }
 
@@ -291,6 +297,17 @@ def internal_exclude_rules() -> dict:
 def entry_rules() -> dict:
     """各特殊归入规则的口径说明（文档性，供人读）"""
     return dict(_merged()["归入规则"])
+
+
+# ── 客户名单自动同步（销售归属 → 白名单，只加不删）──────────
+def customer_list_sync_rules() -> dict:
+    """`销售归属` → `客户名单` 自动同步的参数
+
+    · 排除父组：这些父组下的子公司**不进**名单（默认空 = 全量同步）
+    · 排除客户：额外的排除名（黑名单 `gd_blacklist()` 始终生效）
+    · 备份保留份数：`logs/名单同步/客户名单.bak_*.xlsx` 保留最近几份
+    """
+    return dict(_merged()["客户名单同步"])
 
 
 def _main() -> int:

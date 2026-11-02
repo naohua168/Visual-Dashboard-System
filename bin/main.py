@@ -65,7 +65,8 @@ STEPS = [
         "script": "scripts/config_excel_to_json.py",
         "requires_excel": True,
         "description": "把 config/配置编辑器.xlsx（时间配置/结算模式/展示规则/KPI/销售归属/字段映射）写回 JSON；"
-                       "Excel 是唯一编辑入口、JSON 是生成物 —— 必须先同步，再清洗",
+                       "Excel 是唯一编辑入口、JSON 是生成物 —— 必须先同步，再清洗。"
+                       "销售归属写回后还会把归属表里的新客户补进 data/raw/客户名单（只加不删）",
     },
     {
         "key": "yearly",
@@ -110,6 +111,21 @@ STEPS = [
 
 STEP_KEYS = [s["key"] for s in STEPS]
 STEPS_BY_KEY = {s["key"]: s for s in STEPS}
+
+# 「自动同步」两步必须排在数据处理之前（2026-11-02 用户要求）：
+#   scan   = 广东自有客户预扫描（运营端 + 广东公司 → 写回销售归属）
+#   config = 配置编辑器 → JSON，并顺带把归属表客户补进客户名单
+SYNC_STEP_KEYS = ("scan", "config")
+DATA_STEP_KEYS = {"yearly", "clean", "split", "render"}
+
+
+def with_sync_prereq(steps: list[dict]) -> list[dict]:
+    """数据处理步骤前自动补上「预扫描 + 配置同步」（全量运行本身就含，不会重复）"""
+    if not any(s["key"] in DATA_STEP_KEYS for s in steps):
+        return steps
+    have = {s["key"] for s in steps}
+    missing = [STEPS_BY_KEY[k] for k in SYNC_STEP_KEYS if k not in have]
+    return missing + steps
 
 
 # ──────────────────────────────────────────────────────────────
@@ -337,7 +353,10 @@ def main(argv=None) -> int:
 
     steps_to_run = resolve_steps(args)
     if args.no_config:
+        # 显式跳过配置（不碰 Excel/JSON），此时也不补前置同步
         steps_to_run = [s for s in steps_to_run if s["key"] != "config"]
+    else:
+        steps_to_run = with_sync_prereq(steps_to_run)
     if not steps_to_run:
         print("无步骤可执行（检查 --from/--to 顺序）")
         return 1

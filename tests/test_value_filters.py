@@ -14,7 +14,8 @@ import pytest
 import engine.income_payment.financial as fin_mod
 from engine.core.customer_matcher import CustomerMatcher
 from engine.core.mapping_loader import DepartmentMapper
-from engine.core.utils import filter_by_kept_values
+from engine.core.utils import filter_by_dept_keep, filter_by_kept_values
+from engine.income_payment.operations import _filter_internal_trade
 
 
 # ──────────────────────────── 单元：filter_by_kept_values ────────────────────────────
@@ -133,3 +134,75 @@ class TestFinancialMainIntegration:
         ]
         out = _run(tmp_path, monkeypatch, rows)
         assert list(out["客户"]) == ["甲"]
+
+
+# ──────────────────── 事业部取值 / 内部交易标记值（2026-11-02） ────────────────────
+class _FakeMapper:
+    """最小映射器：只认两个事业部（用于过滤逻辑单测）"""
+
+    _MAP = {"检测工程事业部": "检测", "能源动力事业部": "能源"}
+
+    def map_payment_dept(self, v):
+        return self._MAP.get(str(v).strip())
+
+    def map_income_dept(self, v):
+        return self._MAP.get(str(v).strip())
+
+
+def _dept_df():
+    return pd.DataFrame({
+        "客户": ["甲", "乙", "丙"],
+        "事业部": ["检测", "能源", "信息"],
+        "金额": [100.0, 200.0, 300.0],
+    })
+
+
+def test_dept_keep_absent_means_no_limit():
+    out = filter_by_dept_keep(_dept_df(), {}, _FakeMapper(), "测试")
+    assert len(out) == 3
+
+
+def test_dept_keep_empty_list_means_no_limit():
+    out = filter_by_dept_keep(_dept_df(), {"事业部取值": []}, _FakeMapper(), "测试")
+    assert len(out) == 3
+
+
+def test_dept_keep_short_name():
+    out = filter_by_dept_keep(_dept_df(), {"事业部取值": ["检测"]}, _FakeMapper(), "测试")
+    assert list(out["客户"]) == ["甲"]
+
+
+def test_dept_keep_full_name_normalized():
+    """写全称也能命中（先过映射归一）"""
+    out = filter_by_dept_keep(_dept_df(), {"事业部取值": ["检测工程事业部"]}, _FakeMapper(), "测试")
+    assert list(out["客户"]) == ["甲"]
+
+
+def test_dept_keep_unmapped_value_matches_literally():
+    """映射表里没有的写法 → 按字面比较（这里没有 零部件 行 → 全部剔除）"""
+    out = filter_by_dept_keep(_dept_df(), {"事业部取值": ["零部件事业部"]}, _FakeMapper(), "测试")
+    assert len(out) == 0
+
+
+def test_internal_trade_default_marker():
+    df = pd.DataFrame({"客户": ["甲", "乙", None], "内部交易": ["是", "否", None], "金额": [1.0, 2.0, 3.0]})
+    out = _filter_internal_trade(df, {}, "测试")
+    assert list(out["客户"].fillna("")) == ["乙", ""]
+
+
+def test_internal_trade_empty_list_no_filter():
+    df = pd.DataFrame({"客户": ["甲", "乙"], "内部交易": ["是", "否"], "金额": [1.0, 2.0]})
+    out = _filter_internal_trade(df, {"内部交易标记值": []}, "测试")
+    assert len(out) == 2
+
+
+def test_internal_trade_custom_markers():
+    df = pd.DataFrame({"客户": ["甲", "乙", "丙"], "内部交易": ["是", "Y", "否"], "金额": [1.0, 2.0, 3.0]})
+    out = _filter_internal_trade(df, {"内部交易标记值": ["是", "Y"]}, "测试")
+    assert list(out["客户"]) == ["丙"]
+
+
+def test_internal_trade_missing_column():
+    df = pd.DataFrame({"客户": ["甲"], "金额": [1.0]})
+    out = _filter_internal_trade(df, {}, "测试")
+    assert len(out) == 1

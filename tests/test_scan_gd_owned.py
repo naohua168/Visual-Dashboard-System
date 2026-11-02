@@ -57,3 +57,87 @@ class TestPlanAdditions:
         assert "广东汽车检测中心有限公司" in BLACKLIST_NAMES
         assert "广东公司" in BLACKLIST_NAMES
         assert MIN_NAME_LEN >= 5
+
+
+# ══════════════════════════════════════════════════════════════
+# 候选来源：运营端 + 财务端「广东公司.xlsx」（2026-11-02 按业务规则口径统一）
+# ══════════════════════════════════════════════════════════════
+def _gd_cfg(legal="广东汽车检测中心有限公司", mult=10000):
+    return {
+        "数据源": {
+            "财务端": {
+                "文件夹": "财务端数据",
+                "广东公司": {
+                    "文件名": "广东公司.xlsx",
+                    "Sheet": {"收入": ["收入"], "回款": ["回款"]},
+                    "引擎": "openpyxl",
+                    "列映射": {"日期": ["日期"], "客户": ["客户", "客户名称"],
+                               "金额": ["金额", "金额(万元)"]},
+                    "过客户白名单": False,
+                    "事业部固定": "检测",
+                    "法人主体": legal,
+                    "金额乘数": mult,
+                },
+            }
+        }
+    }
+
+
+def _make_gd_file(path, inc_rows, pay_rows):
+    """造一份广东公司.xlsx（收入/回款两个 Sheet，金额单位万元）"""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "收入"
+    ws.append(["客户", "日期", "金额"])
+    for r in inc_rows:
+        ws.append(list(r))
+    ws2 = wb.create_sheet("回款")
+    ws2.append(["客户", "日期", "金额"])
+    for r in pay_rows:
+        ws2.append(list(r))
+    wb.save(path)
+    return path
+
+
+class TestCollectFinancialGd:
+    def test_reads_both_sheets_and_converts_to_yuan(self, tmp_path, monkeypatch):
+        p = _make_gd_file(tmp_path / "广东公司.xlsx",
+                          [("甲科技有限公司", "2026-05-01", 1.5)],
+                          [("甲科技有限公司", "2026-06-01", 2.0),
+                           ("乙科技有限公司", "2026-06-02", 0.5)])
+        monkeypatch.setattr(mod, "get_data_path", lambda cfg, src, key: p)
+        monkeypatch.setattr(mod, "_load_excluded_keys", lambda: set())
+
+        found = mod.collect_from_financial_gd(_gd_cfg())
+        assert set(found) == {"甲科技有限公司", "乙科技有限公司"}
+        # 万元 × 10000 → 元
+        assert found["甲科技有限公司"]["金额"] == 15000.0 + 20000.0
+        assert found["甲科技有限公司"]["行数"] == 2
+        assert sorted(found["甲科技有限公司"]["来源"]) == ["广东公司-回款", "广东公司-收入"]
+
+    def test_skips_when_legal_is_not_gd(self, tmp_path, monkeypatch):
+        p = _make_gd_file(tmp_path / "广东公司.xlsx", [("甲科技有限公司", "2026-05-01", 1)], [])
+        monkeypatch.setattr(mod, "get_data_path", lambda cfg, src, key: p)
+        assert mod.collect_from_financial_gd(_gd_cfg(legal="别的法人主体有限公司")) == {}
+
+    def test_missing_file_returns_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(mod, "get_data_path",
+                            lambda cfg, src, key: tmp_path / "不存在.xlsx")
+        assert mod.collect_from_financial_gd(_gd_cfg()) == {}
+
+    def test_merges_with_operations_source(self, monkeypatch):
+        """collect_candidates = 运营端 + 广东公司；同一客户行数/金额累加、来源合并"""
+        monkeypatch.setattr(mod, "collect_from_operations",
+                            lambda cfg: {"甲科技有限公司": {"来源": ["运营端-收入"],
+                                                        "行数": 2, "金额": 100.0}})
+        monkeypatch.setattr(mod, "collect_from_financial_gd",
+                            lambda cfg: {"甲科技有限公司": {"来源": ["广东公司-收入"],
+                                                        "行数": 1, "金额": 500.0},
+                                         "乙科技有限公司": {"来源": ["广东公司-回款"],
+                                                        "行数": 1, "金额": 300.0}})
+        merged = mod.collect_candidates({})
+        assert merged["甲科技有限公司"]["行数"] == 3
+        assert merged["甲科技有限公司"]["金额"] == 600.0
+        assert sorted(merged["甲科技有限公司"]["来源"]) == ["广东公司-收入", "运营端-收入"]
+        assert merged["乙科技有限公司"]["行数"] == 1

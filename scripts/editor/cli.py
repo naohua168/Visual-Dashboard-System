@@ -16,12 +16,14 @@ except ImportError:
 try:  # 直接以脚本方式运行时（python scripts/config_excel_to_json.py）
     from column_mapping_sheet import (
         MAP_SHEET_NAME, attach_mapping_sheet, excel_to_column_mapping,
-        read_latest_hits, refresh_mapping_sheet, update_column_mapping,
+        excel_to_kept_values, read_latest_hits, refresh_mapping_sheet,
+        update_column_mapping,
     )
 except ImportError:  # 以包形式导入时（如单元测试）
     from scripts.column_mapping_sheet import (  # type: ignore[no-redef]
         MAP_SHEET_NAME, attach_mapping_sheet, excel_to_column_mapping,
-        read_latest_hits, refresh_mapping_sheet, update_column_mapping,
+        excel_to_kept_values, read_latest_hits, refresh_mapping_sheet,
+        update_column_mapping,
     )
 try:  # 直接以脚本方式运行时
     from display_rules_sheet import (
@@ -44,6 +46,10 @@ try:  # 直接以脚本方式运行时
     from sheet_style import canonicalize_workbook
 except ImportError:  # 以包形式导入时（如单元测试）
     from scripts.sheet_style import canonicalize_workbook  # type: ignore[no-redef]
+try:  # 直接以脚本方式运行时
+    from sync_customer_list import sync_customer_list
+except ImportError:  # 以包形式导入时（如单元测试）
+    from scripts.sync_customer_list import sync_customer_list  # type: ignore[no-redef]
 
 
 def main():
@@ -149,22 +155,31 @@ def main():
         else:
             n_subs = sum(len(g.get("子公司", {})) for g in att.values())
             print(f"✅ 已更新 客户销售归属.json：{len(att)} 母公司 / {n_subs} 子公司")
+            # 4b) 归属表里的客户 → 客户名单（只加不删，2026-11-02）
+            #     财务端按名单过滤，归属里新加的客户不补进名单就会整行丢弃
+            try:
+                sync_customer_list(att, log=print)
+            except Exception as e:
+                print(f"  ⚠️ 客户名单自动同步跳过（不影响配置同步）: {e}")
     else:
         print("⚠️  Excel 缺少「销售归属」sheet，跳过")
 
-    # 5) 字段映射 → cleaning_config.json 的 数据源.*.列映射
+    # 5) 字段映射 → cleaning_config.json 的 数据源.*.列映射 / 保留取值
     if MAP_SHEET_NAME in wb.sheetnames:
         cfg_now = json.loads(CLEANING_CFG.read_text(encoding="utf-8"))
         mapping, warns = excel_to_column_mapping(wb[MAP_SHEET_NAME], cfg_now)
         for w in warns:
             print(f"  ⚠️ {w}")
-        _, changed = update_column_mapping(mapping, dry_run=dry_run)
+        kept, k_warns = excel_to_kept_values(wb[MAP_SHEET_NAME], cfg_now)
+        for w in k_warns:
+            print(f"  ⚠️ {w}")
+        _, changed = update_column_mapping(mapping, dry_run=dry_run, kept_values=kept)
         if dry_run:
-            print("【DRY-RUN】列映射将发生变更：")
+            print("【DRY-RUN】列映射/必填取值将发生变更：")
             for c in (changed or ["（无变更）"]):
                 print(f"  - {c}")
         elif changed:
-            print(f"✅ 已更新 cleaning_config.json 的「列映射」：{len(changed)} 个来源变更 → {', '.join(changed)}")
+            print(f"✅ 已更新 cleaning_config.json（列映射/必填取值）：{len(changed)} 项变更 → {', '.join(changed)}")
         else:
             print("✅ 字段映射与 JSON 一致（无需变更）")
     else:

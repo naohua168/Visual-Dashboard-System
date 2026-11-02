@@ -152,9 +152,12 @@ def _sorted_customers(tgt_p: pd.DataFrame,
 
     筛选规则（年度/月度/季度统一）：
     1. **指标客户**：指标合计 > 0 → 展示
-    2. **非指标客户**：指标=0 或无指标，但有实际金额（>0）→ 展示
+    2. **非指标客户**：指标=0 或无指标，但有实际金额（≠0，含冲销/红字负数）→ 展示
     3. **优先展示母公司**（filt.priority 配置）→ 无论如何都展示（即使无指标无实际）
     4. 其余（无指标 且 无实际）→ 不展示
+
+    说明（2026-10-29 用户口径）：无指标但有数据的客户一律展示，负数也展示 ——
+    否则负数行被静默丢弃后，矩阵合计行会比部门卡/数据总表偏大。
 
     收入/回款分开判定（调用方分别传入各自的 piv/tgt）。
 
@@ -177,7 +180,7 @@ def _sorted_customers(tgt_p: pd.DataFrame,
                 if c in cs:
                     continue  # 已在指标客户中
                 act = piv.loc[c, "合计"]
-                if act > 0:
+                if act != 0:      # 无指标但有数据（含冲销负数）一律展示
                     cs.append(c)
     else:
         # 无指定展示顺序：所有指标表客户（有指标或有实际）按指标表行序
@@ -185,7 +188,7 @@ def _sorted_customers(tgt_p: pd.DataFrame,
         for c in tgt_p.index:
             has_tgt = tgt_p.loc[c, "合计"] > 0
             act = piv.loc[c, "合计"] if piv is not None and c in piv.index else 0
-            if has_tgt or act > 0:
+            if has_tgt or act != 0:
                 cs.append(c)
         # 非指标表客户（有实际）：追加末尾
         if piv is not None and len(piv):
@@ -193,7 +196,7 @@ def _sorted_customers(tgt_p: pd.DataFrame,
                 if c in tgt_set or c in cs:
                     continue
                 act = piv.loc[c, "合计"]
-                if act > 0:
+                if act != 0:      # 无指标但有数据（含冲销负数）一律展示
                     cs.append(c)
 
     # ③ 优先展示母公司：无论如何都展示（即使无指标无实际）
@@ -214,8 +217,8 @@ def _sorted_customers(tgt_p: pd.DataFrame,
             act = piv.loc[c, "合计"] if piv is not None and c in piv.index else 0
             if tgt > 0:
                 return (1, tgt, act)   # 指标>0：按目标降序
-            if act > 0:
-                return (0, act, 0)     # 无指标有实际：按实际降序
+            if act != 0:
+                return (0, act, 0)     # 无指标有实际（含负数）：按实际降序
             return (-1, 0, 0)          # 无数据（仅优先展示）：最后
         cs.sort(key=_sort_key, reverse=True)
     # 只要配置了客户筛选 / 行数上限 / 非默认排序，就走 apply()（排序选项才会生效）

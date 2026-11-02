@@ -232,6 +232,24 @@ class TestSortedCustomers:
         pri, rest = _sorted_customers(tgt, piv=piv)
         assert "D" not in pri, "无指标且无实际的客户 D 不应展示"
 
+    def test_no_target_negative_actual_shown(self):
+        """无指标但金额为负（冲销/红字）：也要展示（2026-10-29 用户口径）
+
+        否则负数行被静默丢弃，矩阵合计行会比部门卡/数据总表偏大。
+        """
+        tgt = self._make_df(["A"], [100])
+        piv = self._make_df(["A", "E"], [80, -5.25])
+        pri, rest = _sorted_customers(tgt, piv=piv)
+        assert "E" in pri, "无指标但金额 -5.25 万的客户 E 应展示"
+
+    def test_no_target_negative_actual_shown_with_priority(self):
+        """配置了优先展示（has_pri 分支）时，负数客户同样保留"""
+        tgt = self._make_df(["A"], [100])
+        piv = self._make_df(["A", "E"], [80, -5.25])
+        filt = CustomerFilter(priority=["A"], max_rows=0)
+        pri, rest = _sorted_customers(tgt, filt=filt, piv=piv, base_dir=BASE_DIR)
+        assert "E" in (pri + rest), "优先展示分支下，负数客户 E 也不应被丢弃"
+
     def test_empty_piv_still_works(self):
         """piv 为空时只返回有目标的客户"""
         tgt = self._make_df(["A", "B"], [100, 50])

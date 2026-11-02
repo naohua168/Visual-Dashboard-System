@@ -114,6 +114,60 @@ def filter_by_kept_values(df, src_config, label):
     return df
 
 
+# ── 事业部取值过滤（2026-11-02 用户口径）─────────────────────────────
+# 配置键：数据源.<数据源>.<来源>.事业部取值 = ["检测", "检测工程事业部", ...]
+#   · 列表写的是「要取哪些事业部」，写法随意（简称/全称都行）
+#   · 配置值先过 部门事业部映射：能映射的用规范简称，映射不到的按字面参与比较
+#   · 含义：缺失 = 不限制；显式空列表 = 不限制（取全部）
+#   · 本过滤在**事业部映射之后**执行（此时 df["事业部"] 已是规范简称）
+def filter_by_dept_keep(df, src_config, mapper, label, kind="payment"):
+    """只保留 `事业部取值` 里列出的部门（映射归一后比较）"""
+    keep = src_config.get("事业部取值")
+    if keep is None or df is None or len(df) == 0 or "事业部" not in df.columns:
+        return df
+    if len(keep) == 0:  # 显式清空 = 不限制
+        return df
+
+    map_fn = mapper.map_payment_dept if kind == "payment" else mapper.map_income_dept
+    # 规范简称集合（映射表的值）—— 配置里直接写简称时视同规范名，不作「未映射」告警
+    canonical: set[str] = {
+        str(v) for m in (getattr(mapper, "income_map", {}) or {},
+                         getattr(mapper, "payment_map", {}) or {})
+        for v in (m or {}).values()
+    }
+    wanted: set[str] = set()
+    unmapped: list[str] = []
+    for v in keep:
+        s = str(v).strip()
+        if not s:
+            continue
+        m = map_fn(s)
+        if m is None or (isinstance(m, float) and pd.isna(m)):
+            wanted.add(s)
+            if s not in canonical:
+                unmapped.append(s)
+        else:
+            wanted.add(str(m))
+    if unmapped:
+        log_step(
+            label,
+            f"事业部取值里的 {'/'.join(unmapped)} 未在部门事业部映射中（按字面比较，归组时仍会丢弃）",
+            "WARN",
+        )
+    if not wanted:
+        return df
+    flag = df["事业部"].astype(str).isin(wanted)
+    n_keep, n_drop = int(flag.sum()), int((~flag).sum())
+    amt = 0.0
+    if "金额" in df.columns and n_drop:
+        amt = float(pd.to_numeric(df.loc[~flag, "金额"], errors="coerce").fillna(0).sum())
+    log_step(
+        label,
+        f"事业部取值[{','.join(sorted(wanted))}]: 保留 {n_keep} 行 / 剔除 {n_drop} 行 / {amt:,.2f}（源表口径）",
+    )
+    return df[flag]
+
+
 def infer_company_type(entity):
     """根据法人主体名推断公司类型 (is_gd, is_sz)
 

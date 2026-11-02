@@ -39,7 +39,7 @@ class Step:
 
 STEPS: tuple[Step, ...] = (
     Step("scan", "配置预扫描", "广东自有客户自动归入", optional=True),
-    Step("config", "配置同步", "配置编辑器.xlsx → JSON"),
+    Step("config", "配置同步", "配置编辑器.xlsx → JSON（顺带同步客户名单）"),
     Step("yearly", "Phase 0 年基线", "往年收入/回款清洗", optional=True),
     Step("clean", "Phase 1+2 清洗", "收入/回款三路输出"),
     Step("split", "Phase 3 销售拆分", "按销售归属比例拆分"),
@@ -48,6 +48,22 @@ STEPS: tuple[Step, ...] = (
     Step("verify", "Phase 6 交付物校验", "看板 / 总表 / 完成度表"),
 )
 STEPS_BY_KEY = {s.key: s for s in STEPS}
+
+# 「自动同步」两步必须排在数据处理之前（2026-11-02 用户要求）：
+#   scan   = 广东自有客户预扫描（运营端 + 广东公司 → 写回销售归属）
+#   config = 配置编辑器 → JSON，并顺带把归属表客户补进客户名单
+# 分步/续跑（--step=clean 等）时若没选这两步，自动补到最前面，避免"用旧配置/旧名单清洗"。
+SYNC_STEP_KEYS: tuple[str, ...] = ("scan", "config")
+DATA_STEP_KEYS: frozenset[str] = frozenset({"yearly", "clean", "split", "render"})
+
+
+def with_sync_prereq(todo: list[Step], keys: list[str] | None) -> list[Step]:
+    """数据处理步骤前自动补上「预扫描 + 配置同步」（全量运行本身就含，不会重复）"""
+    if keys is None or not any(s.key in DATA_STEP_KEYS for s in todo):
+        return todo
+    have = {s.key for s in todo}
+    missing = [STEPS_BY_KEY[k] for k in SYNC_STEP_KEYS if k not in have]
+    return missing + todo
 
 
 @dataclass
@@ -175,10 +191,13 @@ def run_all(log=print,
     os.environ[RUN_ID_ENV] = run_id
 
     todo = [s for s in STEPS if (keys is None or s.key in keys)]
+    todo = with_sync_prereq(todo, keys)
     results: list[StepResult] = []
     failed: StepResult | None = None
 
     log(f"\n▶ 开始运行（{run_id}）：{' → '.join(s.key for s in todo)}\n")
+    if keys is not None and any(s.key in SYNC_STEP_KEYS for s in todo if s.key not in keys):
+        log("（已自动前置「配置预扫描 + 配置同步」：保证清洗前配置与客户名单都是最新的）")
 
     for index, step in enumerate(todo):
         if stop_event is not None and stop_event.is_set():

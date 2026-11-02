@@ -12,6 +12,7 @@ from ..core.utils import (
     log_step,
     filter_by_date,
     filter_by_kept_values,
+    filter_by_dept_keep,
     standardize_output,
     read_excel_with_fallback,
     empty_standard_df as _empty_standard_df,
@@ -152,6 +153,8 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     before = len(df)
     df = df.dropna(subset=["事业部"])
     log_step(f"财务端{file_type}", f"事业部映射: 成功{len(df)}行, 丢弃{before - len(df)}行")
+    # 事业部取值（配置决定只取哪些事业部；缺省/空 = 不限制）
+    df = filter_by_dept_keep(df, src_config, mapper, f"财务端{file_type}", "payment")
 
     # 客户白名单匹配
     df = _filter_by_whitelist(df, matcher, src_config, f"财务端{file_type}")
