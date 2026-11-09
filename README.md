@@ -19,6 +19,8 @@
 
 > **想要双击启动？** 运行 `python bin/make_shortcut.py --desktop`（交付包用 `<解压目录>\runtime\python\python.exe bin\make_shortcut.py --desktop`），会在桌面生成「启动控制台.lnk」，目标 = `runtime\python\pythonw.exe bin\app.py`，双击不弹黑框。快捷方式存绝对路径，文件夹搬家后重新生成一次即可。
 
+> **根目录启动器**：`python 启动系统.py`（参数与 `bin/start.py` 一致：`--check` / `--cli` / `report` / `list` / `board`）。它先挑一个「能干活儿」的解释器 —— 当前 Python 缺 `pandas/openpyxl/xlrd` 时，按 `config/python_path.txt` 的口径（指定目录 → `runtime\python` → Conda 环境 → PATH）自动换一个再启动，然后转交 `bin/start.py`；`pythonw 启动系统.py` 不弹黑框。
+
 ### 开发者 / 命令行
 
 ```bash
@@ -496,6 +498,7 @@ ERP 系统导出，**当月单月**数据。金额单位：**元**（金额列�
 
 ```
 Visual Dashboard_system/
+├── 启动系统.py                        # ★ 根目录启动器（挑解释器 → 转交 bin/start.py）
 ├── bin/                              # ★ 入口（在项目根执行 python bin/...）
 │   ├── app.py                        #   ★ 唯一入口（python bin/app.py：gui / run / list / board / report）
 │   ├── gui.py                        #   tkinter 图形控制台（app.py 调它）
@@ -517,7 +520,7 @@ Visual Dashboard_system/
 │   ├── sales_summary_report.py       #   销售完成度汇总表（按需产物，不在 7 步内）
 │   └── verify_dashboard.py           #   看板质量验证（JS语法/onclick函数）
 ├── config/
-│   ├── python_path.txt              #   仅回退 WPF 控制台时用：指定 Python 目录（留空 = 自动探测）
+│   ├── python_path.txt              #   指定 Python 目录（留空 = 自动探测；根启动器 / 回退 WPF 控制台共用）
 │   ├── 配置编辑器.xlsx               # ★ 配置编辑层（时间配置/展示规则/销售归属/KPI指标/字段映射/说明 6 sheet）
 │   ├── 清洗配置/
 │   │   ├── cleaning_config.json      # ★ 清洗核心配置（数据源/列映射/时间/输出）
