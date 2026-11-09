@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from engine.core.diagnostics import note_issue, output_dir, print_summary, write_reports
+from engine.core.output_paths import month_dir
 from engine.core.io_utils import ExcelBusyError, save_excel
 from .data_loader import load_all
 from .base import GLOBAL_CSS, GLOBAL_JS, GLOBAL_OV_CSS
@@ -23,29 +24,12 @@ from .pages import (
 )
 
 BASE_DIR = Path(__file__).parent.parent.resolve()
-CHART_JS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
 
-
-def _chartjs_snippet() -> str:
-    """Chart.js 注入片段：优先本地内联（离线/内网可用），本地缺失时回退 CDN"""
-    local = BASE_DIR / "processors" / "static" / "chart.umd.min.js"
-    if local.exists():
-        # 防御性转义，防止未来构建版本出现 </script> 破坏 HTML 解析
-        js = local.read_text(encoding="utf-8").replace("</script>", "<\\/script>")
-        return f"<script>{js}</script>"
-    return (
-        "<script>\n"
-        "// Chart.js CDN 兜底加载（本地 processors/static/chart.umd.min.js 缺失时启用）\n"
-        "(function(){\n"
-        "  var s=document.createElement('script');\n"
-        "  s.src='" + CHART_JS_CDN + "';\n"
-        "  s.async=true;\n"
-        "  s.defer=true;\n"
-        "  s.onerror=function(){console.warn('Chart.js CDN failed; charts will be skipped')};\n"
-        "  document.head.appendChild(s);\n"
-        "})();\n"
-        "</script>"
-    )
+# 2026-11-04 移除 Chart.js 内联：全仓库从未调用 `new Chart(` / `__regChart(`（6 个页面全是表格），
+# 200KB 的 vendor 脚本是纯死重量；且本地文件缺失时会去请求 cdn.jsdelivr.net ——
+# 内网/断网环境静默失败，还可能触发安全审计告警。
+# 若将来真要画图：重新引入 processors/static/chart.umd.min.js 的**本地内联**，不要走 CDN。
+# 收益：产物体积 -200KB、产物不再发起任何 CDN 请求、verify 的 node --check 少一个大块。
 
 
 def _load_frontend_config() -> dict:
@@ -88,11 +72,10 @@ def build_html(data, title: str, frontend_cfg: dict) -> str:
     if not pages:
         pages = [OverviewPage(), AnnualPage(), MonthlyPage(), QuarterlyPage(), SalesPage(), YoyPage()]
     # 每个页面用 template 包裹（懒加载：浏览器不解析，切换时克隆注入）
-    tpls = "".join(
+    page_html = "".join(
         f'<template id="tpl-{p.page_id}">\n{p.render(data)}\n</template>'
         for p in pages
     )
-    page_html = tpls + '<script>setTimeout(window.__resizeAllCharts, 200);</script>'
     # 导航用 <button> 而不是 <a href="#">：避免悬停时浏览器左下角弹出 "file:///…html#" 地址预览，
     # 也避免点击后 URL 尾巴多一个 #（2026-10-10 用户要求）
     nav_items = "".join(
@@ -109,7 +92,6 @@ def build_html(data, title: str, frontend_cfg: dict) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0">
 <title>{title} · {today}</title>
 <style>{GLOBAL_CSS}{GLOBAL_OV_CSS}</style>
-{_chartjs_snippet()}
 </head>
 <body>
 <script>{GLOBAL_JS}</script>
@@ -170,10 +152,11 @@ def run_render(output_path: str | None = None, data_dir_path: str | None = None)
     title = frontend_cfg.get("看板标题", {}).get("标题", "销售运营可视化看板")
     file_cfg = frontend_cfg.get("文件输出", {})
 
-    # 输出骨架：HTML → <输出目录>/看板/，Excel 汇总表 → <输出目录>/数据/
+    # 输出骨架：HTML → <输出目录>/看板/<年>/<月>/，Excel 汇总表 → <输出目录>/数据/<年>/<月>/
+    # （2026-11-06 用户要求按年月分类；规则见 engine/core/output_paths.py）
     base_out = BASE_DIR / file_cfg.get("目录", "output")
-    html_dir = base_out / "看板"
-    data_dir = base_out / "数据"
+    html_dir = month_dir(base_out / "看板")
+    data_dir = month_dir(base_out / "数据")
     if data_dir_path:  # 测试/特殊场景：Excel 输出目录重定向（产品流程不使用）
         data_dir = Path(data_dir_path)
         if not data_dir.is_absolute():

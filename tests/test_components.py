@@ -7,7 +7,8 @@
 覆盖：
   - cell_bg_html / cell_bg_pct_only：空值、达成率色阶、合计列
   - mini_rate_row / mini_rate_summary_row：名称、金额、目标
-  - cust_tab_bar / hidden_dept_card_wrapper：容器 id 与隐藏包裹
+  - cust_tab_bar / cust_search_box / row_search_attr：收入回款切换 + 搜索框 + 行可搜索文本
+  - hidden_dept_card_wrapper：隐藏包裹
   - children_modal_html / children_modal_js：抽屉骨架与数据注入
   - dept_card_html：部门卡（三种目标列名兼容）
   - sales_pending.build_pending_modal：待确认弹窗口径（客户数/金额/明细）
@@ -20,11 +21,13 @@ from processors.components import (
     cell_bg_pct_only,
     children_modal_html,
     children_modal_js,
+    cust_search_box,
     cust_tab_bar,
     dept_card_html,
     hidden_dept_card_wrapper,
     mini_rate_row,
     mini_rate_summary_row,
+    row_search_attr,
 )
 from processors.sales_pending import build_pending_modal
 from processors.utils import fmt_wan
@@ -89,6 +92,45 @@ class TestMiniRate:
 def test_cust_tab_bar_ids():
     html = cust_tab_bar("inc_box", "pay_box")
     assert "inc_box" in html and "pay_box" in html
+
+
+class TestCustTabBarSearch:
+    """收入/回款 + 搜索 通栏三段（2026-11-03）"""
+
+    def test_default_has_search_box(self):
+        html = cust_tab_bar("inc_box", "pay_box")
+        assert 'data-cust-search="1"' in html
+        assert 'data-targets="inc_box,pay_box"' in html
+        assert "switchCustTab(this,'inc_box','pay_box','inc')" in html
+        assert "switchCustTab(this,'inc_box','pay_box','pay')" in html
+
+    def test_search_can_be_disabled(self):
+        html = cust_tab_bar("a", "b", search=False)
+        assert "data-cust-search" not in html
+        assert "cust-tabs no-search" in html
+
+    def test_extra_callback_and_placeholder(self):
+        html = cust_tab_bar("a", "b", placeholder="搜索销售…", on_metric="switchSc3Metric")
+        assert 'data-extra="switchSc3Metric"' in html
+        assert "搜索销售…" in html
+
+    def test_search_box_standalone(self):
+        html = cust_search_box("x,y")
+        assert 'aria-label="搜索客户或子公司…"' in html
+        assert "cust-search-clear" in html and "cust-search-count" in html
+
+
+class TestRowSearchAttr:
+    def test_includes_parent_and_subs_dedup(self):
+        v = row_search_attr("甲有限公司", ["甲有限公司", "甲（深圳）有限公司", "乙有限公司"])
+        assert v == "甲有限公司|甲（深圳）有限公司|乙有限公司"
+
+    def test_escapes_html(self):
+        v = row_search_attr('A&"B"有限公司')
+        assert "&amp;" in v and "&quot;" in v and '"' not in v
+
+    def test_empty_subs(self):
+        assert row_search_attr("丙有限公司") == "丙有限公司"
 
 
 def test_hidden_dept_card_wrapper():

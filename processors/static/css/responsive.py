@@ -12,6 +12,11 @@ CSS = r"""
   .cols-3{grid-template-columns:1fr 1fr;}
 }
 @media(max-width:768px){
+  /* 收入/回款 + 搜索：三段改两行（分段控件一行、搜索框一行），都占满宽度 */
+  .cust-tabs{flex-wrap:wrap;gap:0.5rem;}
+  .cust-tabs-seg{flex:1 1 100%;height:2.5rem;}
+  .cust-tabs .cust-search{flex:1 1 100%;height:2.5rem;}
+  .cust-tab{padding:0 0.5rem;}
   .header{padding:0 0.5rem;}
   .header h1{font-size:1.0625rem;}
   .nav{padding:0 0.375rem;}

@@ -6,7 +6,8 @@
     python bin/gui.py      # 直接打开（等价）
 
 功能：
-  · 运行全流程（8 步：预扫描 → 配置同步 → 年基线 → 清洗 → 拆分 → 渲染 → 汇总 → 校验）
+  · 运行全流程（7 步：预扫描 → 配置同步 → 年基线 → 清洗 → 拆分 → 渲染 → 校验）
+  · 按需产物：生成销售完成度表 / 按客户清单导出矩阵（不随全流程自动生成）
   · 单步执行（下拉选择）
   · 实时进度 / 日志 / 退出码
   · 打开 output 目录、配置编辑器、最新看板
@@ -32,6 +33,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from bin.runner import STEPS, run_all  # noqa: E402
+from engine.core.output_paths import latest_file  # noqa: E402
 
 # ── 视觉常量 ──────────────────────────────────────────────
 BG = "#f5f5f7"
@@ -193,6 +195,18 @@ class DashboardApp:
         self.btn_board.pack(fill="x", pady=2)
 
         ttk.Separator(left).pack(fill="x", pady=12)
+        ttk.Label(left, text="按需产物（全流程不再自动生成）",
+                  style="Muted.TLabel").pack(anchor="w", pady=(0, 4))
+        self.btn_report = ttk.Button(left, text="生成销售完成度表", command=self._on_make_report)
+        self.btn_report.pack(fill="x", pady=2)
+        self.btn_matrix = ttk.Button(left, text="按客户清单导出矩阵…",
+                                     command=self._on_export_matrix)
+        self.btn_matrix.pack(fill="x", pady=2)
+        ttk.Label(left, text="两者都不影响看板与数据总表",
+                  style="Muted.TLabel", wraplength=int(236 * self.scale),
+                  justify="left").pack(anchor="w", pady=(2, 0))
+
+        ttk.Separator(left).pack(fill="x", pady=12)
         self.btn_stop = ttk.Button(left, text="停止", command=self._on_stop, state="disabled")
         self.btn_stop.pack(fill="x", pady=2)
         ttk.Button(left, text="退出", command=self._on_close).pack(fill="x", pady=(2, 0))
@@ -275,10 +289,8 @@ class DashboardApp:
         self.status_labels[key].configure(text=text, foreground=GREEN if ok else ORANGE)
 
     def _latest_board(self) -> Path | None:
-        board_dir = BASE_DIR / "output" / "看板"
-        files = sorted((f for f in board_dir.glob("看板_*.html") if not f.name.startswith("~$")),
-                       key=lambda f: f.stat().st_mtime, reverse=True)
-        return files[0] if files else None
+        # 目录按 <类别>/<年>/<月>/ 分层（2026-11-06），必须递归找
+        return latest_file(BASE_DIR / "output" / "看板", "看板_*.html")
 
     # ────────────────────────────── 运行 ──────────────────────────────
     def _on_run_all(self):
@@ -321,6 +333,15 @@ class DashboardApp:
             rc = 1
         finally:
             self.queue.put(("done", rc))
+
+    def _on_make_report(self):
+        """按需生成销售完成度表（可指定数据版本；2026-11-06 起不在 7 步主管线内）"""
+        if self.worker is not None and self.worker.is_alive():
+            messagebox.showinfo("正在运行", "等当前任务结束再生成。")
+            return
+        from bin.report_dialog import SalesReportDialog
+
+        SalesReportDialog(self.root, BASE_DIR, log=self._append_log)
 
     def _on_stop(self):
         self.stop_event.set()
@@ -392,6 +413,8 @@ class DashboardApp:
         state = "disabled" if running else "normal"
         self.btn_run.configure(state=state)
         self.btn_step.configure(state=state)
+        self.btn_matrix.configure(state=state)
+        self.btn_report.configure(state=state)
         self.cmb_step.configure(state="disabled" if running else "readonly")
         self.btn_stop.configure(state="normal" if running else "disabled")
 
@@ -417,6 +440,15 @@ class DashboardApp:
             messagebox.showinfo("暂无看板", "还没有生成看板，请先运行全流程。")
             return
         self._open(board)
+
+    def _on_export_matrix(self):
+        """打开「按客户清单导出矩阵」对话框（可选功能，不填清单不会生成文件）"""
+        if self.worker is not None and self.worker.is_alive():
+            messagebox.showinfo("正在运行", "流水线还在跑，等它结束再导出矩阵，避免读到写了一半的数据。")
+            return
+        from bin.matrix_dialog import MatrixExportDialog
+
+        MatrixExportDialog(self.root, BASE_DIR, log=self._append_log)
 
     def _clear_log(self):
         self.log.configure(state="normal")

@@ -10,14 +10,14 @@
 
 1. 解压 `Visual-Dashboard-System_vYYYYMMDD.zip`（内置 `runtime/`，含 Python + 全部依赖）
 2. 放入原始 Excel（`data/raw/`）→ 更新指标表（`data/sheets/手动维护/`）→ 改时间（`config/配置编辑器.xlsx`）
-3. **双击 `启动系统.bat`**（图形化控制台，推荐）或 `run_all.bat`（命令行），自动完成：配置预扫描 → 配置同步（含客户名单同步）→ 年基线 → 清洗 → 拆分 → 渲染 → 汇总 → 校验
-4. 打开 `output/看板/看板_YYYYMMDD.html` 查看看板
+3. **运行 `python bin/start.py`**（自检 + 图形控制台，推荐）或 `python bin/app.py run`（命令行），自动完成：配置预扫描 → 配置同步（含客户名单同步）→ 年基线 → 清洗 → 拆分 → 渲染 → 校验（销售完成度表改为**按需生成**，见「按需产物」）
+4. 打开 `output/看板/<年>/<月>/看板_YYYYMMDD.html` 查看看板（**产物按年月分类**：如 `output/看板/2026/11/`）
 
-> **Python 原生入口**：`python bin/app.py` 打开 **tkinter 图形控制台**（不依赖 PowerShell / WPF，含进度、实时日志、一键运行 / 单步 / 打开产物）；`python bin/app.py run` 跑命令行全流程（同进程编排 8 步）；`python bin/app.py list` 列出步骤；`python bin/app.py board` 打开最新看板。双击 `启动系统.bat` 也走这个 Python 界面。
+> **Python 原生入口**：`python bin/start.py` 先做环境自检（Python 版本 / 依赖 / tkinter / 配置与数据 / 输出目录），通过后再打开 **tkinter 图形控制台**；只想体检用 `python bin/start.py --check`。底层仍由 `python bin/app.py` 分发（不依赖 PowerShell / WPF，含进度、实时日志、一键运行 / 单步 / 打开产物 / 按需产物）；`python bin/app.py run` 跑命令行全流程（同进程编排 7 步）；`python bin/app.py report` 按需生成销售完成度表；`python bin/app.py list` 列出步骤；`python bin/app.py board` 打开最新看板。**仓库已不含任何 .bat 启动器**，入口就是这一条命令（想免黑框可用 `pythonw bin/app.py`）。
 >
 > ⚠️ **交付包的内置运行时（`runtime/python`）不带 tkinter** → 双击时会自动回退到传统 WPF 控制台（`scripts/dashboard_launcher.ps1`）；本机 Python / Conda 环境则使用 Python 界面。若希望交付包也用 Python 界面，需给 `runtime` 补 `tkinter`（`_tkinter.pyd` + `tcl/`）或让接收方使用本机 Python。
 
-> **想指定自己机器的 Python？** 编辑 `config/python_path.txt`，写一行 Python 所在目录（只写目录，不写 `python.exe`）即可，**优先级高于内置 `runtime/`**；留空（默认）= 直接用内置运行时。解释器选择顺序见 [docs/部署指南.md](docs/部署指南.md)「环境要求」。
+> **想要双击启动？** 运行 `python bin/make_shortcut.py --desktop`（交付包用 `<解压目录>\runtime\python\python.exe bin\make_shortcut.py --desktop`），会在桌面生成「启动控制台.lnk」，目标 = `runtime\python\pythonw.exe bin\app.py`，双击不弹黑框。快捷方式存绝对路径，文件夹搬家后重新生成一次即可。
 
 ### 开发者 / 命令行
 
@@ -36,7 +36,7 @@ python bin/main.py
 python bin/app.py
 
 # 或 Windows 双击
-run_all.bat
+python bin/main.py
 ```
 
 ---
@@ -77,17 +77,17 @@ run_all.bat
 
 ```bash
 # 1) 构建内置运行时（首次打包前运行一次，含 Python + 全部依赖）
-scripts\prepare_runtime.bat
+python scripts/prepare_runtime.py
 
-# 2) 打包（Windows 双击即可）
-bin/package.bat
+# 2) 打包（纯 Python，无 .bat 依赖）
+python bin/package.py
 
 # 生成 Visual-Dashboard-System_vYYYYMMDD.zip
-# 包含全部代码 + 配置 + 内置运行时，接收方解压后双击 启动系统.bat（Python 控制台，推荐）或 run_all.bat 即可，无需安装任何环境
+# 包含全部代码 + 配置 + 内置运行时，接收方解压后运行 python bin/app.py（Python 控制台，推荐）或 python bin/main.py 即可，无需安装任何环境
 # 交付前建议在 VirtualBox 干净 Windows 客户机做一次验收 → docs/部署指南.md「七、VirtualBox 干净环境验收」
 ```
 
-> `runtime/` 目录不在 Git 中，由 `scripts/prepare_runtime.bat` 从 python.org 下载嵌入式 Python 并安装依赖后生成。
+> `runtime/` 目录不在 Git 中，由 `python scripts/prepare_runtime.py` 从 python.org 下载嵌入式 Python 并安装依赖后生成（`--force` 重建、`--version` 换版本）。
 
 ---
 
@@ -101,12 +101,14 @@ bin/package.bat
 | 场景 | 操作 | 详述 |
 |------|------|------|
 | **首次部署** | `pip install -r requirements.txt` → 放数据 → 配置时间 | [部署指南 · 安装](docs/部署指南.md#一安装步骤) |
-| **日常出看板** | 双击 `启动系统.bat`（Python 控制台）或 `run_all.bat`（自动：同步配置→清洗→拆分→渲染→销售完成度→验证） | [部署指南 · 运行](docs/部署指南.md#三运行) |
+| **日常出看板** | 运行 `python bin/app.py`（Python 控制台）或 `python bin/main.py`（自动：同步配置→清洗→拆分→渲染→验证） | [部署指南 · 运行](docs/部署指南.md#三运行) |
+| **按需生成销售完成度表** | 控制面板「生成销售完成度表」或 `python bin/app.py report`（不再随全流程生成） | [README 按需产物](#按需产物销售完成度表) |
 | **改时间范围** | 打开 `config/配置编辑器.xlsx` → 「时间配置」改日期 → 保存 | [部署指南 · 配置](docs/部署指南.md#二配置推荐用-excel-编辑器) |
 | **改销售归属** | `配置编辑器.xlsx` → 「销售归属」改 销售/比例 | [数据系统设计 · 销售归属](docs/数据系统设计.md#62-配置编辑器-config配置编辑器xlsx编辑层) |
 | **单独改 KPI 总数** | `配置编辑器.xlsx` → 「KPI指标」填万元值（留空=按指标合计） | [README KPI 指标总数](#kpi-指标总数excel-编辑) |
 | **换新一期数据** | 替换 `data/raw/` 文件 → 更新 6 张指标表 → 改时间 → 运行 | [部署指南 · 更新清单](docs/部署指南.md#五更新数据操作清单) |
-| **交付前验收** | VirtualBox 干净 Windows 客户机：解压 → 放数据 → 双击 `启动系统.bat` → 核对产物与 8 步全绿 | [部署指南 · VirtualBox 验收](docs/部署指南.md#七virtualbox-干净环境验收windows-客户机) |
+| **交付前验收** | VirtualBox 干净 Windows 客户机：解压 → 放数据 → 运行 `python bin/app.py` → 核对产物与 7 步全绿 | [部署指南 · VirtualBox 验收](docs/部署指南.md#七virtualbox-干净环境验收windows-客户机) |
+| **按客户清单导出矩阵** | 控制面板点「按客户清单导出矩阵…」→ 粘客户名单 → 生成（可选周期/数据版本） | [README 按客户清单导出](#按客户清单导出矩阵可选) |
 | **出问题排查** | 查 `logs/` 日志 / 预检 `python bin/main.py --dry-run` | [部署指南 · 故障排查](docs/部署指南.md#八故障排查) |
 
 ### 一次性配置（三步）
@@ -117,7 +119,7 @@ bin/package.bat
 
 ### 日常运行（一步）
 
-**双击 `run_all.bat`**，自动执行 8 步（`bin/runner.py`，与 GUI 同一套编排）：
+**`python bin/main.py`** 自动执行 7 步（`bin/main.py` 子进程调度，步骤与图形控制台一致）：
 
 ```
 ⓪ 配置预扫描   运营端 + 广东公司.xlsx → 广东自有客户自动归入（写回 配置编辑器.xlsx）
@@ -126,14 +128,53 @@ bin/package.bat
 ③ Phase 1+2   收入/回款清洗（财务端当月 + 运营端当年累计 + 广东/湖南/南方韶关）
 ④ Phase 3     销售拆分（8 种归属形式 + 总额校验）
 ⑤ Phase 4     渲染 6 页看板 + 16 sheet 数据总表
-⑥ Phase 5     销售完成度汇总表（销售 × 4 部门）
-⑦ Phase 6     交付物校验（看板 JS/6页/onclick + 总表 + 完成度表）
+⑥ 交付物校验   看板 JS/6页/onclick + 数据总表（按**当天日期**找产物）
 ```
+
+### 按需产物（销售完成度表）
+
+销售完成度汇总表已从主管线摘出（2026-11-06），需要时才生成：
+
+- 控制面板左栏「按需产物」→「生成销售完成度表」→ 对话框里可选**数据版本**（最新 / 任一历史 `data_*.xlsx` / 手工选某一期看板）
+- 命令行（三种等价入口，老脚本里的 `--step=report` 继续可用）：
+  `python bin/app.py report` / `python bin/main.py --step=report` / `python scripts/sales_summary_report.py`
+  指定数据版本：加 `--snapshot "output/看板/2026/10/看板_20261030.html"`（也可直接传 `data_*.xlsx`）
+- 产物：`output/销售完成度/<年>/<月>/销售完成度汇总_YYYYMMDD.xlsx`；选旧快照时按**那一期**的年月与日期落盘（不会覆盖今天的）
+- 交付物校验**不再把它当必需项**：当天没生成只提示，不会让整次运行失败
+
+### 按客户清单导出矩阵（可选）
+
+看板上看到一组客户，想按**自己给的顺序**拿一份明细矩阵时用这个（**不填清单不会生成**）：
+
+1. 运行 `python bin/app.py` → 左侧「按客户清单导出矩阵…」
+2. 勾周期（月度 / 季度 / 年度，默认全勾）、选数据版本（默认最新，也可指定**某一期看板或数据总表**）
+3. 把客户名粘进文本框（一行一个，可直接从 Excel 粘一列）→ 生成
+
+产出**一个 Excel、7 个 sheet**：`月度-收入 / 月度-回款 / 季度-* / 年度-* / 说明`，
+落在独立类别目录 `output/客户矩阵/<年>/<月>/客户矩阵_<周期>_YYYYMMDD.xlsx`（与看板/数据总表并列）。
+`说明` sheet 记录口径、逐行解析（名单原文 → 系统实体 → 归拢口径）和「本表行合计 vs 全量」的核对。
+
+口径约定：
+- 清单里写**母公司** → 归拢其全部子公司（与看板一致）；写**子公司** → 只算该户自身
+- 母公司与其子公司同时出现在清单里时，母行会扣掉已单列的部分，避免同一笔指标算两遍
+- `科技公司` / `专项组` 这类简写按出现顺序依次展开成各销售拆分父组
+- 名字对不上系统的行不丢弃，保留空行并在「说明」里标注原因
+
+命令行等价入口：
+
+```bash
+python scripts/export_customer_matrix.py --customers-file 名单.txt          # 三周期一起出
+python scripts/export_customer_matrix.py --periods monthly --customers "比亚迪电池,广汽埃安"
+python scripts/export_customer_matrix.py --customers-file 名单.txt \
+    --snapshot "output/看板/2026/11/看板_20261104.html"                    # 用那一期的数据算
+```
+
+单周期脚本仍可用：`scripts/export_monthly_customer_matrix.py` / `export_annual_customer_matrix.py`。
 
 ### 命令行（开发/调试）
 
 ```bash
-python bin/app.py                           # 启动图形控制台（= 启动系统.bat）
+python bin/app.py                           # 启动图形控制台（默认子命令）
 python bin/app.py run                       # 全流程（= python bin/main.py）
 python bin/app.py run --from=clean          # 续跑（参数透传给 bin/main.py）
 python bin/app.py list                      # 列出步骤
@@ -202,12 +243,12 @@ python scripts/verify_dashboard.py              # 看板质量验证
 │  ┌─────────────────────────────────────────────────────────┐        │
 │  │ 数据总览│年度达成│月度达成│季度达成│销售达成│年度同比      │        │
 │  └─────────────────────────────────────────────────────────┘        │
-│  output/看板/看板_YYYYMMDD.html（6页交互）                          │
-│  output/数据/data_YYYYMMDD.xlsx（16 Sheet 总表，与 data/sheets/ 文件夹名一致）│
+│  output/看板/<年>/<月>/看板_YYYYMMDD.html（6页交互）                │
+│  output/数据/<年>/<月>/data_YYYYMMDD.xlsx（16 Sheet 总表，与 data/sheets/ 同名）│
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**配置流**（`run_all.bat` 自动同步）：
+**配置流**（`python bin/main.py` 自动同步）：
 
 ```
 config/配置编辑器.xlsx (编辑层)
@@ -224,11 +265,11 @@ cleaning_config.json / 展示规则.json / 客户销售归属.json (事实源)
 
 > **配置编辑器表格设计（2026-09-28 统一）**：每张表 **第 1 行 = 蓝色提示**（这张表怎么用，先读它）、**第 2 行 = 表头**；
 > **浅黄底 = 可编辑列**（只改这些），浅灰底 = 只读/参考列；销售归属表按母公司分块浅蓝斑马纹；时间配置/销售归属/字段映射 表头带筛选、已冻结窗格；各表标签页颜色不同。
-> 下拉只给取值有限的项（模式 / 动态策略 / 指标 / 部门 / 排序），客户名等自由文本自己填。改完保存 → 运行 `启动系统.bat` / `run_all.bat` 自动生效。
+> 下拉只给取值有限的项（模式 / 动态策略 / 指标 / 部门 / 排序），客户名等自由文本自己填。改完保存 → 运行 `python bin/app.py` / `python bin/main.py` 自动生效。
 
 ### ⏱ 时间范围（Excel 编辑）
 
-**推荐**：`config/配置编辑器.xlsx` → 「时间配置」sheet，保存后运行 `run_all.bat` 自动生效。
+**推荐**：`config/配置编辑器.xlsx` → 「时间配置」sheet，保存后运行 `python bin/main.py` 自动生效。
 
 | 配置项 | 示例值 | 影响页面 |
 |--------|--------|----------|
@@ -256,7 +297,7 @@ cleaning_config.json / 展示规则.json / 客户销售归属.json (事实源)
 | 年度同比 | — | 最大行数 / 排序 / 优先展示 / 客户筛选 | 口径同上（一般只填 `最大行数`） |
 | 销售达成 | — | — | ⚠ 无可配置项：卡片显示 / 排序 / 销售人数均为固定规则 |
 
-- **只改「值」列**（浅黄底），改完保存 → 运行 `启动系统.bat` / `run_all.bat` 自动同步生效
+- **只改「值」列**（浅黄底），改完保存 → 运行 `python bin/app.py` / `python bin/main.py` 自动同步生效
 - 「值」列：`排序` 是**四选一下拉**（含「不排序（按指标表顺序）」）、数字项有**整数校验**；`优先展示`/`客户筛选` 的**客户名自己填**（不设下拉，选单元格时会弹「怎么填」提示）
 - 客户名怎么写才对：**母公司组名**（如 `广汽系` = 该组全部子公司，自动展开）或 **客户全称**（照「销售归属」sheet 的『母公司』『子公司』两列抄）
 - 已删除「改了不生效」的旧项（`部门卡.显示`、`卡片1~3.显示`、`销售达成.排序/销售TopN`、`数据总览.客户筛选`）；旧「路径」格式文件仍能解析
@@ -282,7 +323,7 @@ cleaning_config.json / 展示规则.json / 客户销售归属.json (事实源)
 
 也可直接改 JSON：`config/清洗配置/客户销售归属.json`。
 
-> **机制**：Excel 是「编辑层」，JSON 是「事实源」。`run_all.bat` 自动同步；`python bin/main.py` 不读 Excel。
+> **机制**：Excel 是「编辑层」，JSON 是「事实源」。`python bin/main.py` 启动时第 1 步自动同步（`--step=config` 可单独跑）；单独执行其他步骤时不读 Excel。
 >
 > **新增客户只改这里**：销售归属里加过的客户，配置同步时会**自动补进客户名单**（只加不删，备份在 `logs/名单同步/`），不用再手工维护两份名单。八种归属形式（精确配置/父组名带销售/广东自有预扫描/多组按法人分流/比亚迪/南方韶关/待确认）见 [数据处理形式总览](docs/数据处理形式总览.md#5-客户归属形式8-种)。
 
@@ -446,8 +487,8 @@ ERP 系统导出，**当月单月**数据。金额单位：**元**（金额列�
 1. **替换文件** → `data/raw/` 下对应 Excel（文件名保持不变即可）
 2. **更新指标** → `data/sheets/手动维护/` 下 6 张表（列结构不变，改数值；月/季表**无销售列**、同名客户一行，拆分母公司客户名写 `母公司·销售`）
 3. **修改时间** → `config/配置编辑器.xlsx` → 「时间配置」sheet 的日期
-4. **运行** → 双击 `run_all.bat`（自动同步配置 + 全流程）
-5. **查看** → `output/看板/看板_YYYYMMDD.html` 浏览器打开
+4. **运行** → `python bin/main.py`（自动同步配置 + 全流程），或运行 `python bin/app.py` 点「运行全流程」
+5. **查看** → `output/看板/<年>/<月>/看板_YYYYMMDD.html` 浏览器打开
 
 ---
 
@@ -456,26 +497,27 @@ ERP 系统导出，**当月单月**数据。金额单位：**元**（金额列�
 ```
 Visual Dashboard_system/
 ├── bin/                              # ★ 入口（在项目根执行 python bin/...）
-│   ├── app.py                        #   Python 统一入口（gui / run / list / board）
-│   ├── gui.py                        #   tkinter 图形控制台（双击 启动系统.bat 走这里）
-│   ├── runner.py                     #   8 步流程编排（GUI / CLI 共用，同进程调用引擎）
+│   ├── app.py                        #   ★ 唯一入口（python bin/app.py：gui / run / list / board / report）
+│   ├── gui.py                        #   tkinter 图形控制台（app.py 调它）
+│   ├── matrix_dialog.py              #   「按客户清单导出矩阵」对话框
+│   ├── runner.py                     #   7 步流程编排（GUI / CLI 共用，同进程调用引擎）
 │   ├── main.py                       #   顶层调度器（argparse + subprocess，排障/兼容用）
-│   └── package.bat                   #   打包脚本（生成交付 zip，含内置运行时）
-├── 启动系统.bat                      # ★ 图形入口（双击；Python tkinter 控制台）
-├── run_all.bat                       # ★ Windows 命令行一键运行（配置同步 + 全流程 + 验证）
-├── runtime/                          #   内置 Python 运行时（免安装；由 scripts\prepare_runtime.bat 生成）
+│   ├── start.py                      #   启动引导（环境自检 → 转交 app.py）
+│   ├── make_shortcut.py              #   生成「启动控制台.lnk」（可选双击入口）
+│   └── package.py                    #   打包脚本（生成交付 zip，含内置运行时）
+├── runtime/                          #   内置 Python 运行时（免安装；由 python scripts/prepare_runtime.py 生成）
 ├── scripts/
 │   ├── launcher.pyw                  #   传统控制台启动器（回退用；主入口已改为 bin/app.py）
 │   ├── dashboard_launcher.ps1        #   传统 WPF 控制台（Python 界面异常时的回退入口）
-│   ├── prepare_runtime.bat           #   构建内置运行时（下载嵌入式 Python + 装依赖）
+│   ├── prepare_runtime.py            #   构建内置运行时（下载嵌入式 Python + 装依赖）
 │   ├── config_excel_to_json.py       #   配置编辑器 Excel → JSON 同步
 │   ├── column_mapping_sheet.py       #   「字段映射」sheet 生成与回写
 │   ├── scan_gd_owned.py              #   广东自有客户自动归入扫描（配置预扫描：运营端 + 广东公司）
 │   ├── sync_customer_list.py         #   销售归属 → 客户名单自动同步（只加不删）
-│   ├── sales_summary_report.py       #   销售完成度汇总表（Phase 5）
+│   ├── sales_summary_report.py       #   销售完成度汇总表（按需产物，不在 7 步内）
 │   └── verify_dashboard.py           #   看板质量验证（JS语法/onclick函数）
 ├── config/
-│   ├── python_path.txt              #   可选：手动指定 Python 目录（设了优先于内置 runtime；留空 = 自动探测）
+│   ├── python_path.txt              #   仅回退 WPF 控制台时用：指定 Python 目录（留空 = 自动探测）
 │   ├── 配置编辑器.xlsx               # ★ 配置编辑层（时间配置/展示规则/销售归属/KPI指标/字段映射/说明 6 sheet）
 │   ├── 清洗配置/
 │   │   ├── cleaning_config.json      # ★ 清洗核心配置（数据源/列映射/时间/输出）
@@ -523,18 +565,19 @@ Visual Dashboard_system/
 │   ├── page_*.py                     #   兼容层：旧导入路径 re-export → pages/（新代码请用 processors.pages）
 │   ├── sales_pending.py              #   待确认客户弹窗
 │   ├── components.py / config_loader.py / base.py / hero.py / utils.py
-│   └── static/                       #   CSS/JS/图标/Chart.js
+│   └── static/                       #   CSS/JS/图标
 │       ├── css/                      #   样式包：variables/layout/kpi/tables/cards/yoy/widgets/
 │       │                             #           hero/annual/matrix/yoy_tables/overview/responsive/animations
-│       ├── js/                       #   脚本包：nav/page_switch/counters/text/charts/tables/tabs
-│       └── icons.py / chart.umd.min.js
+│       ├── js/                       #   脚本包：nav/page_switch/counters/text/tables/tabs/cust_search
+│       └── icons.py                  #   内联 SVG 图标库（chart.umd.min.js 已不参与渲染）
 ├── tests/                            # 40 个测试文件（pytest，含端到端流水线用例）
 ├── docs/                             # 数据系统设计 / 字段映射 / 部署指南 / 维护指南 /
 │                                     # 代码结构与模块约定（重构后的目录与维护规则）
-├── output/                           # ★ 看板输出（不上传 Git）
-│   ├── 看板/看板_YYYYMMDD.html        #   6 页可视化看板
-│   ├── 数据/data_YYYYMMDD.xlsx        #   16 Sheet 数据总表（sheet名=data/sheets/文件夹名）
-│   └── 销售完成度/销售完成度汇总_YYYYMMDD.xlsx  # 销售×4部门 实际/指标(元)汇总表
+├── output/                           # ★ 产物输出（不上传 Git；各类别下再按 <年>/<月>/ 分层）
+│   ├── 看板/<年>/<月>/看板_YYYYMMDD.html        #   6 页可视化看板
+│   ├── 数据/<年>/<月>/data_YYYYMMDD.xlsx        #   16 Sheet 数据总表（sheet名=data/sheets/文件夹名）
+│   ├── 客户矩阵/<年>/<月>/客户矩阵_*.xlsx        #   按客户清单导出的矩阵（按需产物）
+│   └── 销售完成度/<年>/<月>/销售完成度汇总_*.xlsx #   销售×4部门 实际/指标(元)汇总（按需产物）
 └── logs/                             # 运行日志
 ```
 
@@ -543,10 +586,7 @@ Visual Dashboard_system/
 ### 1. 运行
 
 ```bash
-# 一键（推荐）
-run_all.bat
-
-# 全流程
+# 一键全流程（等价于运行 python bin/app.py 点「运行全流程」）
 python bin/main.py
 python bin/main.py --dry-run                # 预检（不写文件）
 python bin/main.py --list                   # 列出所有步骤
@@ -567,8 +607,12 @@ python -m processors.run
 ```
 
 ### 2. 获取结果
-- `output/看板/看板_YYYYMMDD.html` — 6 页可视化看板
-- `output/数据/data_YYYYMMDD.xlsx` — 16 Sheet 数据总表（每个 sheet 名称与 `data/sheets/` 下文件夹名称一致）
+- `output/看板/<年>/<月>/看板_YYYYMMDD.html` — 6 页可视化看板
+- `output/数据/<年>/<月>/data_YYYYMMDD.xlsx` — 16 Sheet 数据总表（每个 sheet 名称与 `data/sheets/` 下文件夹名称一致）
+
+> **输出目录按年月分类**（2026-11-06）：四类产物各自是 `<类别>/<年>/<月>/文件`，
+> 即 `output/{看板|数据|数据校验|销售完成度}/YYYY/MM/`；历史产物可用
+> `python scripts/migrate_output_by_month.py` 一次性归档（可 `--dry-run` 预览）。
 
 ### 3. 运行测试
 
@@ -604,7 +648,7 @@ Phase 4: 渲染看板    →  6页HTML + Excel总表 → output/
 | 设计 | 说明 |
 |------|------|
 | 配置驱动 | 清洗参数全在 `cleaning_config.json`，页面/配色全在配置，改日期/列名不需改代码 |
-| Excel 配置 | `配置编辑器.xlsx` 是编辑层（时间配置/展示规则/销售归属/KPI指标/字段映射/说明 6 sheet），`run_all.bat` 自动同步 JSON |
+| Excel 配置 | `配置编辑器.xlsx` 是编辑层（时间配置/展示规则/销售归属/KPI指标/字段映射/说明 6 sheet），`python bin/main.py` 自动同步 JSON |
 | 列名映射 | 每个字段多个备选列名按序尝试；**回款用应收金额、收入用不含税金额** |
 | 单位转化 | 清洗引擎统一输出"元" → 广东/湖南 ×10000 → 渲染层 ÷10000 → "万元" → `fmt_wan()` 千分位 |
 | 客户归拢 | 3+ 子公司自动聚合到母公司名；1:1 关系不聚合；拆分母公司强制按销售拆分 |
@@ -618,7 +662,7 @@ Phase 4: 渲染看板    →  6页HTML + Excel总表 → output/
 | 客户白名单 | **仅财务端 `收入.xlsx`/`回款.xlsx` 主表过客户白名单**；广东/湖南/南方韶关、运营端、年基线全量保留。名单外的客户整行丢弃（丢弃量见数据校验报告） |
 | 名单自动同步 | 销售归属里的客户在「配置同步」末尾自动补进客户名单（**只加不删**、幂等、有新增先备份 `logs/名单同步/`） |
 | 数据锁定 | `data/sheets/手动维护/` 6 张指标表数据锁定，仅用户手动维护，AI 不自动修改 |
-| 图表本地化 | Chart.js 内联进 HTML（`processors/static/chart.umd.min.js`），离线可用，CDN 兜底 |
+| 无第三方 JS | 产物不加载任何第三方 JS（2026-11-04 移除未使用的 Chart.js 内联，单个看板 −200KB，内网不会再有 CDN 请求）；字体仍 `@import` Google Fonts，断网时自动回退系统字体 |
 | Lucide 图标 | 统一内联 SVG 图标库（`processors/static/icons.py`），零外部依赖 |
 
 ## 技术栈

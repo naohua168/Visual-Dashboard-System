@@ -488,7 +488,7 @@ def attach_rules_sheet(wb, rules: dict):
 
     # ① 横幅提示
     banner(ws, "只改「值」列（浅黄底）；「可选值 / 填写规则」「说明」列是参考资料。"
-               "改完保存 → 运行 启动系统.bat / run_all.bat 自动同步生效。", len(RULE_HEADERS))
+               "改完保存 → 运行 python bin/app.py / python bin/main.py 自动同步生效。", len(RULE_HEADERS))
 
     # ② 表头
     header_row(ws, RULE_HEADERS, row=2)

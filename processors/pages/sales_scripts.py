@@ -52,6 +52,8 @@ function switchSc3Metric(metric) {{
 
 function __sc3Build(parents) {{
     const metric = __sc3Metric, deps = __SC3_DEPS;
+    // 行可搜索文本转义（data-search 供「搜索客户/子公司」过滤，2026-11-03）
+    const _esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     // 母公司按当前销售的目标降序排列（无个人目标则用全销售目标兜底）
     const parentKeys = Object.keys(parents).sort((a, b) => {{
         const ta = (__sc3ParentTgt(a, metric) && __sc3ParentTgt(a, metric).total) || (__SC3PT[a] && __SC3PT[a][metric] && __SC3PT[a][metric].total) || 0;
@@ -112,7 +114,7 @@ function __sc3Build(parents) {{
         if (subRowData.length === 1) {{
             // 母子公司 1:1 — 只显示子公司行（四部门详情），不显示母公司行
             const sr = subRowData[0];
-            body += '<tr class="row-data row-sub" style="color:#475569" title="' + _tooltip + '"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">1</span>' + wrapName(sr.name) + '</td>' + sr.cells.join("") + '</tr>';
+            body += '<tr class="row-data row-sub" data-search="' + _esc(p + "|" + sr.name) + '" style="color:#475569" title="' + _tooltip + '"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">1</span>' + wrapName(sr.name) + '</td>' + sr.cells.join("") + '</tr>';
         }} else {{
             // 母子公司 1:N — 母公司合计行（母公司名 合计 + 四部门详情）
             let pSumRow = [`<td class="td-name" style="font-weight:800;color:#0f172a;background:#eef2ff" title="${{_tooltip}}">${{wrapName(p)}} 合计</td>`];
@@ -120,11 +122,11 @@ function __sc3Build(parents) {{
                 pSumRow.push(__sc3Cell(parentDepsAct[di], parentDepsTgt[di], false));
             }});
             pSumRow.push(__sc3Cell(parentTotalAct, parentTotalTgt, true));
-            body += '<tr class="row-data row-parent-total" style="background:#eef2ff;font-weight:700">' + pSumRow.join("") + '</tr>';
+            body += '<tr class="row-data row-parent-total" data-search="' + _esc(p + "|" + subRowData.map(x => x.name).join("|")) + '" style="background:#eef2ff;font-weight:700">' + pSumRow.join("") + '</tr>';
 
             // 子公司明细行（在母公司合计之下缩进显示）
             subRowData.forEach((sr, i) => {{
-                body += '<tr class="row-data row-sub" style="color:#475569"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">' + (i + 1) + '</span>' + wrapName(sr.name) + '</td>' + sr.cells.join("") + '</tr>';
+                body += '<tr class="row-data row-sub" data-search="' + _esc(p + "|" + sr.name) + '" style="color:#475569"><td class="td-name" style="padding-left:24px"><span class="row-num" style="color:#cbd5e1">' + (i + 1) + '</span>' + wrapName(sr.name) + '</td>' + sr.cells.join("") + '</tr>';
             }});
         }}
         // 每个母公司块结束后插入空行作为视觉分隔

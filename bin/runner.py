@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Python 原生流程编排（GUI / CLI 共用）
 
-与 `bin/main.py` 的 8 个步骤一一对应，但**在同一进程内直接调用各阶段的 Python 接口**
+与 `bin/main.py` 的 7 个步骤一一对应，但**在同一进程内直接调用各阶段的 Python 接口**
 （不 subprocess、不经 .bat / PowerShell），因此图形入口可以实时拿到进度与日志。
 
     from bin.runner import STEPS, run_all
@@ -44,8 +44,7 @@ STEPS: tuple[Step, ...] = (
     Step("clean", "Phase 1+2 清洗", "收入/回款三路输出"),
     Step("split", "Phase 3 销售拆分", "按销售归属比例拆分"),
     Step("render", "Phase 4 渲染看板", "6 页 HTML + 数据总表"),
-    Step("report", "Phase 5 完成度表", "销售完成度汇总"),
-    Step("verify", "Phase 6 交付物校验", "看板 / 总表 / 完成度表"),
+    Step("verify", "交付物校验", "看板 / 数据总表"),
 )
 STEPS_BY_KEY = {s.key: s for s in STEPS}
 
@@ -145,9 +144,18 @@ def _step_render(log) -> int:
     return 0
 
 
-def _step_report(log) -> int:
+def run_report(snapshot: str | None = None) -> int:
+    """按需生成「销售完成度汇总表」（可指定数据版本）
+
+    2026-11-06 起**不在 7 步主管线内**（用户要求做成控制面板的可选项）：
+    需要时由 GUI 按钮 / `python bin/app.py report` 单独触发。
+
+    snapshot：`data_YYYYMMDD.xlsx` 或 `看板_YYYYMMDD.html`，缺省用当前清洗结果。
+    """
     from scripts.sales_summary_report import main as report_main
-    return int(report_main([]) or 0)
+
+    args = ["--snapshot", snapshot] if snapshot else []
+    return int(report_main(args) or 0)
 
 
 def _step_verify(log) -> int:
@@ -162,7 +170,6 @@ IMPLEMENTATIONS = {
     "clean": _step_clean,
     "split": _step_split,
     "render": _step_render,
-    "report": _step_report,
     "verify": _step_verify,
 }
 
@@ -179,7 +186,7 @@ def run_all(log=print,
 
     Args:
         log: 日志回调（GUI 传队列写入器；CLI 传 print）
-        keys: 只跑这些步骤（None=全部 8 步）
+        keys: 只跑这些步骤（None=全部 7 步）
         on_step_start: (Step, index) → None
         on_step_done: (StepResult) → None
         stop_event: threading.Event；在步骤之间检查，置位则不再继续

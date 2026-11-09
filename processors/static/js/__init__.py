@@ -1,8 +1,11 @@
 # Author: naohua168 <bai_bai168@qq.com>
-"""看板交互脚本包 —— 按「导航 / 换页 / 计数 / 文本 / 图表 / 表格 / Tab」分模块维护。
+"""看板交互脚本包 —— 按「导航 / 换页 / 计数 / 文本 / 表格 / Tab / 搜索」分模块维护。
 
-本文件是脚本包唯一对外出口，按固定顺序把各模块的 `JS` 片段拼成 GLOBAL_JS
-（与拆分前 processors/static/js_vars.py 的内容逐字节一致）。
+本文件是脚本包唯一对外出口，按固定顺序把各模块的 `JS` 片段拼成 GLOBAL_JS。
+
+2026-11-04：图表模块（charts.py）已下线 —— 全仓库从未调用 `new Chart(` / `__regChart(`，
+6 个页面全部是表格，页面里也不存在 `<canvas>`。将来若要画图，新建模块并在此追加即可
+（记得同时恢复 run.py 的 Chart.js **本地内联**，不要用 CDN）。
 
 顺序不可调整：片段里存在相互依赖（如 tables 模块给 showPage 做了"换页后兜底折叠"
 的包装，必须排在 page_switch 之后），调整顺序会改变脚本行为。
@@ -14,16 +17,16 @@
 """
 from __future__ import annotations
 
-from . import charts, counters, nav, page_switch, tables, tabs, text
+from . import counters, cust_search, nav, page_switch, tables, tabs, text
 
 GLOBAL_JS = (
     nav.JS
     + page_switch.JS
     + counters.JS
     + text.JS
-    + charts.JS
     + tables.JS
     + tabs.JS
+    + cust_search.JS
 )
 
 __all__ = ["GLOBAL_JS"]

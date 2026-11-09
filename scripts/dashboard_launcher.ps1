@@ -411,8 +411,8 @@ Write-BootLog 'dispatcher handler ready'
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtBlack}" LineHeight="22" FontSize="13">
                     <Run Text="1. 原始数据 (data/raw/财务端数据、运营端数据、往年收入/回款、客户名单) 经引擎清洗为 系统数据清理 (data/sheets/系统数据清理/...)"/>
                     <LineBreak/><Run Text="2. 销售引擎完成 黄浩浩/周涵林 拆分、跨父组法人等特殊规则,生成 销售收入/销售回款"/>
-                    <LineBreak/><Run Text="3. 渲染层生成 6 页看板 (output/看板/看板_YYYYMMDD.html) 与数据总表 (output/数据/data_YYYYMMDD.xlsx)"/>
-                    <LineBreak/><Run Text="4. 销售完成度汇总表 (output/销售完成度/销售完成度汇总_YYYYMMDD.xlsx) 由 scripts/sales_summary_report.py 生成"/>
+                    <LineBreak/><Run Text="3. 渲染层生成 6 页看板 (output/看板/&lt;年&gt;/&lt;月&gt;/) 与数据总表 (output/数据/&lt;年&gt;/&lt;月&gt;)"/>
+                    <LineBreak/><Run Text="4. 销售完成度表 / 客户矩阵为按需产物，需要时点按钮或 python bin/app.py report 生成"/>
                   </TextBlock>
                 </StackPanel>
               </Border>
@@ -454,7 +454,7 @@ Write-BootLog 'dispatcher handler ready'
             <StackPanel>
               <Border Background="{StaticResource BgCard}" BorderBrush="{StaticResource BdLine}" BorderThickness="1" CornerRadius="12" Padding="20,16">
                 <StackPanel>
-                  <TextBlock Text="Q1: 双击启动系统.bat 没弹出窗口?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,0,0,6"/>
+                  <TextBlock Text="Q1: 运行 python bin/app.py 没弹出窗口?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,0,0,6"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
                              Text="检查 PowerShell 执行策略:以管理员运行 PowerShell,执行 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass,再重试。"/>
                   <TextBlock Text="Q2: 弹出窗口但是中文乱码?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
@@ -462,7 +462,7 @@ Write-BootLog 'dispatcher handler ready'
                              Text="控制面板 → 区域 → 管理 → 更改系统区域设置 → 勾选 Beta:使用 Unicode UTF-8 提供全球语言支持,重启后重试。"/>
                   <TextBlock Text="Q3: 提示 未找到 Python 解释器?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
-                             Text="说明 runtime/python/python.exe 不在。先运行 scripts/prepare_runtime.bat 构建内置运行时,或安装 Python 3.12+ 并执行 pip install -r requirements.txt。"/>
+                             Text="说明 runtime/python/python.exe 不在。先运行 python scripts/prepare_runtime.py 构建内置运行时,或安装 Python 3.12+ 并执行 pip install -r requirements.txt。"/>
                   <TextBlock Text="Q4: 看板数据对不上?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
                              Text="1) 检查 config/配置编辑器.xlsx「时间配置」sheet 的日期范围(保存后点 运行全流程;JSON 每次运行会按 Excel 重写,直接改 JSON 无效);2) 检查 data/raw 与 data/sheets/手动维护 的数据是否替换;3) 删除 output 与 data/sheets/系统数据清理 后重新运行全流程。"/>
@@ -474,7 +474,7 @@ Write-BootLog 'dispatcher handler ready'
                              Text="往上滚动看 [错误] 段,通常原因:原始 Excel 缺列、列名变化、JSON 损坏、磁盘空间不足。把日志发给开发者。"/>
                   <TextBlock Text="Q7: 杀软报脚本是木马?" FontWeight="SemiBold" Foreground="{StaticResource TxtBlack}" Margin="0,16,0,6"/>
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TxtMuted}" LineHeight="22" FontSize="13"
-                             Text="属启发式误报:1) 交付目录添加信任区;2) 解压后「解除锁定」;3) 用 run_all.bat 命令行入口;4) 全部脚本源码在 scripts/ 与 bin/main.py 内可查,不含网络下载/注册表/计划任务行为。详见 docs/部署指南.md → 杀软误报处理。"/>
+                             Text="属启发式误报:1) 交付目录添加信任区;2) 解压后「解除锁定」;3) 用 python bin/main.py 命令行入口;4) 全部脚本源码在 scripts/ 与 bin/main.py 内可查,不含网络下载/注册表/计划任务行为。详见 docs/部署指南.md → 杀软误报处理。"/>
                 </StackPanel>
               </Border>
             </StackPanel>
@@ -730,17 +730,17 @@ $controls.BtnSwitchFAQ.add_Click(  { Switch-Page 'faq' })
 # 说明:
 #   · Pattern     → 会被 [regex]::Escape 转义后按【字面量子串】匹配（不要写正则转义符）
 #   · DonePattern → 直接当【正则】用（含 + 等特殊字符必须转义）
-#   流程顺序（与 bin/main.py / run_all.bat 一致）：
+#   流程顺序（与 bin/main.py / python bin/main.py 一致）：
 #     预检 → 配置同步(Excel→JSON) → Phase 0 年基线 → Phase 1+2 清洗
-#          → Phase 3 拆分 → Phase 4 渲染 → Phase 5/6 汇总与验证
+#          → Phase 3 拆分 → Phase 4 渲染 → 交付物校验（7 步；销售完成度表已改为按需产物）
 $script:Phases = @(
     @{ Name='预检';         Pattern='═══ 预检 ═══';      DonePattern='═══ 配置预扫描|═══ 配置同步|═══ Phase 0'; Weight=1 },
     @{ Name='配置同步';      Pattern='═══ 配置同步';       DonePattern='═══ Phase 0';              Weight=1 },
     @{ Name='年基线清洗';    Pattern='═══ Phase 0';        DonePattern='═══ Phase 1';              Weight=1 },
     @{ Name='收入/回款清洗'; Pattern='═══ Phase 1+2';      DonePattern='═══ Phase 3';              Weight=2 },
     @{ Name='销售拆分';      Pattern='═══ Phase 3';        DonePattern='═══ Phase 4';              Weight=2 },
-    @{ Name='渲染看板';      Pattern='═══ Phase 4';        DonePattern='═══ Phase 5';              Weight=2 },
-    @{ Name='汇总与验证';    Pattern='═══ Phase 5';        DonePattern='✅ 全部完成';               Weight=1 }
+    @{ Name='渲染看板';      Pattern='═══ Phase 4';        DonePattern='═══ 交付物校验';            Weight=2 },
+    @{ Name='交付物校验';    Pattern='═══ 交付物校验';      DonePattern='✅ 全部完成';               Weight=1 }
 )
 
 # ---------- 动态生成阶段 chip ----------
@@ -1046,7 +1046,31 @@ function Set-Busy($busy) {
 # 关键设计:cmd 的 stdout/stderr 重定向到文件,UI 定时器增量读文件。
 # 绝不使用 Process 异步输出事件(OutputDataReceived 在后台线程触发 PS 脚本块,
 # 会因 runspace 忙抛 PSInvalidOperation 导致 powershell.exe 崩溃闪退)。
-function Invoke-Bat($title, $batName) {
+# 找 Python 解释器（顺序与 python bin/app.py 一致：自定义 → 内置 runtime → Conda → PATH）
+function Resolve-PythonExe {
+    $cfg = Join-Path $script:BaseDir 'config\python_path.txt'
+    if (Test-Path -LiteralPath $cfg) {
+        foreach ($line in Get-Content -LiteralPath $cfg -Encoding UTF8 -ErrorAction SilentlyContinue) {
+            $t = "$line".Trim()
+            if (-not $t -or $t.StartsWith('#')) { continue }
+            $exe = Join-Path $t 'python.exe'
+            if (Test-Path -LiteralPath $exe) { return $exe }
+        }
+    }
+    $rt = Join-Path $script:BaseDir 'runtime\python\python.exe'
+    if (Test-Path -LiteralPath $rt) { return $rt }
+    $conda = Join-Path $env:USERPROFILE '.conda\envs\visual-dashboard-system\python.exe'
+    if (Test-Path -LiteralPath $conda) { return $conda }
+    foreach ($c in @('python', 'python3')) {
+        $cmd = Get-Command $c -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+    }
+    return $null
+}
+
+# 通用执行器：把命令行写进全 ASCII 的包装 bat，再增量读日志
+#   cmdLine 只能是 ASCII（解释器目录通过 child 的 PATH 注入，避免中文路径写进 bat）
+function Invoke-Run($title, $cmdLine, $pathDir) {
     if ($script:busy) { Write-Log '【警告】已有任务在运行,请等待完成后再试。'; return }
     $script:proc = $null
     $script:done = $false
@@ -1063,10 +1087,9 @@ function Invoke-Bat($title, $batName) {
     $controls.PhaseProgress.Value = 0
     Write-Log "===== $title ====="
     Write-Log "工作目录: $script:BaseDir"
-    Write-Log "执行: cmd /c $batName"
+    Write-Log "执行: $cmdLine"
     Set-Busy $true
 
-    $bat = Join-Path $script:BaseDir $batName
     $pipeFile = Join-Path $script:BaseDir 'logs\_run_pipe.log'
     $script:pipeFile = $pipeFile
     if (Test-Path $pipeFile) { Remove-Item $pipeFile -Force }
@@ -1074,7 +1097,7 @@ function Invoke-Bat($title, $batName) {
     # 生成全 ASCII 的包装 bat(放在 BaseDir,WorkingDirectory 同目录,内容只用相对路径)
     # 不预先 chcp(目标 bat 自己管理代码页,避免解码错乱);重定向放 bat 内部
     $runner = Join-Path $script:BaseDir '_run_current.bat'
-    $runnerText = "@echo off`r`ncall `"$batName`" > `"logs\_run_pipe.log`" 2>&1`r`nexit /b %errorlevel%`r`n"
+    $runnerText = "@echo off`r`ncall $cmdLine > `"logs\_run_pipe.log`" 2>&1`r`nexit /b %errorlevel%`r`n"
     [IO.File]::WriteAllText($runner, $runnerText, [Text.Encoding]::ASCII)
     $script:runnerFile = $runner
 
@@ -1087,11 +1110,17 @@ function Invoke-Bat($title, $batName) {
     $psi.RedirectStandardInput = $true   # 提供 EOF,让 bat 内 pause 自动跳过
     $psi.EnvironmentVariables['PYTHONUTF8'] = '1'
     $psi.EnvironmentVariables['PYTHONIOENCODING'] = 'utf-8'
+    # 解释器目录可能是中文路径 → 不改 bat 内容，注入 child 的 PATH（bat 里只写 python）
+    if ($pathDir) {
+        $psi.EnvironmentVariables['PATH'] = $pathDir + ';' + $psi.EnvironmentVariables['PATH']
+    }
 
     $p = [System.Diagnostics.Process]::Start($psi)
     $p.StandardInput.Close()
     $script:proc = $p
 }
+
+function Invoke-Bat($title, $batName) { Invoke-Run $title "`"$batName`"" $null }
 
 # 增量读取管道文件(UTF-8),返回新增文本
 function Read-PipeTail {
@@ -1169,8 +1198,24 @@ $timer.add_Tick({
 $timer.Start()  # WPF DispatcherTimer 需要显式 Start(不是 WinForms Timer.Enabled)
 
 # ---------- 事件绑定 ----------
-$controls.BtnRun.add_Click({    Invoke-Bat '运行全流程 (run_all.bat)' 'run_all.bat' })
-$controls.BtnPack.add_Click({   Invoke-Bat '打包交付 (bin\package.bat)' 'bin\package.bat' })
+$controls.BtnRun.add_Click({
+    $py = Resolve-PythonExe
+    if (-not $py) {
+        Write-Log '[错误] 未找到 Python 解释器：请保留 runtime\python，或在 config\python_path.txt 里指定目录'
+        return
+    }
+    Write-Log "使用解释器: $py"
+    Invoke-Run '运行全流程 (bin\main.py)' 'python -u bin\main.py' (Split-Path -Parent $py)
+})
+$controls.BtnPack.add_Click({
+    $py = Resolve-PythonExe
+    if (-not $py) {
+        Write-Log '[错误] 未找到 Python 解释器：请保留 runtime\python，或在 config\python_path.txt 里指定目录'
+        return
+    }
+    Write-Log "使用解释器: $py"
+    Invoke-Run '打包交付 (bin\package.py)' 'python -u bin\package.py' (Split-Path -Parent $py)
+})
 $controls.BtnRefresh.add_Click({
     # 用户主动刷新:强制重算 + 重扫(忽略缓存)
     Preload-CachedData

@@ -3,13 +3,13 @@
 """销售完成度汇总表生成器
 
 读取引擎层两个销售拆分表(实际) + 年度指标表(目标),生成
-`output/销售完成度/销售完成度汇总_YYYYMMDD.xlsx`,2 个 sheet(销售收入 / 销售回款)。
+`output/销售完成度/<年>/<月>/销售完成度汇总_YYYYMMDD.xlsx`,2 个 sheet(销售收入 / 销售回款)。
 
 每个销售一行;每个部门"实际 + 指标"相邻两列;单位统一为"元"
 (引擎实际金额保留原始精度,指标表万元 ×10000);完成率百分比。
 
 用法:
-    python scripts/sales_summary_report.py                 # 生成到 output/销售完成度/
+    python scripts/sales_summary_report.py                 # 生成到 output/销售完成度/<年>/<月>/
     python scripts/sales_summary_report.py --output=D:\a.xlsx   # 指定输出路径
 """
 from __future__ import annotations
@@ -27,6 +27,11 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from engine.core import business_rules as br  # noqa: E402
+from engine.core.output_paths import (  # noqa: E402  （输出按年月分类 / 快照配对）
+    month_dir,
+    resolve_snapshot,
+    snapshot_day,
+)
 from engine.core.utils import rel_path  # noqa: E402  （提示路径统一相对项目根显示）
 
 DEPTS = br.departments()        # 部门列表来自 业务规则.json（2026-09-29）
@@ -66,10 +71,13 @@ def resolve_paths() -> dict[str, Path]:
     return out
 
 
-def output_dir() -> Path:
-    """输出目录：配置 `输出.销售完成度`（默认 output/销售完成度/）"""
+def output_dir(when: datetime.date | None = None) -> Path:
+    """输出目录：配置 `输出.销售完成度` + 按年月分类（默认 output/销售完成度/<年>/<月>/）
+
+    when：指定数据版本（选旧快照）时按**那一期**的年月落盘，而不是当天。
+    """
     rel = (_load_cfg().get("输出") or {}).get("销售完成度", "output/销售完成度/")
-    return BASE_DIR / str(rel)
+    return month_dir(BASE_DIR / str(rel), when)
 
 
 def target_multiplier() -> float:
@@ -94,24 +102,45 @@ def _log(msg: str, level: str = "INFO"):
     print(f"{pre.get(level, '  ')}[汇总表] {msg}")
 
 
-def load_sales_xlsx(path: Path) -> pd.DataFrame:
-    """实际表: 排除"待确认"，金额保持原始(元)"""
-    df = pd.read_excel(path)
+def _norm_sales(df: pd.DataFrame) -> pd.DataFrame:
+    """实际表标准化: 排除"待确认"，金额保持原始(元)"""
+    df = df.copy()
     df["销售"] = df["销售"].astype(str).str.strip()
     df["事业部"] = df["事业部"].astype(str).str.strip()
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0)
     return df[df["销售"] != "待确认"]
 
 
-def load_tgt_xlsx(path: Path, mult: float = DEFAULT_TARGET_MULT) -> pd.DataFrame:
-    """年度指标表: 万元 → 元（×mult，默认 10000；由配置 `金额乘数` 决定）"""
-    df = pd.read_excel(path)
+def _norm_tgt(df: pd.DataFrame, mult: float = DEFAULT_TARGET_MULT) -> pd.DataFrame:
+    """年度指标表标准化: 万元 → 元（×mult，默认 10000；由配置 `金额乘数` 决定）"""
+    df = df.copy()
     df["销售"] = df["销售"].astype(str).str.strip()
     for c in DEPTS:
         if c not in df.columns:
             df[c] = 0
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0) * mult
     return df
+
+
+def load_sales_xlsx(path: Path) -> pd.DataFrame:
+    return _norm_sales(pd.read_excel(path))
+
+
+def load_tgt_xlsx(path: Path, mult: float = DEFAULT_TARGET_MULT) -> pd.DataFrame:
+    return _norm_tgt(pd.read_excel(path), mult)
+
+
+# 数据总表里对应的 4 个 sheet（快照模式必需）
+SNAPSHOT_SHEETS = ("销售收入", "销售回款", "年度收入总指标", "年度回款总指标")
+
+
+def _read_snapshot(path: Path) -> dict[str, pd.DataFrame]:
+    """从 `data_YYYYMMDD.xlsx` 读 4 张源表（与文件夹模式同结构）"""
+    book = pd.read_excel(path, sheet_name=None)
+    missing = [s for s in SNAPSHOT_SHEETS if s not in book]
+    if missing:
+        raise ValueError(f"{path.name} 缺少必需 sheet: {missing}")
+    return book
 
 
 def build_sheet(act_df: pd.DataFrame, tgt_df: pd.DataFrame) -> pd.DataFrame:
@@ -151,25 +180,41 @@ def build_sheet(act_df: pd.DataFrame, tgt_df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def generate(output_path: Path | None = None) -> Path:
+def generate(output_path: Path | None = None, snapshot: Path | None = None) -> Path:
+    """生成汇总表
+
+    snapshot=None → 用当前清洗结果（data/sheets/…）；
+    snapshot=数据总表 → 用那一期的数据算（可选任意历史 `data_YYYYMMDD.xlsx`），
+    并把产物落到**那一期**的年月目录、文件名也用那一期的日期。
+    """
     from openpyxl.styles import Alignment, Font
     from openpyxl.utils import get_column_letter
 
-    paths = resolve_paths()
     mult = target_multiplier()
-    act_inc = load_sales_xlsx(paths["销售收入"])
-    act_pay = load_sales_xlsx(paths["销售回款"])
-    tgt_inc = load_tgt_xlsx(paths["年度收入总指标"], mult)
-    tgt_pay = load_tgt_xlsx(paths["年度回款总指标"], mult)
+    day = snapshot_day(snapshot) if snapshot else None
+
+    if snapshot:
+        book = _read_snapshot(Path(snapshot))
+        act_inc = _norm_sales(book["销售收入"])
+        act_pay = _norm_sales(book["销售回款"])
+        tgt_inc = _norm_tgt(book["年度收入总指标"], mult)
+        tgt_pay = _norm_tgt(book["年度回款总指标"], mult)
+    else:
+        paths = resolve_paths()
+        act_inc = load_sales_xlsx(paths["销售收入"])
+        act_pay = load_sales_xlsx(paths["销售回款"])
+        tgt_inc = load_tgt_xlsx(paths["年度收入总指标"], mult)
+        tgt_pay = load_tgt_xlsx(paths["年度回款总指标"], mult)
 
     inc_df = build_sheet(act_inc, tgt_inc)
     pay_df = build_sheet(act_pay, tgt_pay)
 
     if output_path is None:
-        today = datetime.date.today().strftime("%Y%m%d")
-        out_dir = output_dir()
+        day = day or datetime.date.today().strftime("%Y%m%d")
+        when = datetime.datetime.strptime(day, "%Y%m%d").date()
+        out_dir = output_dir(when)
         out_dir.mkdir(parents=True, exist_ok=True)
-        output_path = out_dir / f"销售完成度汇总_{today}.xlsx"
+        output_path = out_dir / f"销售完成度汇总_{day}.xlsx"
 
     try:
         writer_ctx = pd.ExcelWriter(output_path, engine="openpyxl")
@@ -205,22 +250,34 @@ def generate(output_path: Path | None = None) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="生成销售完成度汇总表(2 sheet)")
-    parser.add_argument("--output", "-o", default=None, help="输出文件路径(默认 output/销售完成度/销售完成度汇总_YYYYMMDD.xlsx)")
+    parser.add_argument("--output", "-o", default=None, help="输出文件路径(默认 output/销售完成度/<年>/<月>/销售完成度汇总_YYYYMMDD.xlsx)")
+    parser.add_argument("--snapshot", default=None,
+                        help="数据版本：data_YYYYMMDD.xlsx 或 看板_YYYYMMDD.html（缺省=当前清洗结果）")
     args = parser.parse_args(argv)
 
-    paths = resolve_paths()
     mult = target_multiplier()
-    for label, p in [("销售收入", paths["销售收入"]), ("销售回款", paths["销售回款"]),
-                     ("年度收入指标", paths["年度收入总指标"]), ("年度回款指标", paths["年度回款总指标"])]:
-        shown = p.relative_to(BASE_DIR) if str(p).startswith(str(BASE_DIR)) else p
-        if not p.exists():
-            _log(f"缺少数据文件: {shown}（{label}）", "WARN")
-            return 1
-        _log(f"{label}: {shown}")
+    snapshot: Path | None = None
+    if args.snapshot:
+        raw = Path(args.snapshot)
+        try:
+            snapshot = resolve_snapshot(raw if raw.is_absolute() else BASE_DIR / raw)
+        except (ValueError, FileNotFoundError) as e:
+            _log(f"❌ {e}", "WARN")
+            return 2
+        _log(f"数据版本: {rel_path(snapshot)}（指定快照，按那一期出表）")
+    else:
+        paths = resolve_paths()
+        for label, p in [("销售收入", paths["销售收入"]), ("销售回款", paths["销售回款"]),
+                         ("年度收入指标", paths["年度收入总指标"]), ("年度回款指标", paths["年度回款总指标"])]:
+            shown = p.relative_to(BASE_DIR) if str(p).startswith(str(BASE_DIR)) else p
+            if not p.exists():
+                _log(f"缺少数据文件: {shown}（{label}）", "WARN")
+                return 1
+            _log(f"{label}: {shown}")
 
     _log(f"指标表金额换算: ×{mult:g} → 元")
     _log("开始生成")
-    out = generate(Path(args.output) if args.output else None)
+    out = generate(Path(args.output) if args.output else None, snapshot=snapshot)
     _log(f"已生成: {rel_path(out)}", "OK")
 
     # 摘要

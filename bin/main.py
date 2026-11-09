@@ -44,7 +44,7 @@ CURRENT_RUN_ID = ""
 
 
 # ──────────────────────────────────────────────────────────────
-# 步骤定义
+# 步骤定义（7 步；销售完成度表已改为按需产物，2026-11-06）
 # ──────────────────────────────────────────────────────────────
 # 每个步骤对应一个 subprocess 命令（python -m engine.xxx.run [--type=...] 或 python scripts/xxx.py）
 CONFIG_EXCEL = "config/配置编辑器.xlsx"
@@ -94,23 +94,32 @@ STEPS = [
         "description": "加载已清洗数据，生成 6 页面 HTML 可视化看板到 output/",
     },
     {
-        "key": "report",
-        "name": "Phase 5: 销售完成度汇总表",
-        "script": "scripts/sales_summary_report.py",
-        "description": "按销售汇总 实际(元)/指标(万元→元) → <输出目录>/销售完成度/销售完成度汇总_YYYYMMDD.xlsx（收入/回款 2 sheet）"
-                       "（2026-09-29 从 run_all.bat 并入主流程，路径与单位换算改为配置驱动）",
-    },
-    {
         "key": "verify",
-        "name": "Phase 6: 交付物校验",
+        "name": "交付物校验",
         "script": "scripts/verify_dashboard.py",
-        "description": "校验 看板 HTML（JS 语法/6 页/onclick 绑定）+ 数据总表 + 销售完成度表 是否齐全且非空；"
-                       "有 ❌ 则整次运行失败",
+        "description": "校验当天的 看板 HTML（JS 语法/6 页/onclick 绑定）+ 数据总表 是否齐全且非空；"
+                       "有 ❌ 则整次运行失败。销售完成度表为按需产物，不在校验必需项内",
     },
 ]
 
 STEP_KEYS = [s["key"] for s in STEPS]
 STEPS_BY_KEY = {s["key"]: s for s in STEPS}
+
+# 按需步骤：不在 7 步主流程内，但保留命令行入口（2026-11-06）
+#   · 只支持 `--step=<key>`，不参与 `--from/--to` 区间，全量运行也不会带上；
+#   · 历史脚本/快捷方式里的 `bin/main.py --step=report` 继续可用（兼容保留）。
+STANDALONE_STEPS = [
+    {
+        "key": "report",
+        "name": "销售完成度汇总表（按需）",
+        "script": "scripts/sales_summary_report.py",
+        "standalone": True,
+        "description": "按销售汇总 实际(元)/指标(万元→元) → <输出目录>/销售完成度/<年>/<月>/销售完成度汇总_YYYYMMDD.xlsx"
+                       "（收入/回款 2 sheet）。2026-11-06 起不在 7 步主流程内，需要时用 --step=report 单独跑",
+    },
+]
+STANDALONE_KEYS = [s["key"] for s in STANDALONE_STEPS]
+ALL_STEPS_BY_KEY = {**STEPS_BY_KEY, **{s["key"]: s for s in STANDALONE_STEPS}}
 
 # 「自动同步」两步必须排在数据处理之前（2026-11-02 用户要求）：
 #   scan   = 广东自有客户预扫描（运营端 + 广东公司 → 写回销售归属）
@@ -269,14 +278,18 @@ def build_parser() -> argparse.ArgumentParser:
         "  python bin/main.py                    # 全流程\n"
         "  python bin/main.py --type=收入         # 只处理收入链路\n"
         "  python bin/main.py --step=clean       # 只清洗\n"
+        "  python bin/main.py --step=report      # 只出销售完成度表（按需步骤）\n"
         "  python bin/main.py --from=clean --to=split\n"
         "  python bin/main.py --dry-run          # 预检\n"
         "  python bin/main.py --list             # 列出步骤",
     )
     p.add_argument("--type", choices=["收入", "回款"], help="只处理某一表类型")
-    p.add_argument("--step", choices=STEP_KEYS, help="只执行单个步骤")
-    p.add_argument("--from", dest="from_step", choices=STEP_KEYS, help="起始步骤（区间执行）")
-    p.add_argument("--to", dest="to_step", choices=STEP_KEYS, help="结束步骤（区间执行）")
+    p.add_argument("--step", choices=STEP_KEYS + STANDALONE_KEYS,
+                   help="只执行单个步骤（含按需步骤：report）")
+    p.add_argument("--from", dest="from_step", choices=STEP_KEYS,
+                   help="起始步骤（区间执行，仅限 7 步主流程）")
+    p.add_argument("--to", dest="to_step", choices=STEP_KEYS,
+                   help="结束步骤（区间执行，仅限 7 步主流程）")
     p.add_argument("--dry-run", action="store_true", help="预检模式，不执行实际命令")
     p.add_argument("--no-config", dest="no_config", action="store_true",
                    help="跳过配置同步（Excel → JSON），用于直接改 JSON 的场景")
@@ -291,7 +304,8 @@ def resolve_steps(args) -> list[dict]:
     if args.list_steps:
         return []
     if args.step:
-        return [STEPS_BY_KEY[args.step]]
+        # 按需步骤（report）不在 STEPS 里，走合并表
+        return [ALL_STEPS_BY_KEY[args.step]]
     if args.from_step or args.to_step:
         start_idx = STEP_KEYS.index(args.from_step) if args.from_step else 0
         end_idx = STEP_KEYS.index(args.to_step) if args.to_step else len(STEP_KEYS) - 1
@@ -344,11 +358,17 @@ def main(argv=None) -> int:
 
     # --list
     if args.list_steps:
-        print(f"\n{'可用步骤':-^50}")
+        print(f"\n{'主流程步骤':-^50}")
         for i, s in enumerate(STEPS, 1):
             print(f"  {i}. {s['key']:<10} {s['name']}")
             print(f"     {s['description']}")
-        print(f"\n共 {len(STEPS)} 个步骤")
+        if STANDALONE_STEPS:
+            print(f"\n{'按需步骤（不进主流程，用 --step=<key> 单独跑）':-^30}")
+            for s in STANDALONE_STEPS:
+                print(f"  · {s['key']:<10} {s['name']}")
+                print(f"     {s['description']}")
+        print(f"\n主流程共 {len(STEPS)} 个步骤；按需步骤 {len(STANDALONE_KEYS)} 个"
+              f"（{', '.join(STANDALONE_KEYS)}）")
         return 0
 
     steps_to_run = resolve_steps(args)

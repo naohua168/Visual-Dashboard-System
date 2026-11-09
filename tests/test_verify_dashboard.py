@@ -1,7 +1,8 @@
 # Author: naohua168 <bai_bai168@qq.com>
-"""交付物校验测试（2026-09-29 扩档）—— scripts/verify_dashboard.py
+"""交付物校验测试 —— scripts/verify_dashboard.py
 
-覆盖：数据总表/销售完成度表 缺失、必需 sheet 为空、齐全通过、--allow-missing-report。
+覆盖：数据总表缺失、必需 sheet 为空、齐全通过、**按日期找产物**、
+销售完成度表（按需产物）缺失不报错、旧文件不冒充当天产物。
 （HTML 的 JS 语法校验需要 node，这里只测交付物部分与目录解析。）
 """
 import pytest
@@ -32,25 +33,22 @@ def _make_report(path, rows=2):
                 "销售回款": pd.DataFrame({"销售": ["乙"] * rows})}, path)
 
 
-def test_missing_both_artifacts(tmp_path):
+DAY = "20260929"
+
+
+def test_missing_data_reported_report_not_required(tmp_path):
+    """数据总表必须报；销售完成度是按需产物，缺了不算问题"""
     problems: list[str] = []
-    vd.verify_artifacts(tmp_path, problems)
+    vd.verify_artifacts(tmp_path, problems, day=DAY)
     assert any("数据总表" in p for p in problems)
-    assert any("销售完成度" in p for p in problems)
-
-
-def test_allow_missing_report_downgrades(tmp_path):
-    problems: list[str] = []
-    vd.verify_artifacts(tmp_path, problems, allow_missing_report=True)
     assert not any("销售完成度" in p for p in problems)
-    assert any("数据总表" in p for p in problems)   # 总表仍然要报
 
 
 def test_empty_required_sheet_reported(tmp_path):
     _make_total(tmp_path / "数据" / "data_20260929.xlsx",
                 sheets=["当年累计收入", "销售收入"])       # 缺 8 个必需 sheet
     problems: list[str] = []
-    vd.verify_artifacts(tmp_path, problems)
+    vd.verify_artifacts(tmp_path, problems, day=DAY)
     joined = " ".join(problems)
     assert "必需 sheet 缺失或为空" in joined
     assert "当年累计回款" in joined
@@ -60,19 +58,38 @@ def test_all_present_passes(tmp_path):
     _make_total(tmp_path / "数据" / "data_20260929.xlsx")
     _make_report(tmp_path / "销售完成度" / "销售完成度汇总_20260929.xlsx")
     problems: list[str] = []
-    vd.verify_artifacts(tmp_path, problems)
+    vd.verify_artifacts(tmp_path, problems, day=DAY)
     assert problems == []
 
 
-def test_newest_file_picked(tmp_path):
-    old = tmp_path / "数据" / "data_20260101.xlsx"
-    new = tmp_path / "数据" / "data_20260929.xlsx"
-    _make_total(old, sheets=["当年累计收入"])                # 旧文件：sheet 不全
-    _make_total(new)                                        # 新文件：齐全
+def test_report_present_is_checked(tmp_path):
+    """生成过就照常校验内容（空 sheet 要报）"""
+    import pandas as pd
+
+    _make_total(tmp_path / "数据" / "data_20260929.xlsx")
+    bad = tmp_path / "销售完成度" / "销售完成度汇总_20260929.xlsx"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    save_excel({"销售收入": pd.DataFrame(), "销售回款": pd.DataFrame()}, bad)
+    problems: list[str] = []
+    vd.verify_artifacts(tmp_path, problems, day=DAY)
+    assert any("销售完成度" in p for p in problems)
+
+
+def test_old_file_does_not_count_as_today(tmp_path):
+    """按日期找产物：昨天的文件不能冒充今天的（2026-11-06 修的漏洞）"""
+    _make_total(tmp_path / "数据" / "data_20260101.xlsx")     # 只有旧文件
+    problems: list[str] = []
+    vd.verify_artifacts(tmp_path, problems, day=DAY)
+    assert any("数据总表" in p for p in problems)
+
+
+def test_today_file_picked_among_old_ones(tmp_path):
+    _make_total(tmp_path / "数据" / "data_20260101.xlsx", sheets=["当年累计收入"])  # 旧且不全
+    _make_total(tmp_path / "数据" / "data_20260929.xlsx")                           # 当天且齐全
     _make_report(tmp_path / "销售完成度" / "销售完成度汇总_20260929.xlsx")
     problems: list[str] = []
-    vd.verify_artifacts(tmp_path, problems)
-    assert problems == []                                   # 取最新那份（齐全）
+    vd.verify_artifacts(tmp_path, problems, day=DAY)
+    assert problems == []
 
 
 def test_verify_html_reports_missing_pages(tmp_path, monkeypatch):

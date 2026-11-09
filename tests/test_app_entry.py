@@ -31,7 +31,7 @@ def test_parse_step():
 
 
 def test_parse_from():
-    assert app._parse_keys(["--from=split"]) == ["split", "render", "report", "verify"]
+    assert app._parse_keys(["--from=split"]) == ["split", "render", "verify"]
 
 
 def test_parse_to():
@@ -83,9 +83,35 @@ def test_sync_prereq_prepended_for_data_steps():
 
 
 def test_sync_prereq_skipped_when_no_data_step():
-    """只跑 verify / report 时不强行前置（它们不产生清洗结果）"""
+    """只跑 verify 时不强行前置（不产生清洗结果）"""
     pick = lambda k: [s for s in runner.STEPS if s.key == k]  # noqa: E731
     assert _keys(runner.with_sync_prereq(pick("verify"), ["verify"])) == ["verify"]
+
+
+def test_report_is_standalone_not_in_pipeline():
+    """销售完成度表是按需步骤：不在 7 步主流程，但命令行入口保留（2026-11-06）"""
+    import argparse
+
+    from bin import main as m
+
+    assert "report" not in [s.key for s in runner.STEPS]
+    assert "report" not in m.STEP_KEYS
+    assert m.STANDALONE_KEYS == ["report"]
+
+    ns = argparse.Namespace(list_steps=False, step="report", from_step=None, to_step=None)
+    assert [s["key"] for s in m.resolve_steps(ns)] == ["report"]
+
+    # 全量运行不带上按需步骤
+    ns_all = argparse.Namespace(list_steps=False, step=None, from_step=None, to_step=None)
+    assert "report" not in [s["key"] for s in m.resolve_steps(ns_all)]
+
+
+def test_app_run_step_report_hints(capsys):
+    """--step=report 走 app 入口时给出正确引导，而不是干巴巴的未知步骤"""
+    assert app._parse_keys(["--step=report"]) is False
+    out = capsys.readouterr().out
+    assert "按需步骤" in out
+    assert "python bin/main.py --step=report" in out
 
 
 def test_board_without_files(monkeypatch, tmp_path, capsys):

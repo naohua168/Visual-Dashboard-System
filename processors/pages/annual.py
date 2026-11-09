@@ -7,7 +7,7 @@ from ..base import BaseRenderer, hero_rings_html
 from ..utils import fmt_wan, range_banner_html, wrap_name
 from ..components import (
     cell_bg_html, cust_tab_bar, hidden_dept_card_wrapper, dept_card_html,
-    children_modal_html, children_modal_js,
+    children_modal_html, children_modal_js, row_search_attr,
 )
 from ..data_prep import prepare_annual_data
 from ..data_utils import DEPARTMENTS
@@ -119,7 +119,9 @@ class AnnualPage(BaseRenderer):
                 a_t = float(piv.loc[c, "合计"]) if c in piv.index else 0
                 tg_t = float(tgt_grouped.loc[c, "合计"]) if c in tgt_grouped.index else 0
                 cs.append(cell_bg_html(a_t, tg_t, is_total_col=True))
-                out += f'<tr class="{row_class}">{"".join(cs)}</tr>'
+                out += (f'<tr class="{row_class}" '
+                        f'data-search="{row_search_attr(c, configured_subs)}">'
+                        f'{"".join(cs)}</tr>')
             return out
 
         rows = _render_rows(customers, 0)

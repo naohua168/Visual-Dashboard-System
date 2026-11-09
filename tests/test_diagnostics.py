@@ -123,9 +123,12 @@ def test_merge_and_collect_step_reports(tmp_path, monkeypatch):
 
 
 def test_output_dir_reads_config_with_fallback(tmp_path, monkeypatch):
+    """配置目录 + 按年月分类（2026-11-06）：<类别>/<年>/<月>/"""
+    from engine.core.output_paths import month_dir
+
     monkeypatch.delenv(dg.DIAG_DIR_ENV, raising=False)
-    assert dg.output_dir({"输出": {"数据校验": "output/校验/"}}, tmp_path) == tmp_path / "output" / "校验"
-    assert dg.output_dir({}, tmp_path) == tmp_path / "output" / "数据校验"
+    assert dg.output_dir({"输出": {"数据校验": "output/校验/"}}, tmp_path) == month_dir(tmp_path / "output" / "校验")
+    assert dg.output_dir({}, tmp_path) == month_dir(tmp_path / "output" / "数据校验")
 
 
 def test_output_dir_env_redirect_wins(tmp_path, monkeypatch):

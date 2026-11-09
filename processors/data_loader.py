@@ -117,6 +117,46 @@ def _read_optional_folder(folder: Path) -> pd.DataFrame | None:
     return _read_optional(path)
 
 
+def load_from_workbook(path: Path) -> DashboardData:
+    """从「数据总表」（output/数据/<年>/<月>/data_YYYYMMDD.xlsx）重建 DashboardData
+
+    用途：用户指定某一期的看板/数据快照导出矩阵时，按那期的数据算，而不是当前清洗结果。
+    总表的 16 个 sheet 就是 `load_all()` 读到的原始 DataFrame（`processors/run.py` 原样写出），
+    所以这里读回来的内容与当时渲染看板用的完全一致。
+    """
+    path = Path(path)
+    book = pd.read_excel(path, sheet_name=None)
+    need = ("当年累计收入", "当年累计回款", "销售收入", "销售回款",
+            "年度收入总指标", "年度回款总指标",
+            "季度收入指标", "季度回款指标", "月度收入指标", "月度回款指标")
+    missing = [s for s in need if s not in book]
+    if missing:
+        raise ValueError(f"{path.name} 缺少必需 sheet: {missing}")
+
+    def _opt(name):
+        return book.get(name)
+
+    return DashboardData(
+        income=book["当年累计收入"],
+        payment=book["当年累计回款"],
+        sales_income=book["销售收入"],
+        sales_payment=book["销售回款"],
+        annual_income_targets=book["年度收入总指标"],
+        annual_payment_targets=book["年度回款总指标"],
+        quarterly_income_targets=book["季度收入指标"],
+        quarterly_payment_targets=book["季度回款指标"],
+        monthly_income_targets=book["月度收入指标"],
+        monthly_payment_targets=book["月度回款指标"],
+        yearly_income=_opt("往年收入"),
+        yearly_payment=_opt("往年回款"),
+        quarterly_income=_opt("季度累计收入"),
+        quarterly_payment=_opt("季度累计回款"),
+        monthly_income_detail=_opt("月收入"),
+        monthly_payment_detail=_opt("月回款"),
+        sales_targets=None,
+    )
+
+
 def load_all(base_dir: Path) -> DashboardData:
     """加载 data/sheets/ 下全部数据表
 

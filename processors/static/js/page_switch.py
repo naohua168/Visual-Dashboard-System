@@ -1,7 +1,7 @@
 # Author: naohua168 <bai_bai168@qq.com>
 """页面切换：交叉淡化 + 逐块浮现 + 首屏加载 —— JS 片段 `page_switch`
 
-由 processors/static/js_vars.py 拆分而来，内容与拆分前逐字节一致；
+由 processors/static/js_vars.py 拆分而来（拆分后独立演进）；
 拼接顺序见 processors/static/js/__init__.py，改动内容请只在本文件里追加。
 """
 
@@ -13,7 +13,7 @@ JS = r"""/* 页面切换 — 交叉淡化 + 页内逐块浮现（2026-10-10 定�
    性能要点（大表格页面不掉帧的关键）：
      · 新旧两页在过渡期间都提到独立合成层（will-change:opacity）→ 整页淡化由合成器完成，
        不再逐帧把整页大表格重新栅格化
-     · 只动 opacity/transform，绝不触发重排；表格折叠在同帧完成，图表重算挪到过渡结束后
+     · 只动 opacity/transform，绝不触发重排；表格折叠在同帧完成
    instant=true 或系统开启"减少动态效果"时直接切换 */
 var _switchToken=0;   // 连点导航时作废上一次未落地的切换（见下方 requestAnimationFrame）
 function showPage(id, instant){
@@ -67,9 +67,9 @@ function showPage(id, instant){
     }
     // 新页在过渡期间也提到独立合成层：整页淡入若要逐帧重绘大表格，同样会掉帧
     if(newEl && !instant && !reduce) newEl.style.willChange='opacity';
+    // 定时器本身必须保留：它负责清 will-change（否则新页长期占用合成层显存）
     setTimeout(function(){
       if(newEl) newEl.style.willChange='';
-      window.__resizeAllCharts();                                     // 图表重算放到淡化结束后
     },340);
     window.scrollTo(0,0);
   };

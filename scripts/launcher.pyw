@@ -8,8 +8,8 @@
   · 本启动器改用 subprocess + CREATE_NO_WINDOW 隐藏 PowerShell 窗口，界面仍是 WPF 控制台，
     命令行不含 Bypass / -WindowStyle Hidden 等高风险参数（执行策略用 RemoteSigned）。
 
-用法：
-    启动系统.bat → pythonw.exe scripts\\launcher.pyw
+用法（`bin/app.py` 检测到 tkinter 不可用时才会走到这里）：
+    python bin/app.py → pythonw.exe scripts\\launcher.pyw
 调试：
     python scripts/launcher.pyw --dry-run     # 只打印将要执行的命令，不启动界面
 """
@@ -54,14 +54,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not PS1.exists():
-        _alert(f"未找到图形控制台脚本：\n{PS1}\n\n可直接双击 run_all.bat 运行命令行全流程。")
+        _alert(f"未找到图形控制台脚本：\n{PS1}\n\n可改用命令行运行：python bin/main.py")
         return 2
 
     flags = CREATE_NO_WINDOW if os.name == "nt" else 0
     try:
         subprocess.Popen(cmd, cwd=str(BASE_DIR), creationflags=flags, close_fds=True)
     except OSError as e:
-        _alert(f"启动图形控制台失败：{e}\n\n可直接双击 run_all.bat 运行命令行全流程。")
+        _alert(f"启动图形控制台失败：{e}\n\n可改用命令行运行：python bin/main.py")
         return 3
     return 0
 

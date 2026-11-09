@@ -74,7 +74,7 @@ def init_excel_template():
     ws.title = "时间配置"
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    banner(ws, "改日期 → 保存 → 运行 启动系统.bat / run_all.bat 生效。"
+    banner(ws, "改日期 → 保存 → 运行 python bin/app.py / python bin/main.py 生效。"
                "「模式」选「手填日期」= 自己填开始/结束日期；选「自动计算」= 系统按「动态策略」自动算"
                "（最近完整月 / 最近完整季度），不用填日期；「结算模式」行的值填在「模式」列。", len(HEADERS))
     header_row(ws, HEADERS, row=2)

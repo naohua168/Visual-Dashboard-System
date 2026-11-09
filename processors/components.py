@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+import html as _html
+
 
 def _rate_color(rate: float) -> tuple[str, str]:
     """返回 (pct_class, fill_class) 基于达成率色阶"""
@@ -131,21 +133,62 @@ def mini_rate_summary_row(name: str, act: float, tgt: float,
     )
 
 
-def cust_tab_bar(inc_div_id: str, pay_div_id: str) -> str:
-    """收入/回款 Tab 切换导航栏（隐藏/显示容器 ID 由调用方自定）"""
+def row_search_attr(name: str, subs=None) -> str:
+    """表格行的可搜索文本（母公司名 + 子公司名），供前端「搜索客户/子公司」用
+
+    返回已转义的 `data-search` 值；子公司在表里只以母公司行出现，
+    但用户往往记得子公司名，所以把子公司名一并带上（2026-11-03 用户口径）。
+    """
+    keys = [str(name)]
+    for s in (subs or []):
+        s = str(s).strip()
+        if s and s not in keys:
+            keys.append(s)
+    return _html.escape("|".join(keys), quote=True)
+
+
+def cust_search_box(targets: str, placeholder: str = "搜索客户或子公司…") -> str:
+    """收入/回款 工具条第三段 — 表格过滤搜索框
+
+    targets: 逗号分隔的容器 ID（收入表 / 回款表），过滤只作用于当前可见的那张表，
+             点收入/回款切换时会带着同一关键词重算（2026-11-03 用户口径）。
+    交互逻辑见 processors/static/js/cust_search.py。
+    """
+    from .static.icons import icon
     return (
-        f'<div class="cust-tabs">'
-        f'<span class="cust-tab active inc" '
-        f"onclick=\"document.getElementById('{inc_div_id}').classList.remove('hidden');"
-        f"document.getElementById('{pay_div_id}').classList.add('hidden');"
-        f"this.parentElement.querySelectorAll('.cust-tab').forEach(t=>t.classList.remove('active'));"
-        f"this.classList.add('active')\">收入</span>"
-        f'<span class="cust-tab pay" '
-        f"onclick=\"document.getElementById('{inc_div_id}').classList.add('hidden');"
-        f"document.getElementById('{pay_div_id}').classList.remove('hidden');"
-        f"this.parentElement.querySelectorAll('.cust-tab').forEach(t=>t.classList.remove('active'));"
-        f"this.classList.add('active')\">回款</span>"
+        f'<div class="cust-search">'
+        f'<span class="cust-search-icon">{icon("search", size=15)}</span>'
+        f'<input type="search" class="cust-search-input" data-cust-search="1" '
+        f'data-targets="{targets}" placeholder="{placeholder}" '
+        f'aria-label="{placeholder}" autocomplete="off" spellcheck="false">'
+        f'<span class="cust-search-count" data-cust-count="1" aria-live="polite"></span>'
+        f'<button type="button" class="cust-search-clear" data-cust-clear="1" '
+        f'title="清空搜索" aria-label="清空搜索">&times;</button>'
         f'</div>'
+    )
+
+
+def cust_tab_bar(inc_div_id: str, pay_div_id: str, *,
+                 search: bool = True,
+                 placeholder: str = "搜索客户或子公司…",
+                 on_metric: str = "") -> str:
+    """收入/回款 切换 +（可选）搜索框 —— 通栏三段工具条
+
+    inc_div_id / pay_div_id：收入 / 回款表容器 ID（切换靠 hidden 类）
+    search：是否带第三个搜索框（销售「销售×事业部」表传 False 或自定义占位符）
+    on_metric：切换 tab 时额外调用的全局函数名（如销售卡3 的 switchSc3Metric）
+    """
+    extra = f' data-extra="{on_metric}"' if on_metric else ""
+    return (
+        f'<div class="cust-tabs{"" if search else " no-search"}">'
+        f'<div class="cust-tabs-seg" role="tablist" aria-label="指标切换">'
+        f'<span class="cust-tab active inc" role="tab" tabindex="0" aria-selected="true"{extra} '
+        f"onclick=\"switchCustTab(this,'{inc_div_id}','{pay_div_id}','inc')\">收入</span>"
+        f'<span class="cust-tab pay" role="tab" tabindex="-1" aria-selected="false"{extra} '
+        f"onclick=\"switchCustTab(this,'{inc_div_id}','{pay_div_id}','pay')\">回款</span>"
+        f'</div>'
+        + (cust_search_box(f"{inc_div_id},{pay_div_id}", placeholder) if search else "")
+        + f'</div>'
     )
 
 

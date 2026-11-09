@@ -7,7 +7,7 @@ import json
 
 from ..base import BaseRenderer, hero_rings_html
 from ..utils import fmt_wan, range_banner_html
-from ..components import cell_bg_html, cust_tab_bar
+from ..components import cell_bg_html, cust_tab_bar, row_search_attr
 from ..data_prep import prepare_sales_data
 from ..data_utils import DEPARTMENTS
 from ..sales_pending import build_pending_modal
@@ -165,7 +165,7 @@ class SalesPage(BaseRenderer):
                     cs.append(cell_bg_html(act, tgt_part, fmt_fn=fmt_wan))
                 act_t = sum(piv_data.get(str(s_name), {}).get(dpt, 0) for dpt in DEPARTMENTS) if isinstance(piv_data, dict) else 0
                 cs.append(cell_bg_html(act_t, s_total_tgt, is_total_col=True, fmt_fn=fmt_wan))
-                rows += f'<tr class="row-data">{"".join(cs)}</tr>'
+                rows += f'<tr class="row-data" data-search="{row_search_attr(s_name)}">{"".join(cs)}</tr>'
 
             if not rows:
                 return '<p style="color:var(--text-muted);padding:20px;text-align:center">无销售目标数据</p>'
@@ -178,7 +178,7 @@ class SalesPage(BaseRenderer):
         pay_matrix = _matrix(d.pay_by_sd, d.pay_sales_list)
         return (
             f'<div class="section-title sec-purple">事业部完成度 · 销售 × 事业部 矩阵</div>'
-            + cust_tab_bar("sales-card2-inc", "sales-card2-pay")
+            + cust_tab_bar("sales-card2-inc", "sales-card2-pay", placeholder="搜索销售…")
             + f'<div id="sales-card2-inc"><div class="card">{inc_matrix}</div></div>'
             f'<div id="sales-card2-pay" class="hidden"><div class="card">{pay_matrix}</div></div>'
         )
@@ -214,12 +214,9 @@ class SalesPage(BaseRenderer):
             + f'<option value="" disabled selected>-- 请选择销售 --</option>'
             + "".join(f'<option value="{s}">{s}</option>' for s in sorted(all_sales))
             + f'</select>'
-            + '<div class="cust-tabs">'
-            + '<span class="cust-tab active inc" onclick="switchSc3Metric(\'inc\');document.getElementById(\'sc3-inc-matrix\').classList.remove(\'hidden\');document.getElementById(\'sc3-pay-matrix\').classList.add(\'hidden\');this.parentElement.querySelectorAll(\'.cust-tab\').forEach(t=>t.classList.remove(\'active\'));this.classList.add(\'active\')">收入</span>'
-            + '<span class="cust-tab pay" onclick="switchSc3Metric(\'pay\');document.getElementById(\'sc3-inc-matrix\').classList.add(\'hidden\');document.getElementById(\'sc3-pay-matrix\').classList.remove(\'hidden\');this.parentElement.querySelectorAll(\'.cust-tab\').forEach(t=>t.classList.remove(\'active\'));this.classList.add(\'active\')">回款</span>'
-            + '</div>'
             + f'</div>'
-            f'<div id="sc3-inc-matrix"><div class="table-wrap ann-matrix-wrap no-collapse">'
+            + cust_tab_bar("sc3-inc-matrix", "sc3-pay-matrix", on_metric="switchSc3Metric")
+            + f'<div id="sc3-inc-matrix"><div class="table-wrap ann-matrix-wrap no-collapse">'
             f'<table class="ann-matrix" id="sc3IncTable"></table></div></div>'
             f'<div id="sc3-pay-matrix" class="hidden"><div class="table-wrap ann-matrix-wrap no-collapse">'
             f'<table class="ann-matrix" id="sc3PayTable"></table></div></div>'

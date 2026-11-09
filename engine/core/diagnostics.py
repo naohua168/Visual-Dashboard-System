@@ -10,7 +10,7 @@
   3. 只校验 HTML、不校验交付物是否齐全 → 由 `scripts/verify_dashboard.py` 与 `bin/main.py` 收尾摘要承接。
 
 设计要点：
-  · **一次运行只产出一个文件**（用户口径 2026-09-29）：`output/数据校验/数据质量摘要_<运行号>.xlsx`，
+  · **一次运行只产出一个文件**（用户口径 2026-09-29）：`output/数据校验/<年>/<月>/数据质量摘要_<运行号>.xlsx`，
     含 概览 / 问题清单 / 丢弃汇总 / 未匹配明细 4 个 sheet；
   · 各步骤在**独立子进程**里跑，所以步骤先把诊断落成中间件 JSON（`数据质量摘要_<步骤>_<运行号>.json`），
     由 `bin/main.py` 收尾 `finalize()` 合并成那唯一一个 xlsx 并删除中间件；单独跑某一步时该步骤自己合并；
@@ -26,6 +26,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+
+from .output_paths import category_root, month_dir
 
 LEVEL_ORDER = {"INFO": 0, "WARN": 1, "ERROR": 2}
 DEFAULT_OUT_REL = "output/数据校验"
@@ -233,16 +235,20 @@ def prune_old_reports(out_dir, keep_days: int = RETENTION_DAYS) -> list[Path]:
 
     含两类历史遗留命名（`白名单未匹配行_*.xlsx`、`数据质量摘要_<步骤>_*.json`）——
     它们只会在改版前产生的目录里出现，同样按日期淘汰，不再新产出。
+
+    2026-11-06：目录按年月分层后，清理范围上浮到类别根目录并**递归**扫描，
+    否则上个月的文件永远清不到。
     """
     out = Path(out_dir)
-    if not out.exists():
+    root = category_root(out)
+    if not root.exists():
         return []
     cutoff = datetime.now() - timedelta(days=keep_days)
     cur = current_run_id()   # 本次运行的中间件不能当"过期文件"删（文件名里的日期可能早于保留期）
     removed: list[Path] = []
     patterns = ("白名单未匹配行_*.xlsx", f"{SUMMARY_PREFIX}*.json", f"{SUMMARY_PREFIX}*.xlsx")
     for pattern in patterns:
-        for f in out.glob(pattern):
+        for f in root.rglob(pattern):
             if cur and cur in f.name:
                 continue
             m = re.search(r"(\d{8})_\d{6}", f.name)
@@ -293,6 +299,7 @@ def output_dir(config: dict | None = None, base_dir: Path | None = None) -> Path
     root = Path(base_dir) if base_dir else Path(__file__).resolve().parent.parent.parent
     redirect = os.environ.get(DIAG_DIR_ENV, "").strip()
     if redirect:
+        # 测试/临时重定向：原样返回，不套年月（调用方按给定目录直接读写）
         p = Path(redirect)
         return p if p.is_absolute() else root / p
     rel = DEFAULT_OUT_REL
@@ -300,7 +307,8 @@ def output_dir(config: dict | None = None, base_dir: Path | None = None) -> Path
         rel = (config or {}).get("输出", {}).get(DEFAULT_OUTPUT_DIR_NAME, DEFAULT_OUT_REL)
     except Exception:
         rel = DEFAULT_OUT_REL
-    return root / str(rel)
+    # 按年月分类：<类别根目录>/<年>/<月>/（2026-11-06 用户要求）
+    return month_dir(root / str(rel))
 
 
 def print_summary(title: str = "数据质量汇总", limit: int = 8) -> bool:
@@ -324,7 +332,8 @@ def collect_step_reports(out_dir, date_prefix: str | None = None) -> Diagnostics
     if not out.exists():
         return merged
     prefix = date_prefix or datetime.now().strftime("%Y%m%d")
-    files = sorted(out.glob(f"{SUMMARY_PREFIX}*_{prefix}*.json"))
+    # 按年月分层后要递归找（当天的一定在当前月目录里，递归不影响结果）
+    files = sorted(category_root(out).rglob(f"{SUMMARY_PREFIX}*_{prefix}*.json"))
     for f in files:
         try:
             merged.merge(Diagnostics.from_dict(json.loads(f.read_text(encoding="utf-8"))))

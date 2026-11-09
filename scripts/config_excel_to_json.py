@@ -3,7 +3,7 @@
 
 实现已拆到 scripts/editor/；本脚本负责 sys.path 引导并保持原有命令行用法：
 
-    python scripts/config_excel_to_json.py              # 生成并写回（run_all.bat 第①步）
+    python scripts/config_excel_to_json.py              # 生成并写回（python bin/main.py 第①步）
     python scripts/config_excel_to_json.py --dry-run    # 只读不改写
     python scripts/config_excel_to_json.py --init       # 首次创建 Excel 模板
     python scripts/config_excel_to_json.py --init-map   # 只刷新「字段映射」sheet

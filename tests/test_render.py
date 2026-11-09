@@ -39,8 +39,11 @@ def test_render_generates_html(tmp_path):
     nav_count = html.count('<button type="button" data-target="')
     assert nav_count == 6, f"应有 6 个导航项，实际 {nav_count}"
     assert '<a data-target=' not in html, "导航不应再使用 <a>（会显示地址预览）"
-    # Chart.js 引用
-    assert "chart.js" in html
+    # 2026-11-04：Chart.js 从未被任何页面调用（全仓库无 new Chart / __regChart 调用），
+    # 已移除 200KB 内联。这里做**反向断言**，防止它被无意间加回来（体积与外部请求都会回退）。
+    assert "__regChart" not in html
+    assert "__resizeAllCharts" not in html
+    assert "chart.umd.min.js" not in html
     # P4 年基线检查
     assert "同比" in html
 

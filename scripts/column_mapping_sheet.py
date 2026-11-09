@@ -3,7 +3,7 @@
 
 场景：源文件列名变化导致清洗报 KeyError 时，不必改 JSON/代码，
 直接在 `config/配置编辑器.xlsx` 的「字段映射」sheet 里增删候选列名即可
-（`run_all.bat` 第①步配置同步会自动写回 cleaning_config.json）。
+（`python bin/main.py` 第①步配置同步会自动写回 cleaning_config.json）。
 
 读写约定：
   - 一行 = 一个来源的一个标准字段
@@ -302,7 +302,7 @@ def excel_to_column_mapping(sheet, cfg: dict) -> tuple[dict, list[str]]:
                 f"「{MAP_SHEET_NAME}」{src}/{name} 缺少原有标准字段: {sorted(lost)}（不允许删除）\n"
                 f"    若这些字段是刚在 JSON 里新增的，请先刷新 sheet：\n"
                 f"      python scripts/config_excel_to_json.py --init-map\n"
-                f"    （只刷新「{MAP_SHEET_NAME}」sheet，再用 run_all.bat 同步）"
+                f"    （只刷新「{MAP_SHEET_NAME}」sheet，再用 python bin/main.py 同步）"
             )
         added = got - fields
         if added:
@@ -568,7 +568,7 @@ def attach_mapping_sheet(wb, cfg: dict, hits: dict | None = None):
                  if "说明" in wb.sheetnames else len(wb.sheetnames))
     ws = wb.create_sheet(MAP_SHEET_NAME, insert_at)
 
-    banner(ws, "源表列名变了就在这里改「候选列名」——多个候选用「/」分隔、按先后尝试（最多 3 个）→ 保存后运行 run_all.bat。"
+    banner(ws, "源表列名变了就在这里改「候选列名」——多个候选用「/」分隔、按先后尝试（最多 3 个）→ 保存后运行 python bin/main.py。"
                "「必填取值」= 该字段要求的取值（如 已审核/外部结算；部门=取哪些事业部；内部交易=是），"
                "多值用「/」，清空=不限制/不过滤；列名本身含「/」时写 \\/；「当前命中(只读)」仅供参考。",
            len(MAP_HEADERS))

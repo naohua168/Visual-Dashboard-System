@@ -4,7 +4,7 @@
 #       C:\Users\yourname\.conda\envs\visual-dashboard-system
 #       C:\Python312
 #
-# 解释器选择优先级（2026-09-30 口径）：
+# 查找顺序（仅用于「回退 WPF 控制台」场景，2026-11-06 口径）：
 #   ① 本文件里填的目录（填了就优先用，最高优先级）
 #   ② 内置运行时 runtime\python（交付包自带，解压即用）
 #   ③ %USERPROFILE%\.conda\envs\visual-dashboard-system（Conda 默认位置）
@@ -14,5 +14,6 @@
 #   · 本文件留空（或只剩 # 开头的注释）= 不指定，直接从第 ② 步开始自动探测
 #   · 填了但路径无效 → 控制台打印一条警告，然后继续从第 ② 步探测（不会卡死）
 #   · 以 # 开头的行是注释；只有第一行「有效内容」会被读取
-#   · 改完保存即可生效，不需要改任何 .bat
-#   · 图形入口（启动系统.bat）读的是同目录下的 pythonw.exe，命令行入口（run_all.bat）读 python.exe
+#   · 改完保存即可生效
+#   · 主入口 `python bin/app.py` 用的是你命令行里的 Python，**不读本文件**；
+#     只有当前解释器没有 tkinter、回退 scripts/dashboard_launcher.ps1 时才会读这里

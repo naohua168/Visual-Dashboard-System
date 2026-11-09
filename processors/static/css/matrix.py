@@ -129,6 +129,20 @@ table.ann-matrix .row-total td.td-name,
 }
 /* 折叠行 — 默认隐藏 */
 tr.row-hidden{display:none;}
+/* 搜索态（2026-11-03）：命中行即便原本折叠也要显示；未命中行/分隔行/「查看全部」一律隐藏。
+   选择器带 :not(.cs-hide) 是为了压过 .cs-hide 的 !important（折叠行命中时优先显示） */
+.cs-searching tr.row-hidden:not(.cs-hide){display:table-row!important;}
+.cs-searching tr.row-sep{display:none!important;}
+.cs-searching tr.row-toggle{display:none!important;}
+.cs-hide{display:none!important;}
+/* 搜索时固定表格布局：即使行被全部隐藏，也不让浏览器按"剩余内容"重排列宽 */
+.cs-searching .ann-matrix{table-layout:fixed;width:100%;}
+/* 空结果提示 — 放在 .table-wrap 之后，不参与表格布局（2026-11-03 修复"搜不到时表格乱"） */
+.cs-empty-note{
+  margin-top:0.5rem;padding:1rem 0.75rem;text-align:center;
+  font-size:0.8125rem;color:var(--text-secondary);
+  background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;
+}
 /* 查看全部按钮 */
 .toggle-all-btn{
   padding:0.375rem 1.25rem;border:1px solid #93c5fd;border-radius:0.375rem;

@@ -15,7 +15,7 @@
 与旧入口的区别：
   · 界面是 Python（tkinter）原生实现，不再启动 PowerShell / WPF
   · 流程在同一进程内直接调用各阶段 Python 接口（`bin/runner.py`），不转发 .bat
-  · 仍保留 `bin/main.py`（子进程隔离的 CLI 调度器），供 run_all.bat / 排障使用
+  · 仍保留 `bin/main.py`（子进程隔离的 CLI 调度器），供命令行 / 排障使用
 """
 from __future__ import annotations
 
@@ -38,7 +38,9 @@ USAGE = """Visual Dashboard System — Python 入口
   python bin/app.py run --step=clean     只跑某一步
   python bin/app.py run --from=split     从某一步跑到最后
   python bin/app.py run --to=render      从第一步跑到某一步
-  python bin/app.py list                 列出 8 个步骤
+  python bin/app.py report               按需生成「销售完成度汇总表」（不在 7 步主流程内）
+  python bin/app.py report --snapshot=看板_YYYYMMDD.html   指定数据版本（也可传 data_*.xlsx）
+  python bin/app.py list                 列出 7 个步骤
   python bin/app.py board                打开最新看板 HTML
   python bin/app.py --help               显示本帮助
 
@@ -46,7 +48,7 @@ USAGE = """Visual Dashboard System — Python 入口
   · 图形入口需要系统带 Tk（标准库自带；内置 runtime 已包含）
   · 完整参数（--type / --dry-run / --no-config / --ignore-data-issues）请用：
         python bin/main.py --help
-  · 双击入口「启动系统.bat」会调用本文件的图形界面
+  · 本文件就是唯一入口：`python bin/app.py` 开图形界面（`pythonw bin/app.py` 无控制台窗口）
 """
 
 
@@ -108,6 +110,10 @@ def _parse_keys(argv: list[str]) -> list[str] | None | Literal[False]:
             key = arg.split("=", 1)[1].strip()
             if key not in order:
                 print(f"未知步骤: {key}；可选: {', '.join(order)}")
+                if key == "report":
+                    print("  提示：report 是按需步骤（不在 7 步主流程内），请用："
+                          "\n        python bin/app.py report\n"
+                          "        python bin/main.py --step=report")
                 return False
             keys = [key]
         elif arg.startswith("--from="):
@@ -158,19 +164,29 @@ def cmd_list() -> int:
     return 0
 
 
+def cmd_report(argv: list[str] | None = None) -> int:
+    """按需生成「销售完成度汇总表」（可指定数据版本；2026-11-06 起不在 7 步主管线内）"""
+    from bin.runner import run_report
+
+    snapshot = None
+    for arg in (argv or []):
+        if arg.startswith("--snapshot="):
+            snapshot = arg.split("=", 1)[1].strip() or None
+        else:
+            print(f"未知参数: {arg}\n用法: python bin/app.py report [--snapshot=看板或数据总表]")
+            return 2
+    return run_report(snapshot)
+
+
 def cmd_board() -> int:
-    """用系统默认程序打开最新一份看板 HTML"""
+    """用系统默认程序打开最新一份看板 HTML（跨年月递归查找）"""
+    from engine.core.output_paths import latest_file
+
     board_dir = BASE_DIR / "output" / "看板"
-    files = sorted(
-        (f for f in board_dir.glob("看板_*.html") if not f.name.startswith("~$")),
-        key=lambda f: f.stat().st_mtime,
-        reverse=True,
-    )
-    if not files:
+    target = latest_file(board_dir, "看板_*.html")
+    if target is None:
         print(f"未找到看板文件: {_rel(board_dir)}（先运行 python bin/app.py run）")
         return 2
-
-    target = files[0]
     print(f"打开最新看板: {_rel(target)}")
     try:
         if os.name == "nt":
@@ -194,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_gui()
     if cmd in ("run", "all", "全流程"):
         return cmd_run(rest)
+    if cmd in ("report", "完成度", "销售完成度"):
+        return cmd_report(rest)
     if cmd in ("list", "steps", "步骤"):
         return cmd_list()
     if cmd in ("board", "看板"):

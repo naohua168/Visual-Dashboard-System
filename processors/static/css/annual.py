@@ -43,21 +43,61 @@ CSS = r"""/* ═══════════════════─ 年度
 /* 折叠/展开 */
 .hidden{display:none !important;}
 
-/* ═══════════════════─ 重要客户 tab 切换 ───────── */
+/* ═══════════════════─ 收入/回款 切换 + 客户搜索（通栏三段，2026-11-03） ─────────
+   收入 / 回款 合并成一个分段控件（各占 1/3 宽），右侧 1/3 是表格搜索框；
+   三四段合计撑满整行。移动端在 responsive.py 里改成上下两行。 */
 .cust-tabs{
-  display:flex;gap:0.375rem;margin:0 0 0.375rem 0;
-  border-bottom:0.125rem solid var(--border);
+  display:flex;align-items:center;gap:0.75rem;width:100%;
+  margin:0 0 0.5rem 0;
 }
+.cust-tabs-seg{
+  display:flex;flex:2 1 0;min-width:0;height:2.25rem;
+  border:1px solid var(--border);border-radius:0.5rem;
+  background:var(--surface-alt);overflow:hidden;
+}
+.cust-tabs.no-search .cust-tabs-seg{flex:1 1 auto;}
 .cust-tab{
-  padding:0.375rem 1.125rem;font-size:0.8125rem;font-weight:700;cursor:pointer;
-  border-radius:0.375rem 0.375rem 0 0;color:var(--text-muted);
-  background:var(--surface-alt);
-  border:1px solid var(--border);
-  border-bottom:none;
-  transition:all 0.2s;
+  display:flex;align-items:center;justify-content:center;
+  flex:1 1 0;min-width:0;padding:0 0.75rem;
+  font-size:0.8125rem;font-weight:700;cursor:pointer;white-space:nowrap;
+  color:var(--text-muted);background:transparent;
+  border-right:1px solid var(--border);
+  transition:background .2s,color .2s;user-select:none;
 }
+.cust-tab:last-child{border-right:none;}
 .cust-tab:hover{background:#e2e8f0;color:var(--text);}
-.cust-tab.active.inc{background:var(--accent);color:#fff;border-color:var(--accent);}
-.cust-tab.active.pay{background:#16a34a;color:#fff;border-color:#16a34a;}
+.cust-tab.active.inc{background:var(--accent);color:#fff;}
+.cust-tab.active.pay{background:#16a34a;color:#fff;}
+.cust-tab:focus-visible{outline:0.125rem solid var(--accent);outline-offset:-0.125rem;}
+
+/* 搜索框（工具条第三段） */
+.cust-tabs .cust-search{
+  display:flex;align-items:center;gap:0.375rem;
+  flex:1 1 0;min-width:0;height:2.25rem;padding:0 0.625rem;
+  background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;
+  transition:border-color .2s,box-shadow .2s;
+}
+.cust-tabs .cust-search:focus-within{
+  border-color:var(--accent);box-shadow:0 0 0 0.1875rem rgba(37,99,235,0.12);
+}
+.cust-search-icon{display:flex;align-items:center;flex:0 0 auto;color:var(--text-muted);}
+.cust-search-input{
+  flex:1 1 auto;min-width:0;border:none;background:transparent;outline:none;
+  font-size:0.8125rem;color:var(--text);font-family:inherit;
+}
+.cust-search-input::placeholder{color:#64748b;}
+.cust-search-input::-webkit-search-cancel-button,
+.cust-search-input::-webkit-search-decoration{-webkit-appearance:none;appearance:none;}
+.cust-search-count{
+  font-size:0.6875rem;color:var(--text-secondary);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.cust-search-clear{
+  display:none;border:none;background:transparent;color:var(--text-muted);
+  font-size:1rem;line-height:1;cursor:pointer;padding:0 0.0625rem;
+}
+.cust-search-clear.is-on{display:block;}
+.cust-search-clear:hover{color:var(--text);}
+.cust-search-clear:focus-visible{outline:0.125rem solid var(--accent);border-radius:0.25rem;}
 
 """

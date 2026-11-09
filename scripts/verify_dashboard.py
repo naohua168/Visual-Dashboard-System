@@ -20,12 +20,14 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 BASE = Path(__file__).parent.parent
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
+from engine.core.output_paths import iter_files  # noqa: E402  （目录按年月分层，需递归找）
 from engine.core.utils import rel_path  # noqa: E402  （日志/提示路径统一相对项目根显示）
 
 EXPECTED_PAGES = ["overview", "annual", "monthly", "sales", "yoy", "quarterly"]
@@ -40,10 +42,16 @@ REQUIRED_SHEETS = ["当年累计收入", "当年累计回款", "销售收入", "
 _JUNK_PREFIX = "~$"
 
 
-def _newest(folder: Path, pattern: str) -> Path | None:
-    files = sorted((f for f in folder.glob(pattern) if not f.name.startswith(_JUNK_PREFIX)),
-                   key=lambda p: p.stat().st_mtime, reverse=True)
-    return files[0] if files else None
+def _dated_newest(folder: Path, pattern: str, day: str) -> Path | None:
+    """按**当天日期**找产物（跨年月递归）
+
+    2026-11-06 起改为"认日期"而不是"认最新"：否则今天跳过生成时，
+    校验会拿昨天那份当通过 —— 等于没生成也绿灯。
+    """
+    for f in iter_files(folder, pattern):
+        if day in f.name:
+            return f
+    return None
 
 
 def base_output_dir() -> Path:
@@ -172,29 +180,36 @@ def _check_excel(path: Path, label: str, required_sheets: list[str], problems: l
         print(f"  ⚠️  空 sheet（可选，确认是否需要）: {empty_optional}")
 
 
-def verify_artifacts(base_out: Path, problems: list[str], allow_missing_report: bool = False) -> None:
-    print("\n[交付物]")
+def verify_artifacts(base_out: Path, problems: list[str], day: str | None = None,
+                     allow_missing_report: bool = True) -> None:
+    """校验交付物
+
+    day：校验哪一天的产物（默认今天）。**不再"找最新一份"** —— 今天没生成就必须报出来，
+         否则跳过生成时旧文件会冒充通过。
+
+    销售完成度表已改为**按需产物**（2026-11-06 移出 7 步主管线）：
+    当天没生成只提示、不算问题；生成了才校验内容。
+    """
+    day = day or datetime.now().strftime("%Y%m%d")
+    print(f"\n[交付物]（日期 {day}）")
+
     data_dir = _cfg_output("数据", "output/数据/")
     if not data_dir.exists():
         data_dir = base_out / "数据"
-    total = _newest(data_dir, "data_*.xlsx")
+    total = _dated_newest(data_dir, "data_*.xlsx", day)
     if total is None:
-        problems.append(f"缺少数据总表 Excel: {rel_path(data_dir / 'data_*.xlsx')}")
-        print(f"❌ 缺少数据总表: {rel_path(data_dir / 'data_*.xlsx')}")
+        msg = f"本次（{day}）未生成数据总表 Excel: {rel_path(data_dir / 'data_*.xlsx')}"
+        problems.append(msg)
+        print(f"❌ {msg}")
     else:
         _check_excel(total, "数据总表", REQUIRED_SHEETS, problems)
 
     rep_dir = _cfg_output("销售完成度", "output/销售完成度/")
     if not rep_dir.exists():
         rep_dir = base_out / "销售完成度"
-    report = _newest(rep_dir, "销售完成度汇总_*.xlsx")
+    report = _dated_newest(rep_dir, "销售完成度汇总_*.xlsx", day)
     if report is None:
-        msg = f"缺少销售完成度表: {rel_path(rep_dir / '销售完成度汇总_*.xlsx')}"
-        if allow_missing_report:
-            print(f"  ⚠️  {msg}（已按 --allow-missing-report 忽略）")
-        else:
-            problems.append(msg)
-            print(f"❌ {msg}")
+        print("  ℹ️  销售完成度表为按需产物，本次未生成（跳过校验）")
     else:
         _check_excel(report, "销售完成度", ["销售收入", "销售回款"], problems)
 
@@ -204,20 +219,29 @@ def verify_artifacts(base_out: Path, problems: list[str], allow_missing_report: 
 # ══════════════════════════════════════════════════════════════
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="看板与交付物验证")
-    ap.add_argument("html_path", nargs="?", default=None, help="看板 HTML 路径（默认取最新）")
+    ap.add_argument("html_path", nargs="?", default=None, help="看板 HTML 路径（默认取当天生成的那份）")
+    ap.add_argument("--date", default=None,
+                    help="校验哪一天的产物（YYYYMMDD，缺省=今天；给了 html 路径则从其文件名推断）")
     ap.add_argument("--allow-missing-report", action="store_true",
-                    help="没跑「销售完成度」步骤时不判为问题")
+                    help=argparse.SUPPRESS)   # 兼容旧调用：销售完成度已改为按需产物，本参数无效
     args = ap.parse_args(argv)
 
     base_out = base_output_dir()
-    html_path = Path(args.html_path) if args.html_path else _newest(base_out / "看板", "看板_*.html")
+    day = args.date
+    if not day and args.html_path:
+        m = re.search(r"(20\d{6})", Path(args.html_path).stem)
+        day = m.group(1) if m else None
+    day = day or datetime.now().strftime("%Y%m%d")
+
+    html_path = Path(args.html_path) if args.html_path else _dated_newest(
+        base_out / "看板", "看板_*.html", day)
     problems: list[str] = []
 
     if html_path is None or not Path(html_path).exists():
-        print("❌ 未找到看板 HTML")
+        print(f"❌ 未找到看板 HTML（{day}）")
         return 1
     verify_html(Path(html_path), problems)
-    verify_artifacts(base_out, problems, allow_missing_report=args.allow_missing_report)
+    verify_artifacts(base_out, problems, day=day)
 
     print("\n" + "═" * 56)
     if problems:
@@ -226,7 +250,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"   - {p}")
         print("═" * 56)
         return 1
-    print("✅ 交付物校验通过：看板 HTML + 数据总表 + 销售完成度表 齐全且非空")
+    print("✅ 交付物校验通过：看板 HTML + 数据总表 齐全且非空"
+          "（销售完成度表为按需产物，不参与必需项判定）")
     print("═" * 56)
     return 0
 

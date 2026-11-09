@@ -18,6 +18,6 @@
     sales_pending  — 待确认客户弹窗
     static/css/    — 样式包（variables/layout/kpi/tables/cards/yoy/widgets/hero/
                      annual/matrix/yoy_tables/overview/responsive/animations）
-    static/js/     — 脚本包（nav/page_switch/counters/text/charts/tables/tabs）
+    static/js/     — 脚本包（nav/page_switch/counters/text/tables/tabs/cust_search）
     run            — 主入口，调用全部渲染器并合并为单个 HTML 看板
 """
