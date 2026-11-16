@@ -27,6 +27,6 @@ BYD_PARENT_BATTERY = br.parent_byd_battery()
 
 DEPARTMENTS = br.departments()
 
-# 法人主体过滤常量（值来自 config/清洗配置/业务规则.json，2026-09-29 外置）
+# 法人主体过滤常量（值来自 config/清洗配置/业务规则.json）
 SG_LEGAL_ENTITY = br.legal_sg()
 GD_LEGAL_FILTER = br.legal_gd()

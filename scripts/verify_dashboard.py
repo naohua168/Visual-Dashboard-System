@@ -1,5 +1,5 @@
 # Author: naohua168 <bai_bai168@qq.com>
-"""交付物全面验证 —— 看板 HTML + Excel 总表 + 销售完成度表（2026-09-29 扩档）
+"""交付物全面验证 —— 看板 HTML + Excel 总表 + 销售完成度表
 
 校验三件事：
   ① 看板 HTML：`<script>` 语法（node --check）、onclick 函数绑定、6 页 template、关键交互函数
@@ -32,6 +32,7 @@ from engine.core.utils import rel_path  # noqa: E402  （日志/提示路径统�
 
 EXPECTED_PAGES = ["overview", "annual", "monthly", "sales", "yoy", "quarterly"]
 KEY_FUNCS = ["showPage", "openSalesModal", "closeSalesModal", "switchSc3Sales", "switchSc3Metric",
+             "openDeptDetail", "closeDeptDetail", "deptDetailFilter",
              "annual_inc_show", "annual_pay_show", "monthly_inc_show", "monthly_pay_show",
              "qtr_inc_show", "qtr_pay_show", "switchTab", "toggleFullscreen"]
 MIN_HTML_KB = 200.0            # 正常约 1.8MB；低于此值基本是渲染截断
@@ -187,7 +188,7 @@ def verify_artifacts(base_out: Path, problems: list[str], day: str | None = None
     day：校验哪一天的产物（默认今天）。**不再"找最新一份"** —— 今天没生成就必须报出来，
          否则跳过生成时旧文件会冒充通过。
 
-    销售完成度表已改为**按需产物**（2026-11-06 移出 7 步主管线）：
+    销售完成度表已改为**按需产物**（7 步主管线）：
     当天没生成只提示、不算问题；生成了才校验内容。
     """
     day = day or datetime.now().strftime("%Y%m%d")

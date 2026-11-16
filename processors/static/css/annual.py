@@ -43,7 +43,7 @@ CSS = r"""/* ═══════════════════─ 年度
 /* 折叠/展开 */
 .hidden{display:none !important;}
 
-/* ═══════════════════─ 收入/回款 切换 + 客户搜索（通栏三段，2026-11-03） ─────────
+/* ═══════════════════─ 收入/回款 切换 + 客户搜索（通栏三段） ─────────
    收入 / 回款 合并成一个分段控件（各占 1/3 宽），右侧 1/3 是表格搜索框；
    三四段合计撑满整行。移动端在 responsive.py 里改成上下两行。 */
 .cust-tabs{
@@ -99,5 +99,15 @@ CSS = r"""/* ═══════════════════─ 年度
 .cust-search-clear.is-on{display:block;}
 .cust-search-clear:hover{color:var(--text);}
 .cust-search-clear:focus-visible{outline:0.125rem solid var(--accent);border-radius:0.25rem;}
+
+/* ── 分段控件 / 搜索框质感（内凹轨道 + 选中态内高光，不改字号与配色） ── */
+.cust-tabs-seg{box-shadow:inset 0 1px 2px rgba(15,23,42,0.06);}
+.cust-tab{position:relative;}
+.cust-tab.active.inc,
+.cust-tab.active.pay{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.28),0 1px 2px rgba(15,23,42,0.14);
+}
+.cust-tabs .cust-search{box-shadow:0 1px 2px rgba(15,23,42,0.04);}
+.cust-tabs .cust-search-icon{opacity:0.75;}
 
 """

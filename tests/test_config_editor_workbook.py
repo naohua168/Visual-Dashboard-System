@@ -456,7 +456,16 @@ def test_init_template_design(tmp_path, monkeypatch):
     for page in rules:
         if page.startswith("_"):
             continue
-        assert _public(parsed[page]) == _public(rules[page]), f"{page} 模板往返不一致"
+        # 「展示规则」sheet 只管表格类配置；`KPI指标` 由独立「KPI指标」sheet 承载（下方单独校验）
+        expect = {k: v for k, v in rules[page].items() if k != "KPI指标"}
+        assert _public(parsed[page]) == _public(expect), f"{page} 模板往返不一致"
+
+    # KPI指标 走独立 sheet：JSON 里配了覆盖值就要能原样读回
+    kpi = cej.excel_to_kpi(wb["KPI指标"])
+    for page, spec in rules.items():
+        if isinstance(spec, dict) and "KPI指标" in spec:
+            for metric, val in spec["KPI指标"].items():
+                assert kpi[page][metric] == val, f"{page} KPI {metric} 模板往返不一致"
 
     # 时间配置 / KPI / 销售归属 也能从带横幅的模板解析
     cfg = json.loads((BASE_DIR / "config" / "清洗配置" / "cleaning_config.json").read_text(encoding="utf-8"))
@@ -598,18 +607,21 @@ def test_refresh_note_sheet_appends_and_rewrites(tmp_path, monkeypatch):
 
     ws = openpyxl.load_workbook(out)["说明"]
     texts = [str(ws.cell(row=r, column=1).value).strip() for r in range(1, ws.max_row + 1)]
-    # 追加：第 10/11/12 节都在
+    # 追加：第 7/10/11/12 节都在
+    assert any(t.startswith("7.") and "字段映射" in t for t in texts), "未追加第 7 节"
     assert any(t.startswith("10.") and "名称匹配" in t for t in texts), "未追加第 10 节"
     assert any(t.startswith("11.") and "数据质量与产物" in t for t in texts), "未追加第 11 节"
     assert any(t.startswith("12.") and "业务规则.json" in t for t in texts), "未追加第 12 节"
     # 更新：第 9 节被写回规范文案，旧文案消失（口径改了要能纠正旧说明书）
     assert all("这句应被同分节的规范文案替换" not in t for t in texts), "旧文案未被替换"
     assert str(cej.UNIT_NOTE_LINES[-1][0]).strip() in texts, "规范文案未写入"
-    # 结构：标题 + 第 1 节 + 规范化后的第 9 节 + 3 个新分节（每节前空一行）
+    # 结构：标题 + 第 1 节 + 规范化后的第 9 节 + 4 个新分节（每节前空一行）
     assert [ws.cell(row=r, column=1).value for r in (1, 3)] == ["配置编辑器使用说明", head[1]]
     assert ws.max_row == 2 + len(cej.UNIT_NOTE_LINES) + sum(
-        1 + len(b) for b in (cej.NAME_NOTE_LINES, cej.OUTPUT_NOTE_LINES, cej.BIZ_NOTE_LINES))
-    for block in (cej.UNIT_NOTE_LINES, cej.NAME_NOTE_LINES, cej.OUTPUT_NOTE_LINES, cej.BIZ_NOTE_LINES):
+        1 + len(b) for b in (cej.NAME_NOTE_LINES, cej.OUTPUT_NOTE_LINES,
+                             cej.BIZ_NOTE_LINES, cej.FIELD_MAP_NOTE_LINES))
+    for block in (cej.UNIT_NOTE_LINES, cej.NAME_NOTE_LINES, cej.OUTPUT_NOTE_LINES,
+                  cej.BIZ_NOTE_LINES, cej.FIELD_MAP_NOTE_LINES):
         assert texts.count(str(block[0][0]).strip()) == 1, f"分节重复: {block[0][0]}"
 
     # 再次执行：内容与行数都不变（幂等）

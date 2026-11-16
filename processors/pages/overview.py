@@ -3,6 +3,8 @@
 """
 from __future__ import annotations
 
+import json
+
 from ..base import BaseRenderer, hero_rings_html, rate_cls
 from ..utils import fmt_wan, safe_float, range_banner_html
 from ..data_prep import prepare_overview_data
@@ -57,7 +59,11 @@ class OverviewPage(BaseRenderer):
             t_inc_act += inc_v; t_pay_act += pay_v; t_inc_tgt += tgt
             dcolor = DEPT_COLORS.get(dpt_name, "#94a3b8")
             rows += (
-                f'<tr>'
+                f'<tr class="dept-row" data-dept="{dpt_name}" tabindex="0" role="button" '
+                f'title="点击查看 {dpt_name} 的客户明细" '
+                f'onclick="openDeptDetail(\'{dpt_name}\')" '
+                f'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){{event.preventDefault();'
+                f'openDeptDetail(\'{dpt_name}\');}}">'
                 f'<td class="td-name"><span style="color:{dcolor};font-weight:800">● {dpt_name}</span></td>'
                 f'<td class="num-cell">{fmt_wan(tgt)}</td>'
                 f'<td class="num-cell" style="font-weight:700">{fmt_wan(inc_v)}</td>'
@@ -89,7 +95,56 @@ class OverviewPage(BaseRenderer):
             f'<div class="table-wrap no-collapse"><table class="yoy-dept-table">'
             f'<thead>{thead}</thead><tbody>{rows}</tbody></table></div>'
             f'<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">'
-            f'完成度色阶: ≥80%绿 · 50-80%橙 · 30-50%浅橙 · &lt;30%灰</div></div>'
+            f'完成度色阶: ≥80%绿 · 50-80%橙 · 30-50%浅橙 · &lt;30%灰'
+            f'　·　点部门行可查看该部门的客户指标与实际</div></div>'
+            + self._dept_modal(d)
+        )
+
+    def _dept_modal(self, d) -> str:
+        """部门客户明细弹窗骨架 + 数据（点击部门行时由 dept_modal.js 填充）"""
+        payload = json.dumps(d.dept_customers or {}, ensure_ascii=False,
+                             separators=(",", ":")).replace("</", "<\\/")
+        close_svg = ('<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" '
+                     'stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>')
+        search_svg = ('<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" '
+                      'stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/>'
+                      '<path d="M20 20l-3.6-3.6"/></svg>')
+        return (
+            '<div class="dept-modal" id="deptDetail" aria-hidden="true">'
+            '<div class="dept-modal-mask" onclick="closeDeptDetail()"></div>'
+            '<div class="dept-modal-panel" role="dialog" aria-modal="true" aria-labelledby="ddTitle">'
+            '<div class="dept-modal-accent"></div>'
+            '<div class="dept-modal-hd">'
+            '<div class="dept-modal-title" id="ddTitle"></div>'
+            f'<button type="button" class="dept-modal-x" onclick="closeDeptDetail()" '
+            f'title="关闭（Esc）" aria-label="关闭">{close_svg}</button>'
+            "</div>"
+            '<div class="dept-kpi" id="ddKpi"></div>'
+            '<div class="dept-modal-tools">'
+            f'<div class="dd-search">{search_svg}'
+            '<input id="ddSearch" type="search" placeholder="搜索客户名…" aria-label="搜索客户名" '
+            'oninput="deptDetailFilter(this.value)" autocomplete="off"></div>'
+            '<span class="dd-unit">单位：万元</span>'
+            '<span class="dept-modal-count" id="ddCount"></span>'
+            "</div>"
+            '<div class="dept-modal-body">'
+            '<table class="dept-detail-table">'
+            '<colgroup><col class="c-cust"><col class="c-num"><col class="c-num">'
+            '<col class="c-rate"><col class="c-num"><col class="c-num"><col class="c-rate"></colgroup>'
+            "<thead><tr>"
+            '<th class="th-name">客户</th>'
+            '<th class="grp-inc"><span class="th-grp">收入</span>目标</th>'
+            '<th class="grp-inc"><span class="th-grp">收入</span>实际</th>'
+            '<th class="grp-inc"><span class="th-grp">收入</span>完成度</th>'
+            '<th class="grp-pay"><span class="th-grp">回款</span>目标</th>'
+            '<th class="grp-pay"><span class="th-grp">回款</span>实际</th>'
+            '<th class="grp-pay"><span class="th-grp">回款</span>完成度</th>'
+            "</tr></thead>"
+            '<tbody id="ddBody"></tbody>'
+            '<tfoot id="ddFoot"></tfoot>'
+            "</table></div>"
+            "</div></div>"
+            f"<script>window.DEPT_CUSTOMERS={payload};</script>"
         )
 
     def _sales_achievement_landscape(self, d) -> str:
@@ -116,7 +171,8 @@ class OverviewPage(BaseRenderer):
                 rows += f"""<div class="mini-rate">
   <span class="rank {rank_tag}">{i}</span>
   <span style="flex:1;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{name}</span>
-  <div class="bar"><div class="bar-fill {cls}" style="width:{bar_w:.1f}%"><span class="bar-pct">{pct:.1f}%</span></div></div>
+  <div class="bar"><div class="bar-fill {cls}" style="width:{bar_w:.1f}%"></div></div>
+  <span class="rate-tag {cls}">{pct:.1f}%</span>
   <span class="val">{fmt_wan(v)}</span>
 </div>"""
             sub = f"目标达成度 = 个人{label} / 个人目标"

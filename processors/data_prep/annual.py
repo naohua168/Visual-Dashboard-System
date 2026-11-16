@@ -104,7 +104,7 @@ def prepare_annual_data(data, base_dir: Path) -> AnnualData:
     d.pay_piv, d.pay_tgt_grouped, all_pay = _group_by_parent(
         d.pay_piv, d.pay_tgt_grouped, d.pay_customers + d.pay_rest, base_dir
     )
-    # 非指标客户一律折叠到「查看全部」（2026-09-21 用户口径）→ 传归拢后的指标表，与优先展示无关
+    # 非指标客户一律折叠到「查看全部」→ 传归拢后的指标表，与优先展示无关
     d.inc_customers, d.inc_rest = _resplit_priority(
         all_inc, base_dir, annual_filter, tgt=d.inc_tgt_grouped
     )

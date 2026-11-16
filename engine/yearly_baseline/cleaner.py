@@ -15,15 +15,37 @@ from pathlib import Path
 import pandas as pd
 
 from ..core import business_rules as br
+from ..core.column_resolver import extract_columns, print_hit_columns
 from ..core.config import BASE_DIR, CONFIG_PATH, get_yearly_baseline_path
 from ..core.io_utils import ExcelBusyError, save_excel
 from ..core.name_key import match_key
-from ..core.utils import log_step, rel_path
+from ..core.utils import filter_by_dept_keep, log_step, rel_path
 
-# 事业部全名→简称（config/清洗配置/业务规则.json → 事业部全称映射，2026-09-29）
+# 事业部全名→简称（config/清洗配置/业务规则.json → 事业部全称映射）
 DEPT_MAP = br.dept_full_map()
 
 STD_COLS = ["事业部", "金额", "客户", "法人主体", "日期"]
+
+# 列映射兜底：cleaning_config.json 缺 `年基线数据.<收入|回款>.列映射` 时使用
+DEFAULT_MAPPING: dict[str, dict[str, list[str]]] = {
+    "收入": {
+        "金额": ["收入", "到款", "收入金额", "到款金额", "金额"],
+        "客户": ["客户名称", "客户名", "客户"],
+        "法人主体": ["核算单位", "法人主体"],
+        "部门": ["事业部"],
+        "内部交易": ["是否属于内部交易", "是否属于内部款项", "内部交易", "内部款项"],
+    },
+    "回款": {
+        "金额": ["收入", "到款", "收入金额", "到款金额", "金额"],
+        "客户": ["客户名称", "客户名", "客户"],
+        "法人主体": ["核算单位", "法人主体"],
+        "部门": ["事业部"],
+        "内部交易": ["是否属于内部款项", "是否属于内部交易", "内部款项", "内部交易"],
+    },
+}
+
+# `内部交易标记值` 缺省值（与配置编辑器 FLAT_DEFAULTS 同口径）
+INTERNAL_MARKS_DEFAULT = ["是"]
 
 
 def _load_yearly_config() -> dict:
@@ -87,13 +109,29 @@ def _parse_yearly_date(val, default_year: int = 2024) -> str | None:
 _ENTITY_FULL = br.entity_alias()  # 配置驱动（业务规则.json → 法人简称映射）
 
 
-def _clean_single(label, file_path, mapper=None):
+def _source_spec(config, kind: str) -> dict:
+    """`年基线数据.<收入|回款>` 配置节点（含 列映射 / 内部交易标记值 / 事业部取值）"""
+    node = ((config or {}).get("年基线数据") or {}).get(kind)
+    return node if isinstance(node, dict) else {}
+
+
+def _column_mapping(spec: dict, kind: str) -> dict:
+    """列映射：配置优先，缺失/为空时回退 DEFAULT_MAPPING（历史 JSON 也能跑）"""
+    cm = spec.get("列映射")
+    if isinstance(cm, dict) and cm:
+        return {k: list(v) for k, v in cm.items() if not str(k).startswith("_")}
+    return {k: list(v) for k, v in DEFAULT_MAPPING[kind].items()}
+
+
+def _clean_single(label, file_path, mapper=None, spec=None):
     """清洗单个年基线文件（收入或回款）
 
-    适配新格式列：
-      - 收入: 事业部/核算单位/确认时间/客户/收入
-      - 回款: 事业部/核算单位/到款时间/客户/到款
+    列名从配置读取（配置编辑器「字段映射」→ 数据源=年基线数据），
+    缺列候选时回退 DEFAULT_MAPPING：
+      - 收入: 事业部/核算单位/确认时间/客户/收入/内部交易
+      - 回款: 事业部/核算单位/到款时间/客户/到款/内部款项
     """
+    spec = spec or {}
     if not file_path.exists():
         log_step("年%s" % label, "文件未找到: %s" % rel_path(file_path), "WARN")
         return None
@@ -104,20 +142,15 @@ def _clean_single(label, file_path, mapper=None):
     log_step("年%s" % label, "原始: %d行 x %d列" % (total_in, len(df.columns)))
     log_step("年%s" % label, "原始列: %s" % str(list(df.columns)))
 
-    rename_map = {}
+    # ── 列提取（候选列名来自配置）──
+    # 内部交易 / 法人主体 是可选字段：源表没有该列时补空并继续
+    df = extract_columns(df, _column_mapping(spec, label),
+                         optional_fields={"内部交易", "法人主体"})
+    print_hit_columns(df, "年基线%s" % label)
 
-    # ── 列重命名 ──
-    # 金额: 收入/到款 → 金额
-    for src in ["收入", "到款", "收入金额", "到款金额", "金额"]:
-        if src in df.columns:
-            _col_remap(df, src, "金额", rename_map)
-            break
-
-    # 法人主体: 核算单位 → 法人主体
-    for src in ["核算单位", "法人主体"]:
-        if src in df.columns:
-            _col_remap(df, src, "法人主体", rename_map)
-            break
+    # 标准字段名统一：映射里叫「部门」（与其他来源同口径），年基线输出列叫「事业部」
+    if "部门" in df.columns and "事业部" not in df.columns:
+        df = df.rename(columns={"部门": "事业部"})
     if "法人主体" not in df.columns:
         df["法人主体"] = ""
 
@@ -127,26 +160,17 @@ def _clean_single(label, file_path, mapper=None):
         lambda v: entity_keys.get(match_key(v), v)
     )
 
-    # 客户名
-    for src in ["客户名称", "客户名", "客户"]:
-        if src in df.columns:
-            _col_remap(df, src, "客户", rename_map)
-            break
-
-    log_step("年%s" % label, "重命名: %s" % str(rename_map))
-
-    # ── 内部交易过滤（列值="是" 的行排除，与运营端逻辑一致）──
-    internal_col = None
-    for candidate in ["是否属于内部交易", "是否属于内部款项", "内部交易", "内部款项"]:
-        if candidate in df.columns:
-            internal_col = candidate
-            break
-    if internal_col is not None:
-        before = len(df)
-        df = df[~df[internal_col].astype(str).str.strip().eq("是")].copy()
-        if before - len(df) > 0:
-            log_step("年%s" % label,
-                     "内部交易过滤: 排除%d行, 保留%d行（列:%s）" % (before - len(df), len(df), internal_col), "OK")
+    # ── 内部交易过滤（命中 `内部交易标记值` 的行排除，与运营端逻辑一致）──
+    if "内部交易" in df.columns:
+        marks = [str(v).strip() for v in (spec.get("内部交易标记值") or INTERNAL_MARKS_DEFAULT)]
+        marks = [m for m in marks if m]
+        if marks:
+            before = len(df)
+            df = df[~df["内部交易"].astype(str).str.strip().isin(marks)].copy()
+            if before - len(df) > 0:
+                log_step("年%s" % label,
+                         "内部交易过滤: 排除%d行, 保留%d行（取值:%s）"
+                         % (before - len(df), len(df), "/".join(marks)), "OK")
     else:
         log_step("年%s" % label, "内部交易列不存在，跳过过滤", "WARN")
 
@@ -170,6 +194,9 @@ def _clean_single(label, file_path, mapper=None):
     else:
         df["事业部"] = df["事业部"].map(DEPT_MAP).fillna(df["事业部"])
     log_step("年%s" % label, "事业部分布: %s" % str(df["事业部"].value_counts().to_dict()))
+    # 事业部取值（配置决定只取哪些事业部；缺省/空 = 不限制）
+    if mapper is not None:
+        df = filter_by_dept_keep(df, spec, mapper, "年基线%s" % label, "income")
 
     # ── 金额转数值 ──
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0)
@@ -200,14 +227,18 @@ def clean_yearly(source_dir=None, mapper=None):
     Returns:
         dict: {"收入": DataFrame, "回款": DataFrame} 或 None
     """
-    # ── 从配置加载文件路径 ──
+    # ── 从配置加载文件路径 + 列映射（配置编辑器「字段映射」→ 年基线数据）──
     inc_path = None
     pay_path = None
+    inc_spec: dict = {}
+    pay_spec: dict = {}
     try:
         from ..core.config import load_config
         config = load_config()
         inc_path = get_yearly_baseline_path(config, "收入")
         pay_path = get_yearly_baseline_path(config, "回款")
+        inc_spec = _source_spec(config, "收入")
+        pay_spec = _source_spec(config, "回款")
     except (KeyError, FileNotFoundError, ImportError):
         pass
 
@@ -238,11 +269,11 @@ def clean_yearly(source_dir=None, mapper=None):
 
     results = {}
     if inc_path:
-        inc_df = _clean_single("收入", inc_path, mapper)
+        inc_df = _clean_single("收入", inc_path, mapper, inc_spec)
         if inc_df is not None:
             results["收入"] = inc_df
     if pay_path:
-        pay_df = _clean_single("回款", pay_path, mapper)
+        pay_df = _clean_single("回款", pay_path, mapper, pay_spec)
         if pay_df is not None:
             results["回款"] = pay_df
 

@@ -95,10 +95,10 @@ def mini_rate_row(name: str, act: float, tgt: float, name_width: int = 48,
     return (
         f'<div class="mini-rate">'
         f'<span style="width:{name_width}px;font-weight:600">{name}</span>'
-        f'<div class="bar"><div class="bar-fill {bar_cls}" style="width:{min(rate*100,100):.1f}%">'
-        f'<span class="bar-pct">{rate*100:.1f}%</span></div></div>'
+        f'<div class="bar"><div class="bar-fill {bar_cls}" style="width:{min(rate*100,100):.1f}%"></div></div>'
+        f'<span class="rate-tag {bar_cls}">{rate*100:.1f}%</span>'
         f'<span class="val">{_fmt(act)}</span>'
-        f'<span style="color:var(--text-muted);font-size:11px">/{_fmt(tgt) if tgt > 0 else "—"}</span>'
+        f'<span class="tgt">/{_fmt(tgt) if tgt > 0 else "—"}</span>'
         f'</div>'
     )
 
@@ -123,12 +123,12 @@ def mini_rate_summary_row(name: str, act: float, tgt: float,
         bar_cls = "level-4"
 
     return (
-        f'<div class="mini-rate" style="border-top:2px solid var(--border);padding-top:8px;margin-top:4px">'
+        f'<div class="mini-rate mini-rate-summary" style="border-top:2px solid var(--border);padding-top:8px;margin-top:4px">'
         f'<span style="width:{name_width}px;font-weight:700">{name}</span>'
-        f'<div class="bar"><div class="bar-fill {bar_cls}" style="width:{min(rate*100,100):.1f}%">'
-        f'<span class="bar-pct">{rate*100:.1f}%</span></div></div>'
+        f'<div class="bar"><div class="bar-fill {bar_cls}" style="width:{min(rate*100,100):.1f}%"></div></div>'
+        f'<span class="rate-tag {bar_cls}">{rate*100:.1f}%</span>'
         f'<span class="val">{_fmt(act)}</span>'
-        f'<span style="color:var(--text-muted);font-size:11px">/{_fmt(tgt) if tgt > 0 else "—"}</span>'
+        f'<span class="tgt">/{_fmt(tgt) if tgt > 0 else "—"}</span>'
         f'</div>'
     )
 
@@ -137,7 +137,7 @@ def row_search_attr(name: str, subs=None) -> str:
     """表格行的可搜索文本（母公司名 + 子公司名），供前端「搜索客户/子公司」用
 
     返回已转义的 `data-search` 值；子公司在表里只以母公司行出现，
-    但用户往往记得子公司名，所以把子公司名一并带上（2026-11-03 用户口径）。
+    但用户往往记得子公司名，所以把子公司名一并带上。
     """
     keys = [str(name)]
     for s in (subs or []):
@@ -151,7 +151,7 @@ def cust_search_box(targets: str, placeholder: str = "搜索客户或子公司�
     """收入/回款 工具条第三段 — 表格过滤搜索框
 
     targets: 逗号分隔的容器 ID（收入表 / 回款表），过滤只作用于当前可见的那张表，
-             点收入/回款切换时会带着同一关键词重算（2026-11-03 用户口径）。
+             点收入/回款切换时会带着同一关键词重算。
     交互逻辑见 processors/static/js/cust_search.py。
     """
     from .static.icons import icon

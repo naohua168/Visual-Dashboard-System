@@ -10,7 +10,7 @@ table.ann-matrix, .table-wrap table.ann-matrix, .ann-matrix{
   width:100%;border-collapse:separate;border-spacing:0;font-size:1.5rem;background:#fff;
   border:1px solid #e2e5ed;
 }
-/* 盒式列宽（2026-10-10）：列宽按比例分配，不写死像素/固定 rem，随窗口等比缩放。
+/* 盒式列宽：列宽按比例分配，不写死像素/固定 rem，随窗口等比缩放。
    客户名列 29%（9/30 那版的设计比例）+ 28rem 下限（≈25 个汉字，窄屏也不会把名字挤换行；
    超过 25 字由 wrap_name() 在第 25 字插 <br> 强制折行）；合计列 16%，同样带下限。
    下限只在小窗口生效（此时 .table-wrap 内横滑），大窗口完全按比例走。
@@ -69,7 +69,7 @@ table.ann-matrix thead tr.detail-row th,
   background:#1e293b;
 }
 table.ann-matrix .th-name, .ann-matrix .th-name{text-align:center;min-width:10rem;font-weight:800;}
-/* 客户名列（2026-10-10 二轮：行内更宽松，名字单行显示）
+/* 客户名列（名字单行显示）
    行高 1.35→1.5、内边距 10/12px→12/14px，客户行不再拥挤；
    只有 wrap_name() 在 25 字处插的 <br> 才会折行（普通换行留给极窄窗口兜底） */
 table.ann-matrix .td-name, .ann-matrix .td-name{
@@ -83,7 +83,7 @@ table.ann-matrix .td-name .row-num, .ann-matrix .td-name .row-num{
   border-radius:0.25rem;margin-right:0.5rem;flex-shrink:0;
 }
 /* 「▾ N/M家」展开提示：始终与客户名同一行（不再被挤到第二行）
-   字号两轮调整（2026-10-12）：0.9375rem → 0.75rem → 0.625rem（用户两次反馈"有点大 / 还要再小一点"）。
+   字号两轮调整：0.9375rem → 0.75rem → 0.625rem（用户两次反馈"有点大 / 还要再小一点"）。
    0.625rem ≈ 客户名的 55%，视觉上明确退到次要信息；同时更窄，窄屏也不易把名字顶到第二行 */
 table.ann-matrix .td-name .expand-hint, .ann-matrix .td-name .expand-hint{
   white-space:nowrap;font-size:0.625rem;font-weight:600;color:#64748b;
@@ -129,7 +129,7 @@ table.ann-matrix .row-total td.td-name,
 }
 /* 折叠行 — 默认隐藏 */
 tr.row-hidden{display:none;}
-/* 搜索态（2026-11-03）：命中行即便原本折叠也要显示；未命中行/分隔行/「查看全部」一律隐藏。
+/* 搜索态：命中行即便原本折叠也要显示；未命中行/分隔行/「查看全部」一律隐藏。
    选择器带 :not(.cs-hide) 是为了压过 .cs-hide 的 !important（折叠行命中时优先显示） */
 .cs-searching tr.row-hidden:not(.cs-hide){display:table-row!important;}
 .cs-searching tr.row-sep{display:none!important;}
@@ -137,7 +137,7 @@ tr.row-hidden{display:none;}
 .cs-hide{display:none!important;}
 /* 搜索时固定表格布局：即使行被全部隐藏，也不让浏览器按"剩余内容"重排列宽 */
 .cs-searching .ann-matrix{table-layout:fixed;width:100%;}
-/* 空结果提示 — 放在 .table-wrap 之后，不参与表格布局（2026-11-03 修复"搜不到时表格乱"） */
+/* 空结果提示 — 放在 .table-wrap 之后，不参与表格布局（格乱"） */
 .cs-empty-note{
   margin-top:0.5rem;padding:1rem 0.75rem;text-align:center;
   font-size:0.8125rem;color:var(--text-secondary);
@@ -157,7 +157,7 @@ table.ann-matrix .td-total, .ann-matrix .td-total{font-weight:700;}
 .cell-sub{font-size:0.625rem;color:var(--text-muted);margin-top:1px;line-height:1.2;}
 /* ══════════ 格子背景填充（CSS类优化版）══════════ */
 td.cb{
-  /* 上下内边距 7px→9px：客户行更透气（2026-10-10 二轮） */
+  /* 上下内边距 7px→9px：客户行更透气 */
   position:relative;padding:0.5625rem 0.5rem;overflow:hidden;
   border:1px solid #cbd5e1;background:#f8fafc;vertical-align:middle;
 }
@@ -213,5 +213,54 @@ table.ann-matrix tbody tr.row-grand-total td.cb.is-total .ct .cm .ca{color:#fff!
 table.ann-matrix tbody tr.row-grand-total td.cb.is-total .ct .cm .ctv{color:#cbd5e1!important;}
 /* 空单元格 */
 table.ann-matrix .td-empty, .ann-matrix .td-empty{text-align:center;color:#94a3b8;font-size:0.875rem;padding:0.5rem 0;}
+
+/* ═══════════════════─ 矩阵质感升级（只调边框 / 圆角 / 阴影 / 层次，不动字号与数据色）─══════════════════ */
+
+/* 1) 表格外壳：圆角 + 轻投影（滚动容器裁圆角，表头 sticky 不受影响） */
+.table-wrap:has(table.ann-matrix){
+  border:1px solid #e8edf5;border-radius:0.6rem;background:#fff;
+  box-shadow:0 1px 2px rgba(15,23,42,0.05),0 10px 28px -22px rgba(15,23,42,0.35);
+}
+
+/* 2) 网格线退一档：让数据色块成为主角，不再像 Excel 表格 */
+table.ann-matrix th, table.ann-matrix td,
+.ann-matrix th, .ann-matrix td{border-color:#edf1f7;}
+
+/* 3) 表头：去掉会让白字发糊的文字阴影，改用白色细分隔 + 底部金线 */
+table.ann-matrix thead th,
+.ann-matrix thead th{
+  text-shadow:none;
+  border-color:rgba(255,255,255,0.10);
+  border-bottom:0.125rem solid #fbbf24;
+  box-shadow:0 2px 8px -4px rgba(15,23,42,0.45);
+}
+
+/* 4) 数据格：填充条右端收圆，不再是硬切的方块边 */
+td.cb{border-color:#edf1f7;}
+td.cb::before{border-radius:0 0.35rem 0.35rem 0;}
+
+/* 5) 序号徽章：圆角化 + 内高光，像一枚小标签 */
+table.ann-matrix .td-name .row-num,
+.ann-matrix .td-name .row-num{
+  border-radius:0.5rem;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.35),0 1px 2px rgba(15,23,42,0.18);
+}
+
+/* 6) 行 hover：左侧高亮条收细 + 过渡，不再整块跳变 */
+table.ann-matrix tbody tr:hover td, .ann-matrix tbody tr:hover td{
+  box-shadow:inset 3px 0 0 0 #1e40af;
+  transition:background 0.12s ease;
+}
+
+/* 7) 合计行：上沿加一道浅投影，与明细拉开一层 */
+table.ann-matrix tr.row-total td,
+.ann-matrix tr.row-total td{box-shadow:0 -1px 0 rgba(30,64,175,0.18);}
+
+/* 8) 合计列：右侧留白收口，末行不再贴边 */
+table.ann-matrix th.th-total, table.ann-matrix td.td-total,
+.ann-matrix th.th-total, .ann-matrix td.td-total{padding-right:0.875rem;}
+
+/* 9) 数值等宽：纵向数字对得更齐（只改字宽，不改字号） */
+table.ann-matrix td, .ann-matrix td{font-variant-numeric:tabular-nums;}
 
 """

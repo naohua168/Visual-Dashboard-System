@@ -1,6 +1,6 @@
 # Author: naohua168 <bai_bai168@qq.com>
 # -*- coding: utf-8 -*-
-"""把 output/ 下的历史产物迁移成「类别/年/月」结构（2026-11-06）
+"""把 output/ 下的历史产物迁移成「类别/年/月」结构
 
     output/看板/看板_20261030.html        → output/看板/2026/10/看板_20261030.html
     output/数据/data_20261104.xlsx        → output/数据/2026/11/data_20261104.xlsx

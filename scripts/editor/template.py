@@ -47,7 +47,7 @@ except ImportError:  # 以包形式导入时（如单元测试）
         fit_row_height, header_row, locate_header_row, new_workbook,
         save_workbook, set_widths, WB_FONT_NAME,
     )
-from .constants import TIME_KEYS, MODE_LABELS, STRATEGY_LABELS, DATE_CELL_FMT, BASE_DIR, EXCEL_PATH, CLEANING_CFG, DISPLAY_RULES_CFG, ATTRIBUTION_CFG, TIME_KEYS, MODE_LABELS, STRATEGY_LABELS, HEADERS, ATT_HEADERS, METRIC_VALUES, METRIC_BOTH, DEPT_VALUES, KPI_PAGES, KPI_METRICS, KPI_HEADERS, GROUP_NOTE_LINES, UNIT_NOTE_LINES, NAME_NOTE_LINES, OUTPUT_NOTE_LINES, BIZ_NOTE_LINES, DATE_CELL_FMT
+from .constants import TIME_KEYS, MODE_LABELS, STRATEGY_LABELS, DATE_CELL_FMT, BASE_DIR, EXCEL_PATH, CLEANING_CFG, DISPLAY_RULES_CFG, ATTRIBUTION_CFG, TIME_KEYS, MODE_LABELS, STRATEGY_LABELS, HEADERS, ATT_HEADERS, METRIC_VALUES, METRIC_BOTH, DEPT_VALUES, KPI_PAGES, KPI_METRICS, KPI_HEADERS, FIELD_MAP_NOTE_LINES, GROUP_NOTE_LINES, UNIT_NOTE_LINES, NAME_NOTE_LINES, OUTPUT_NOTE_LINES, BIZ_NOTE_LINES, DATE_CELL_FMT
 from .paths import BASE_DIR, EXCEL_PATH, CLEANING_CFG, DISPLAY_RULES_CFG, ATTRIBUTION_CFG
 from .time_config import _date_cell_value
 
@@ -159,7 +159,7 @@ def init_excel_template():
     finish(ws, freeze="A3", autofilter=f"A2:H{row_idx - 1}", tab_color=TAB_COLORS["时间配置"])
 
     # ── Sheet 2: 展示规则 ──
-    # （2026-09-28 重做：序号/页面/区块/配置项/值/可选值/说明 + 下拉验证，见 display_rules_sheet.py）
+    # （序号/页面/区块/配置项/值/可选值/说明 + 下拉验证，见 display_rules_sheet.py）
     rules = json.loads(DISPLAY_RULES_CFG.read_text(encoding="utf-8"))
     attach_rules_sheet(wb, rules)
 
@@ -311,24 +311,7 @@ def init_excel_template():
         ["   - 改销售归属: 在「销售归属」sheet 直接改对应行的 销售 / 比例"],
         ["   - 拆分多销售: 把一行复制成多行，各填不同销售和比例（合计需=1）"],
         [""],
-        ["7. 「字段映射」sheet 列说明（清洗时的字段↔列名匹配，2026-10-29 更新）："],
-        ["   - 数据源: 财务端 / 运营端（勿改）"],
-        ["   - 来源: 收入 / 回款 / 广东公司 / 湖南公司 / 南方韶关（勿改）"],
-        ["   - 标准字段: 系统内部字段名（勿改）"],
-        ["   - 候选列名: 多个候选用「/」分隔，按先后尝试匹配源文件列名（最多 3 个）"],
-        ["     · 列名本身含半角「/」时写成 \\/（如 产品名称\\/物料名称）"],
-        ["     · 匹配规则是【全名精确匹配】（仅忽略首尾空白），不是关键词匹配"],
-        ["     · 源文件列名改了，把新列名加到候选里保存即可，无需改 JSON/代码"],
-        ["     · 同一字段内候选不能重复；每个字段至少保留 1 个；超过 3 个同步会报错提示删减"],
-        ["   - 必填取值: 该字段要求的取值（如 已审核 / 外部结算），多个用「/」分隔；清空 = 不过滤"],
-        ["     · 写回 cleaning_config.json 的 保留取值（命中即保留）；多个字段之间 AND"],
-        ["     · 例外：「排除标记」的取值写回同级的 排除标记值（如 √，命中即整行剔除）"],
-        ["     · 「部门」→ 事业部取值（只取这些事业部，简称/全称都行，先过映射归一、没有的按字面比；空=不限制）；「内部交易」→ 内部交易标记值（默认 是，命中即剔除；空=不过滤）"],
-        ["   - 当前命中(只读): 上次清洗实际命中的列，写回时被忽略，仅供参考"],
-        ["   - 说明: 备注（可选）"],
-        ["   - 「排除标记」字段（仅财务端收入，回款无此字段）: 源表列名就叫「初始化」；值 = √ 的行属期初/历史单据迁移"],
-        ["     清洗时整行剔除、不计入当月收入（2026-09-24 口径）；命中取值在 cleaning_config.json 的 排除标记值 里改"],
-        ["   - 注意: 本 sheet 只控制「列映射」；文件名/引擎/金额乘数(金额除数)/过客户白名单等仍在 JSON 里改（金额单位换算见第 9 节）"],
+        *FIELD_MAP_NOTE_LINES,
         [""],
         ["8. 校验失败时生成器拒绝写回并提示原因，JSON 保持原样。"],
         ["   字段映射写回后 cleaning_config.json 会统一为标准 2 空格缩进格式（写前自动备份到 logs/）。"],
@@ -377,8 +360,13 @@ def init_excel_template():
 
 
 def _note_blocks() -> list[list[list[str]]]:
-    """说明书里由代码维护的分节（顺序 = 写入顺序；每项是一个完整分节的行列表）"""
-    return [UNIT_NOTE_LINES, NAME_NOTE_LINES, OUTPUT_NOTE_LINES, BIZ_NOTE_LINES]
+    """说明书里由代码维护的分节（顺序 = 写入顺序；每项是一个完整分节的行列表）
+
+    第 7 节（字段映射）2026-11-10 也纳入这里 —— 否则该节文案只能等 `--init` 重建才更新，
+    `--refresh-notes` 改不到（用户看到的仍是旧说明）。
+    """
+    return [UNIT_NOTE_LINES, NAME_NOTE_LINES, OUTPUT_NOTE_LINES,
+            BIZ_NOTE_LINES, FIELD_MAP_NOTE_LINES]
 
 
 def _sync_note_block(ws, block: list[list[str]]) -> str:
@@ -390,6 +378,11 @@ def _sync_note_block(ws, block: list[list[str]]) -> str:
     title = str(block[0][0]).strip()
     rows = {r: str(ws.cell(row=r, column=1).value).strip() for r in range(1, ws.max_row + 1)}
     start = next((r for r, v in rows.items() if v == title), None)
+    if start is None:
+        # 标题文案改过（如补了日期/口径）→ 按「N.」编号兜底定位，原地重写而不是追加，
+        # 否则每改一次标题就会多出一节
+        num = title.split(".")[0].strip() + "."
+        start = next((r for r, v in rows.items() if v.startswith(num)), None)
 
     if start is None:
         row = ws.max_row + 2

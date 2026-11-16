@@ -8,11 +8,16 @@
 CSS = r"""/* ═══════════════════─ 圆环 Hero ─══════════════════ */
 .hero-rings{
   display:flex;align-items:center;justify-content:space-between;
-  gap:0.75rem;padding:1.375rem 1.875rem;margin-bottom:0.5rem;border-radius:0.75rem;
-  background:linear-gradient(135deg,#0a1628 0%,#1e3a5f 50%,#0a1628 100%);
-  color:#fff;box-shadow:0 0.375rem 1.125rem rgba(10,22,40,0.35);
+  gap:0.75rem;padding:1.375rem 1.875rem;margin-bottom:0.5rem;border-radius:1rem;
+  /* 干净的深蓝渐变（无弥漫光效），靠边框与明度层次区分，不靠发光 */
+  background:linear-gradient(150deg,#0a1628 0%,#14304f 55%,#0b1a2e 100%);
+  color:#fff;
+  border:1px solid rgba(148,163,184,0.18);
+  box-shadow:0 8px 20px -14px rgba(2,8,23,0.55);
   min-height:12.5rem;flex-wrap:wrap;        /* 放不下就换行，不再被裁掉右边缘 */
+  transition:border-color 0.2s ease;
 }
+.hero-rings:hover{border-color:rgba(148,163,184,0.30);}
 /* 两翼按份数分配：基准 13rem，不够宽才换行；min-width:0 允许内部收缩 */
 .hero-rings .hr-side{flex:1 1 13rem;min-width:0;display:flex;flex-direction:column;gap:0.625rem;}
 .hero-rings .hr-side.inc-side{align-items:flex-start;text-align:left;}
@@ -22,15 +27,17 @@ CSS = r"""/* ═══════════════════─ 圆环
   opacity:0.9;display:flex;align-items:center;gap:0.375rem;flex-wrap:wrap;
 }
 .hero-rings .hr-side.pay-side .hr-side-title{flex-direction:row-reverse;}
+/* 大数字：先给纯色兜底，支持 background-clip 时再叠金属渐变（不支持也不会看不见） */
 .hero-rings .hr-side-amount{
   font-size:3.375rem;font-weight:900;color:#fbbf24;
-  font-variant-numeric:tabular-nums;letter-spacing:0.01em;line-height:1;
+  font-variant-numeric:tabular-nums;letter-spacing:-0.015em;line-height:1;
   display:flex;align-items:baseline;gap:0.375rem;
   text-shadow:0 2px 12px rgba(251,191,36,0.2);
 }
 .hero-rings .hr-side.pay-side .hr-side-amount{flex-direction:row;}
 /* 总指标 — 琥珀色 */
 .hero-rings .hr-side-amount.hr-side-target{color:#fbbf24;text-shadow:0 0.125rem 0.875rem rgba(251,191,36,0.3);}
+/* 大数字渐变见文件末尾「质感升级」块（放在所有规则之后才能覆盖 color/text-shadow） */
 .hero-rings .hr-side-unit{font-size:1.125rem;font-weight:600;color:#94a3b8;letter-spacing:0;}
 .hero-rings .hr-side-metrics{
   display:flex;flex-direction:column;gap:0.3125rem;
@@ -64,10 +71,8 @@ CSS = r"""/* ═══════════════════─ 圆环
 .hero-rings .hr-ring circle{fill:none;stroke-width:10;stroke-linecap:round;}
 .hero-rings .hr-ring .hr-track{stroke:rgba(255,255,255,0.10);}
 .hero-rings .hr-ring.inc-ring .hr-progress{stroke:#3b82f6;
-  filter:drop-shadow(0 0 0.25rem rgba(59,130,246,0.55));
   transition:stroke-dashoffset 1.1s cubic-bezier(0.22,1,0.36,1);}
 .hero-rings .hr-ring.pay-ring .hr-progress{stroke:#22c55e;
-  filter:drop-shadow(0 0 0.25rem rgba(34,197,94,0.55));
   transition:stroke-dashoffset 1.1s cubic-bezier(0.22,1,0.36,1);}
 .hero-rings .hr-ring .hr-center{
   position:absolute;inset:0;display:flex;flex-direction:column;
@@ -143,5 +148,71 @@ CSS = r"""/* ═══════════════════─ 圆环
   .hero-rings .hr-side-ring .hr-ring{width:5rem;height:5rem;}
   .hero-rings .hr-side-ring .hr-ring svg{width:5rem;height:5rem;}
 }
+
+/* ═══════════════════─ 质感升级（同一布局，只提升材质/光感/层次）─══════════════════ */
+
+/* 1) 大数字金属渐变：先有纯色兜底，支持 background-clip 才叠渐变，避免不兼容时文字消失 */
+@supports ((-webkit-background-clip:text) or (background-clip:text)){
+  .hero-rings .hr-side-amount.hr-side-target,
+  .hero-rings .hr-center-value,
+  .hero-rings .hr-cs-val{
+    background:linear-gradient(180deg,#fff6d5 0%,#fcd34d 40%,#f59e0b 100%);
+    -webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;
+    text-shadow:none;                      /* 渐变字叠阴影会发灰 */
+  }
+}
+
+/* 2) 单位：小一号但保持清晰可读（原先偏灰看不清） */
+.hero-rings .hr-side-unit,
+.hero-rings .hr-center-value .hr-center-unit{
+  font-size:1.25rem;font-weight:600;color:#b9c5d8;opacity:1;letter-spacing:0;
+}
+
+/* 3) 圆环：只加深轨道与弧线颜色，不加任何外发光 */
+.hero-rings .hr-ring .hr-track{stroke:rgba(148,163,184,0.20);}
+.hero-rings .hr-ring.inc-ring .hr-progress{stroke:#60a5fa;}
+.hero-rings .hr-ring.pay-ring .hr-progress{stroke:#4ade80;}
+.hero-rings .hr-ring .hr-pct{letter-spacing:-0.02em;}
+.hero-rings .hr-ring .hr-label{letter-spacing:0.12em;opacity:0.62;}
+.hero-rings .hr-side-ring .hr-ring{
+  border-radius:50%;
+  box-shadow:inset 0 0 0 1px rgba(148,163,184,0.12);
+}
+
+/* 4) 分隔线：虚线改渐变实线，收口更利落 */
+.hero-rings .hr-side-metrics{
+  border-top:none;
+  background-image:linear-gradient(90deg,rgba(148,163,184,0.38),rgba(148,163,184,0.06));
+  background-repeat:no-repeat;background-size:100% 1px;background-position:top left;
+}
+.hero-rings .hr-side.pay-side .hr-side-metrics{
+  background-image:linear-gradient(270deg,rgba(148,163,184,0.38),rgba(148,163,184,0.06));
+  background-position:top right;
+}
+.hero-rings .hr-center-box{
+  border-left:1px solid rgba(148,163,184,0.14);
+  border-right:1px solid rgba(148,163,184,0.14);
+}
+.hero-rings .hr-cs-div{
+  background:linear-gradient(180deg,rgba(148,163,184,0),rgba(148,163,184,0.45),rgba(148,163,184,0));
+}
+
+/* 5) 标题行图标：加淡色圆底，与文字拉开主次 */
+.hero-rings .hr-side-title svg{
+  padding:0.1875rem;border-radius:50%;box-sizing:content-box;
+  background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.18);
+}
+.hero-rings .hr-side-title{letter-spacing:0.06em;opacity:0.95;}
+
+/* 6) 缺口：小圆点前缀 + 提亮，一眼看出是"欠账" */
+.hero-rings .hr-metric-gap .hr-metric-val{color:#fdba74;font-weight:800;}
+.hero-rings .hr-metric-gap .hr-metric-val::before{
+  content:"";display:inline-block;width:0.3125rem;height:0.3125rem;margin-right:0.375rem;
+  border-radius:50%;background:#fb923c;vertical-align:0.0625rem;
+}
+
+/* 7) 中间"实际"两列：数字与标签之间加一道柔光底，避免悬空 */
+.hero-rings .hr-cs-col{padding:0.125rem 0.25rem;}
 
 """

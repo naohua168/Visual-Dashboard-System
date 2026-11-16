@@ -48,7 +48,7 @@ STEPS: tuple[Step, ...] = (
 )
 STEPS_BY_KEY = {s.key: s for s in STEPS}
 
-# 「自动同步」两步必须排在数据处理之前（2026-11-02 用户要求）：
+# 「自动同步」两步必须排在数据处理之前：
 #   scan   = 广东自有客户预扫描（运营端 + 广东公司 → 写回销售归属）
 #   config = 配置编辑器 → JSON，并顺带把归属表客户补进客户名单
 # 分步/续跑（--step=clean 等）时若没选这两步，自动补到最前面，避免"用旧配置/旧名单清洗"。
@@ -147,8 +147,7 @@ def _step_render(log) -> int:
 def run_report(snapshot: str | None = None) -> int:
     """按需生成「销售完成度汇总表」（可指定数据版本）
 
-    2026-11-06 起**不在 7 步主管线内**（用户要求做成控制面板的可选项）：
-    需要时由 GUI 按钮 / `python bin/app.py report` 单独触发。
+    **不在 7 步主管线内**：需要时由 GUI 按钮 / `python bin/app.py report` 单独触发。
 
     snapshot：`data_YYYYMMDD.xlsx` 或 `看板_YYYYMMDD.html`，缺省用当前清洗结果。
     """

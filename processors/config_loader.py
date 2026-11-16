@@ -94,8 +94,7 @@ def expand_to_customer_names_ordered(base_dir: Path, names: list[str]) -> list[s
     """同 expand_to_customer_names，但**按书写顺序**返回（同名/同子公司在首次出现处去重）
 
     用途：需要"按配置顺序"影响展示位置的场景（如优先展示名单追加到矩阵末尾）。
-    集合的迭代顺序随进程哈希种子变化，直接迭代 set 会让同一个名单每次渲染出不同行序
-    （2026-10-10 定位并修复：年度/销售页客户行序每次渲染都变）。
+    集合的迭代顺序随进程哈希种子变化，直接迭代 set 会让同一个名单每次渲染出不同行序。
     """
     ownership = _load_ownership(base_dir).get("客户归属", {})
     parents = {match_key(p): p for p in ownership.keys()}
@@ -138,7 +137,7 @@ def expand_to_customer_names(base_dir: Path, names: list[str]) -> set[str]:
         所有底层子客户名的 set（不含母公司组名本身，除非它就是叶子）
     """
     ownership = _load_ownership(base_dir).get("客户归属", {})
-    # 组名按匹配键识别（全角半角/空白差异不算差异，2026-09-29）
+    # 组名按匹配键识别（全角半角/空白差异不算差异）
     parents = {match_key(p): p for p in ownership.keys()}
     # 「父组名自带销售」（科技公司·王海龙）：展示规则里手填 `科技公司-王海龙` 也能归到同一行
     dotted = dotted_parent_patterns(dotted_parent_names(ownership.keys()))

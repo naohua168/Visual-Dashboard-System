@@ -17,7 +17,7 @@
 """
 from __future__ import annotations
 
-from . import counters, cust_search, nav, page_switch, tables, tabs, text
+from . import counters, cust_search, dept_modal, nav, page_switch, tables, tabs, text
 
 GLOBAL_JS = (
     nav.JS
@@ -27,6 +27,7 @@ GLOBAL_JS = (
     + tables.JS
     + tabs.JS
     + cust_search.JS
+    + dept_modal.JS
 )
 
 __all__ = ["GLOBAL_JS"]

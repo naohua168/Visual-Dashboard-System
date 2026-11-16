@@ -25,7 +25,7 @@ from .pages import (
 
 BASE_DIR = Path(__file__).parent.parent.resolve()
 
-# 2026-11-04 移除 Chart.js 内联：全仓库从未调用 `new Chart(` / `__regChart(`（6 个页面全是表格），
+# 移除 Chart.js 内联：全仓库从未调用 `new Chart(` / `__regChart(`（6 个页面全是表格）
 # 200KB 的 vendor 脚本是纯死重量；且本地文件缺失时会去请求 cdn.jsdelivr.net ——
 # 内网/断网环境静默失败，还可能触发安全审计告警。
 # 若将来真要画图：重新引入 processors/static/chart.umd.min.js 的**本地内联**，不要走 CDN。
@@ -77,7 +77,7 @@ def build_html(data, title: str, frontend_cfg: dict) -> str:
         for p in pages
     )
     # 导航用 <button> 而不是 <a href="#">：避免悬停时浏览器左下角弹出 "file:///…html#" 地址预览，
-    # 也避免点击后 URL 尾巴多一个 #（2026-10-10 用户要求）
+    # 也避免点击后 URL 尾巴多一个 #
     nav_items = "".join(
         f'<button type="button" data-target="{p.page_id}" '
         f'class="nav-link{" active" if i == 0 else ""}" '
@@ -153,7 +153,7 @@ def run_render(output_path: str | None = None, data_dir_path: str | None = None)
     file_cfg = frontend_cfg.get("文件输出", {})
 
     # 输出骨架：HTML → <输出目录>/看板/<年>/<月>/，Excel 汇总表 → <输出目录>/数据/<年>/<月>/
-    # （2026-11-06 用户要求按年月分类；规则见 engine/core/output_paths.py）
+    # （按年月分类；规则见 engine/core/output_paths.py）
     base_out = BASE_DIR / file_cfg.get("目录", "output")
     html_dir = month_dir(base_out / "看板")
     data_dir = month_dir(base_out / "数据")
@@ -186,7 +186,7 @@ def run_render(output_path: str | None = None, data_dir_path: str | None = None)
     # 按文件实际字节数报告（中文按 UTF-8 占 3 字节，len(html) 是字符数，会比真实文件小约 15%）
     _log("渲染", f"已写入 {_rel(out)}（{out.stat().st_size / 1024:.1f} KB）", "OK")
 
-    # 输出汇总 Excel —— 固定写 `<输出目录>/数据/`（2026-09-28 修复：不再跟随 --output，避免散落到数据目录外）
+    # 输出汇总 Excel —— 固定写 `<输出目录>/数据/`（不再跟随 --output，避免散落到数据目录外）
     _log("渲染", "生成汇总 Excel 数据表")
     data_dir.mkdir(parents=True, exist_ok=True)
     excel_path = data_dir / f"data_{today}.xlsx"

@@ -1,5 +1,5 @@
 # Author: naohua168 <bai_bai168@qq.com>
-"""运行期数据质量诊断 —— 丢弃行落盘 + 问题汇总（2026-09-29 新增）
+"""运行期数据质量诊断 —— 丢弃行落盘 + 问题汇总
 
 解决的三个"静默"问题：
   1. 客户白名单未命中的行**直接被丢弃**，只在控制台留一行日志 → 现在写进诊断报告
@@ -10,7 +10,7 @@
   3. 只校验 HTML、不校验交付物是否齐全 → 由 `scripts/verify_dashboard.py` 与 `bin/main.py` 收尾摘要承接。
 
 设计要点：
-  · **一次运行只产出一个文件**（用户口径 2026-09-29）：`output/数据校验/<年>/<月>/数据质量摘要_<运行号>.xlsx`，
+  · **一次运行只产出一个文件**：`output/数据校验/<年>/<月>/数据质量摘要_<运行号>.xlsx`，
     含 概览 / 问题清单 / 丢弃汇总 / 未匹配明细 4 个 sheet；
   · 各步骤在**独立子进程**里跑，所以步骤先把诊断落成中间件 JSON（`数据质量摘要_<步骤>_<运行号>.json`），
     由 `bin/main.py` 收尾 `finalize()` 合并成那唯一一个 xlsx 并删除中间件；单独跑某一步时该步骤自己合并；
@@ -307,7 +307,7 @@ def output_dir(config: dict | None = None, base_dir: Path | None = None) -> Path
         rel = (config or {}).get("输出", {}).get(DEFAULT_OUTPUT_DIR_NAME, DEFAULT_OUT_REL)
     except Exception:
         rel = DEFAULT_OUT_REL
-    # 按年月分类：<类别根目录>/<年>/<月>/（2026-11-06 用户要求）
+    # 按年月分类：<类别根目录>/<年>/<月>/
     return month_dir(root / str(rel))
 
 

@@ -11,7 +11,7 @@ CSS = r"""
    ═══════════════════════════════════════════════════════════════ */
 
 /* Overview 页背景：统一浅色，与其他页面保持一致 */
-/* 注意：这里不要再写 position（2026-10-10）—— id 选择器会压过 .page-leaving 的绝对定位，
+/* 注意：这里不要再写 position—— id 选择器会压过 .page-leaving 的绝对定位，
    导致从总览页切走时旧页留在文档流里、与新页上下排成两栏。定位统一由基础 .page 负责。 */
 .page#overview{
   background:transparent;
@@ -131,5 +131,185 @@ CSS = r"""
   .ov-cards{grid-template-columns:1fr;}
   .ov-kpi-bar{grid-template-columns:repeat(3,1fr);}
   .ov-keynums{grid-template-columns:repeat(2,1fr);}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   部门完成度矩阵 → 客户明细弹窗
+   冻结表头 / 首列 + 合计行吸底；部门主题色由 JS 写入 --dd-accent
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 矩阵行可点：整行 hover + 键盘可达 */
+.yoy-dept-table tr.dept-row{cursor:pointer;transition:background 0.15s;}
+.yoy-dept-table tr.dept-row:hover td{background:rgba(59,130,246,0.10);}
+.yoy-dept-table tr.dept-row:hover .td-name span{text-decoration:underline;}
+.yoy-dept-table tr.dept-row:focus-visible{outline:2px solid #2563eb;outline-offset:-2px;}
+
+/* 弹窗容器：放在 page 内，用 `.page#overview > .dept-modal` 压过 `.page#overview > *{position:relative}` */
+.page#overview > .dept-modal{
+  position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9000;
+  --dd-accent:#2563eb;
+}
+.page#overview > .dept-modal.open{display:flex;}
+.dept-modal-mask{position:absolute;inset:0;background:rgba(15,23,42,0.42);
+  backdrop-filter:blur(3px);opacity:0;transition:opacity 0.18s ease;}
+.page#overview > .dept-modal.open .dept-modal-mask{opacity:1;}
+
+.dept-modal-panel{
+  position:relative;width:min(1120px,94vw);max-height:88vh;display:flex;flex-direction:column;
+  overflow:hidden;background:#fff;border:1px solid rgba(15,23,42,0.08);border-radius:1rem;
+  box-shadow:0 1px 2px rgba(15,23,42,0.06),0 24px 64px rgba(15,23,42,0.28);
+  opacity:0;transform:translateY(10px) scale(0.985);
+  transition:opacity 0.22s ease,transform 0.28s cubic-bezier(0.16,1,0.3,1);
+}
+.page#overview > .dept-modal.open .dept-modal-panel{opacity:1;transform:none;}
+
+/* 顶部部门色条 */
+.dept-modal-accent{flex:0 0 auto;height:4px;
+  background:linear-gradient(90deg,var(--dd-accent) 0%,var(--dd-accent) 55%,rgba(203,213,225,0.5) 100%);}
+
+/* ── 头部 ── */
+.dept-modal-hd{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;
+  padding:0.8rem 1.1rem 0.55rem;}
+.dept-modal-title{display:flex;align-items:baseline;flex-wrap:wrap;gap:0.4rem;
+  font-size:1.0625rem;font-weight:800;letter-spacing:-0.01em;color:#0f172a;}
+.dept-modal-title .dd-dept{display:inline-flex;align-items:center;gap:0.35rem;}
+.dept-modal-title .dd-dot{width:0.5rem;height:0.5rem;border-radius:50%;
+  background:var(--dd-accent);box-shadow:0 0 0 3px rgba(37,99,235,0.12);}
+.dept-modal-title .dd-sub{font-size:0.75rem;font-weight:500;color:#64748b;}
+.dept-modal-x{display:grid;place-items:center;flex:0 0 auto;width:2rem;height:2rem;
+  border:none;border-radius:50%;background:#f1f5f9;color:#475569;cursor:pointer;
+  transition:background 0.15s,color 0.15s,transform 0.15s;}
+.dept-modal-x:hover{background:#e2e8f0;color:#0f172a;}
+.dept-modal-x:active{transform:scale(0.94);}
+.dept-modal-x:focus-visible{outline:2px solid #2563eb;outline-offset:2px;}
+
+/* ── KPI 条（收入 / 回款各一行）── */
+.dept-kpi{display:flex;flex-direction:column;gap:0.35rem;padding:0.55rem 1.1rem 0.75rem;
+  background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);border-bottom:1px solid #eef2f7;}
+.dk-row{display:grid;grid-template-columns:2.2rem 1fr 1fr 1fr 1fr;align-items:center;gap:0.5rem;
+  padding:0.45rem 0.7rem;border:1px solid #eef2f7;border-radius:0.6rem;background:#f8fafc;}
+.dk-row.inc{background:linear-gradient(90deg,#f2f8ff,#f8fafc);border-color:#e0edff;}
+.dk-row.pay{background:linear-gradient(90deg,#f1fbf6,#f8fafc);border-color:#dcf3e6;}
+.dk-tag{font-size:0.6875rem;font-weight:800;text-align:center;letter-spacing:0.02em;}
+.dk-row.inc .dk-tag{color:#1d4ed8;}
+.dk-row.pay .dk-tag{color:#047857;}
+.dk-item{display:flex;flex-direction:column;gap:0.1rem;min-width:0;}
+.dk-item i{font-style:normal;font-size:0.6875rem;font-weight:600;color:#64748b;}
+.dk-item b{font-size:1.0625rem;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;
+  letter-spacing:-0.01em;white-space:nowrap;}
+.dk-item b.is-gap{color:#dc2626;}
+.dk-item b.is-ok{color:#16a34a;}
+
+/* ── 工具条 ── */
+.dept-modal-tools{display:flex;align-items:center;gap:0.6rem;padding:0 1.1rem 0.6rem;}
+.dd-search{position:relative;display:flex;align-items:center;flex:0 0 15rem;
+  border:1px solid #cbd5e1;border-radius:0.5rem;background:#fff;
+  transition:border-color 0.15s,box-shadow 0.15s;}
+.dd-search:focus-within{border-color:#93c5fd;box-shadow:0 0 0 3px rgba(147,197,253,0.35);}
+.dd-search svg{flex:0 0 auto;margin-left:0.5rem;color:#94a3b8;}
+.dd-search input{flex:1;min-width:0;border:none;outline:none;background:transparent;
+  padding:0.35rem 0.5rem;font-size:0.8125rem;color:#0f172a;}
+.dd-unit{font-size:0.6875rem;color:#94a3b8;}
+.dept-modal-count{margin-left:auto;font-size:0.75rem;color:#64748b;
+  font-variant-numeric:tabular-nums;}
+
+/* ── 表格：冻结表头 + 首列 + 合计吸底 ── */
+.dept-modal-body{flex:1;min-height:0;overflow:auto;border-top:1px solid #eef2f7;padding-bottom:0.6rem;}
+.dept-detail-table{width:100%;min-width:880px;table-layout:fixed;border-collapse:separate;
+  border-spacing:0;font-size:0.8125rem;}
+.dept-detail-table col.c-cust{width:27%;}
+.dept-detail-table col.c-num{width:12.9%;}
+.dept-detail-table col.c-rate{width:10.7%;}
+
+.dept-detail-table thead th{
+  position:sticky;top:0;z-index:3;padding:0.45rem 0.55rem;text-align:center;white-space:nowrap;
+  font-size:0.75rem;font-weight:700;line-height:1.3;letter-spacing:0.01em;
+  background:#0f172a;color:#e2e8f0;
+  box-shadow:inset 0 -1px 0 rgba(255,255,255,0.12),0 2px 6px rgba(15,23,42,0.10);
+}
+.dept-detail-table thead th.th-name{left:0;z-index:4;padding-left:1rem;text-align:left;
+  font-size:0.8125rem;}
+.dept-detail-table thead th .th-grp{display:block;margin-bottom:1px;
+  font-size:0.625rem;font-weight:600;letter-spacing:0.08em;opacity:0.72;}
+.dept-detail-table thead th.grp-inc{background:#12305c;color:#dbeafe;}
+.dept-detail-table thead th.grp-pay{background:#0d3b33;color:#d1fae5;}
+
+.dept-detail-table tbody td{padding:0.42rem 0.6rem;text-align:right;color:#334155;
+  font-variant-numeric:tabular-nums;border-bottom:1px solid #f1f5f9;}
+.dept-detail-table tbody tr:nth-child(even) td{background:#fafbfd;}
+.dept-detail-table tbody td.dd-cust{
+  position:sticky;left:0;z-index:2;text-align:left;padding-left:0.9rem;
+  font-weight:600;line-height:1.35;color:#0f172a;background:#fff;
+  box-shadow:inset -1px 0 0 #eef2f7;
+  white-space:normal;word-break:break-word;   /* 长客户名换行显示，不裁字 */
+}
+.dept-detail-table tbody tr:nth-child(even) td.dd-cust{background:#fafbfd;}
+.dept-detail-table tbody tr:hover td{background:#eff6ff;}
+.dept-detail-table tbody tr:hover td.dd-cust{background:#e8f1ff;}
+
+/* 客户名前的「展开子公司」按钮（无子公司时占位对齐） */
+.dd-toggle{display:inline-flex;align-items:center;justify-content:center;
+  width:1.1rem;height:1.1rem;margin-right:0.35rem;padding:0;vertical-align:-0.15rem;
+  border:1px solid #cbd5e1;border-radius:0.25rem;background:#fff;color:#64748b;
+  cursor:pointer;transition:background 0.15s,color 0.15s,border-color 0.15s;}
+.dd-toggle:hover{background:#eff6ff;border-color:#93c5fd;color:#2563eb;}
+.dd-toggle:focus-visible{outline:2px solid #2563eb;outline-offset:1px;}
+.dd-toggle svg{transition:transform 0.18s ease;}
+.dd-toggle.is-open svg{transform:rotate(90deg);}
+.dd-toggle.is-empty{visibility:hidden;border-color:transparent;background:none;}
+.dd-name{vertical-align:middle;}
+.dd-count{margin-left:0.4rem;font-size:0.625rem;font-weight:600;color:#94a3b8;
+  white-space:nowrap;}
+
+/* 子公司子行：默认收起，点 ▸ 展开 */
+.dept-detail-table tbody tr.dd-subrow{display:none;}
+.dept-detail-table tbody tr.dd-subrow.is-open{display:table-row;}
+.dept-detail-table tbody tr.dd-subrow td{background:#f8fafc;color:#475569;
+  border-bottom:1px dashed #e8eef6;}
+.dept-detail-table tbody tr.dd-subrow:hover td{background:#eef4ff;}
+.dept-detail-table tbody tr.dd-subrow td.dd-cust{padding-left:2.1rem;font-weight:500;
+  background:#f8fafc;color:#334155;}
+.dept-detail-table tbody tr.dd-subrow:hover td.dd-cust{background:#e8f1ff;}
+.dd-tree{margin-right:0.35rem;color:#cbd5e1;font-weight:400;}
+.dept-detail-table td.dd-strong{font-weight:700;}
+
+/* 完成度：细进度条 + 百分比（比大色块干净，也不吃列宽） */
+.dept-detail-table td.dd-rate{padding-right:0.7rem;text-align:right;white-space:nowrap;}
+.dept-detail-table td.dd-rate.is-empty{text-align:center;color:#cbd5e1;}
+.dd-bar{position:relative;display:inline-block;width:calc(100% - 2.3rem);height:0.375rem;
+  vertical-align:middle;border-radius:99px;background:#eef2f7;overflow:hidden;}
+.dd-bar > span{display:block;height:100%;border-radius:99px;transition:width 0.3s ease;}
+.dd-bar > span.g{background:linear-gradient(90deg,#4ade80,#16a34a);}
+.dd-bar > span.o{background:linear-gradient(90deg,#fbbf24,#f59e0b);}
+.dd-bar > span.l{background:#fdba74;}
+.dd-bar > span.z{background:#cbd5e1;}
+.dept-detail-table td.dd-rate b{display:inline-block;min-width:2rem;margin-left:0.35rem;
+  text-align:right;font-size:0.75rem;font-weight:800;}
+.dept-detail-table td.dd-rate b.g{color:#15803d;}
+.dept-detail-table td.dd-rate b.o{color:#b45309;}
+.dept-detail-table td.dd-rate b.l{color:#c2410c;}
+.dept-detail-table td.dd-rate b.z{color:#64748b;}
+
+/* 合计行：表尾深色（不吸底，避免盖住最后一行客户；总计在顶部 KPI 条里已常驻） */
+.dept-detail-table tfoot td{
+  padding:0.6rem;text-align:right;font-weight:800;
+  color:#f8fafc;background:#0f172a;font-variant-numeric:tabular-nums;
+}
+.dept-detail-table tfoot td.dd-cust{left:0;z-index:3;text-align:left;padding-left:1rem;
+  border-right:1px solid rgba(148,163,184,0.25);}
+.dept-detail-table tfoot td.dd-rate b{color:#fff;}
+.dept-detail-table tfoot .dd-bar{background:rgba(148,163,184,0.3);}
+
+.dept-detail-table .dd-empty{text-align:center;color:#94a3b8;padding:2rem 0;}
+
+body.dd-lock{overflow:hidden;}
+
+@media (prefers-reduced-motion:reduce){
+  .dept-modal-mask,.dept-modal-panel{transition:none;}
+}
+@media (max-width:1180px){
+  .dept-modal-panel{width:96vw;}
+  .dd-search{flex:1 1 auto;}
+  .dk-row{grid-template-columns:1fr 1fr;}
 }
 """

@@ -29,12 +29,32 @@ def _sales_modal_css() -> str:
 #sc3-inc-matrix .ca, #sc3-pay-matrix .ca,
 #sc3-inc-matrix .ctv, #sc3-pay-matrix .ctv { font-size: 0.625rem; }
 
-/* 卡片1 布局 */
-.card1-flex{display:flex;gap:1.5rem;padding:0.75rem 1rem} .card1-col{flex:1;min-width:0}
-.card1-col-title{font-weight:700;font-size:0.8125rem;margin-bottom:0.5rem;padding-bottom:0.375rem;border-bottom:0.125rem solid var(--border);color:var(--text)}
-.card1-col:nth-child(1) .card1-col-title{border-color:#3b82f6} .card1-col:nth-child(2) .card1-col-title{border-color:#22c55e}
-.mini-rate.summary-rate{border-bottom:0.125rem solid var(--border);padding-bottom:0.375rem;margin-bottom:0.5rem}
-.summary-rate .bar{height:1rem} .summary-rate .bar-pct{font-weight:700}
+/* 卡片1 布局：左右两栏 + 中间竖分隔 */
+.card1-flex{display:flex;gap:0;padding:0.75rem 0.25rem;}
+.card1-col{flex:1;min-width:0;padding:0 1rem;}
+.card1-col + .card1-col{border-left:1px solid #eef2f7;}
+/* 栏标题：左侧色条 + 细分隔线（收入蓝 / 回款绿） */
+.card1-col-title{
+  position:relative;display:flex;align-items:center;gap:0.4rem;
+  margin:0 0 0.5rem;padding:0 0 0.4rem 0.6rem;
+  font-size:0.8125rem;font-weight:800;letter-spacing:0.01em;color:#0f172a;
+  border-bottom:1px solid #eef2f7;
+}
+.card1-col-title::before{
+  content:"";position:absolute;left:0;top:0.15rem;width:3px;height:0.85rem;
+  border-radius:2px;background:#3b82f6;
+}
+.card1-col:nth-child(2) .card1-col-title::before{background:#22c55e;}
+/* 合计行：浅底 + 粗下边，和明细拉开层级 */
+.mini-rate.summary-rate{
+  margin-bottom:0.35rem;padding:0.45rem 0.5rem;
+  background:#f8fafc;border-radius:0.4rem;
+  border-bottom:0.125rem solid #e2e8f0;
+}
+.summary-rate .bar{height:1rem;}
+.summary-rate .bar-pct{font-size:0.6875rem;}
+.summary-rate .sales-name,
+.summary-rate .val{color:#0f172a;font-weight:800;}
 
 /* 可点击销售行 */
 .sales-clickable { cursor: pointer; border-radius: 0.25rem; transition: background 0.15s; }
@@ -48,8 +68,7 @@ def _sales_modal_css() -> str:
 }
 
 /* 抽屉遮罩 — 半透明，点击关闭
-   visibility 一起管：万一有别的动效误改 opacity，遮罩也不会把整页压黑
-   （2026-10-10 修：入场浮现动画曾把这张全屏黑遮罩淡入 → 切到本页时闪黑） */
+   visibility 一起管：万一有别的动效误改 opacity，遮罩也不会把整页压黑 */
 .sales-modal-overlay {
     display: block; position: fixed; inset: 0; z-index: 20000;
     background: rgba(0,0,0,0.35);

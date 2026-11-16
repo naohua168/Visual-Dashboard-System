@@ -39,7 +39,7 @@ class DepartmentMapper:
         # 内部交易排除名单（直接数组格式）
         excluded = mapping_data.get("excluded_internal_companies", [])
         self.excluded_companies = excluded if isinstance(excluded, list) else excluded.get("companies", [])
-        # 匹配键集合：全角半角/空白差异不影响排除判定（2026-09-29）
+        # 匹配键集合：全角半角/空白差异不影响排除判定
         self.excluded_keys = key_set(self.excluded_companies)
 
     def map_income_dept(self, dept_name):

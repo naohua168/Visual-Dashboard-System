@@ -156,7 +156,7 @@ def _sorted_customers(tgt_p: pd.DataFrame,
     3. **优先展示母公司**（filt.priority 配置）→ 无论如何都展示（即使无指标无实际）
     4. 其余（无指标 且 无实际）→ 不展示
 
-    说明（2026-10-29 用户口径）：无指标但有数据的客户一律展示，负数也展示 ——
+    说明：无指标但有数据的客户一律展示，负数也展示 ——
     否则负数行被静默丢弃后，矩阵合计行会比部门卡/数据总表偏大。
 
     收入/回款分开判定（调用方分别传入各自的 piv/tgt）。
@@ -201,7 +201,7 @@ def _sorted_customers(tgt_p: pd.DataFrame,
 
     # ③ 优先展示母公司：无论如何都展示（即使无指标无实际）
     # 注意：这里必须按**配置书写顺序**遍历（get_priority_names_ordered）。
-    # 直接迭代 set 会随进程哈希种子变化 → 同一份配置每次渲染的客户行序都不同（2026-10-10 修）。
+    # 直接迭代 set 会随进程哈希种子变化 → 同一份配置每次渲染的客户行序都不同。
     if filt and filt.has_priority() and base_dir:
         cs_keys = key_set(cs)  # 比较走匹配键（全角半角/空白差异不算差异）
         for c in filt.get_priority_names_ordered(base_dir):
@@ -261,7 +261,7 @@ def _resplit_priority(all_custs: list[str], base_dir: Path,
                       tgt: pd.DataFrame | None = None) -> tuple[list[str], list[str]]:
     """母公司归拢后重新拆分「主表 / 折叠（查看全部）」
 
-    **规则优先级（2026-09-21 用户口径）**：
+    **规则优先级**：
     1. **有「优先展示」配置** → 按优先展示折叠：名单内进主表（含非指标客户），其余折叠
     2. **无「优先展示」配置** → 按指标折叠：**非指标客户（该口径指标合计=0）一律折叠**，
        主表 = 指标客户（顺序 = 指标表行序）；`max_rows>0` 只截断指标客户（销售拆分键不截断）

@@ -1,5 +1,5 @@
 # Author: naohua168 <bai_bai168@qq.com>
-"""Excel 落盘防护 —— 统一处理"文件正被 Excel/WPS 打开"（2026-09-29 新增）
+"""Excel 落盘防护 —— 统一处理"文件正被 Excel/WPS 打开"
 
 Windows 下文件被 Excel 打开时写入会抛 `PermissionError`（WinError 13），
 以前只有收入/回款清洗层做了友好提示，其它落盘点（销售拆分、年基线、汇总表、渲染 Excel）

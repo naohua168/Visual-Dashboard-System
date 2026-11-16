@@ -77,7 +77,7 @@ class SalesPage(BaseRenderer):
             return sorted(all_sales, key=_key, reverse=True)
 
         def _col(by_sales, title, total_act, total_tgt, tgt_dict, metric):
-            # 合计完成率口径（2026-09-29 修）：分子只算**有指标**的销售 —— 否则 0 指标销售
+            # 合计完成率口径：分子只算**有指标**的销售 —— 否则 0 指标销售
             # 的实际金额会把合计完成率顶到 >100%（与个人行口径不一致）。
             # 显示的「实际合计」仍是全部实际金额，不受影响。
             act_for_rate = sum(float(by_sales.get(str(s), 0) or 0)
@@ -100,13 +100,14 @@ class SalesPage(BaseRenderer):
                         bar_cls = 'level-1'
                     bar_w = min(rate * 100, 100)
                     bar_html = (
-                        f'<div class="bar"><div class="bar-fill {bar_cls}" style="width:{bar_w:.1f}%">'
-                        f'<span class="bar-pct">{pct}%</span></div></div>'
+                        f'<div class="bar"><div class="bar-fill {bar_cls}" style="width:{bar_w:.1f}%"></div></div>'
+                        f'<span class="rate-tag {bar_cls}">{pct}%</span>'
                     )
                     tgt_text = f'/{fmt_wan(ti)}'
                 else:
                     # 0 指标：进度条空、百分比 "—"（分母为 0 无法计算完成率）
-                    bar_html = '<div class="bar"><div class="bar-fill" style="width:0%"><span class="bar-pct">—</span></div></div>'
+                    bar_html = ('<div class="bar"><div class="bar-fill" style="width:0%"></div></div>'
+                                '<span class="rate-tag is-empty">—</span>')
                     tgt_text = '/—'
                 rows += (
                     f'<div class="mini-rate sales-clickable"'
@@ -115,17 +116,22 @@ class SalesPage(BaseRenderer):
                     f' title="点击查看 {s_name} 客户达成详情">'
                     f'<span class="sales-name">{s_name}</span>'
                     f'{bar_html}'
-                    f'<span class="val">{fmt_wan(act)}</span>'
+                    f'<span class="val{" neg" if act < 0 else ""}">{fmt_wan(act)}</span>'
                     f'<span class="tgt">{tgt_text}</span>'
                     f'</div>'
                 )
             # 合计行（有实际无指标 → 100%）
             total_rate = (act_for_rate / total_tgt) if total_tgt else (1.0 if total_act > 0 else 0.0)
             rpct = round(total_rate * 100)
+            # 合计条也按完成率取色阶（原先固定绿色，69% 显示成绿条会误导）
+            tb_cls = ("level-1" if total_rate < 0.3 else
+                      "level-2" if total_rate < 0.5 else
+                      "level-3" if total_rate < 0.8 else "level-4")
             summary = (
                 f'<div class="mini-rate summary-rate">'
                 f'<span class="sales-name" style="font-weight:700">合计</span>'
-                f'<div class="bar"><div class="bar-fill level-4" style="width:{min(total_rate*100,100):.1f}%"><span class="bar-pct">{rpct}%</span></div></div>'
+                f'<div class="bar"><div class="bar-fill {tb_cls}" style="width:{min(total_rate*100,100):.1f}%"></div></div>'
+                f'<span class="rate-tag {tb_cls}">{rpct}%</span>'
                 f'<span class="val">{fmt_wan(total_act)}</span>'
                 f'<span class="tgt">/{fmt_wan(total_tgt)}</span>'
                 f'</div>'

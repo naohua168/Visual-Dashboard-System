@@ -55,7 +55,7 @@ def enable_hidpi() -> None:
 
     ⚠️ 关键：`SetProcessDpiAwarenessContext` 的参数是 **HANDLE**，-4 必须包成 `c_void_p`。
     直接传 int 时 ctypes 会**静默失败**（返回 False、不抛异常），进程仍是 unaware →
-    150% 缩放下整个窗口被系统当位图拉伸，画面整体发糊（2026-10-19 实测）。
+    150% 缩放下整个窗口被系统当位图拉伸，画面整体发糊。
     """
     if os.name != "nt":
         return
@@ -289,7 +289,7 @@ class DashboardApp:
         self.status_labels[key].configure(text=text, foreground=GREEN if ok else ORANGE)
 
     def _latest_board(self) -> Path | None:
-        # 目录按 <类别>/<年>/<月>/ 分层（2026-11-06），必须递归找
+        # 目录按 <类别>/<年>/<月>/ 分层，必须递归找
         return latest_file(BASE_DIR / "output" / "看板", "看板_*.html")
 
     # ────────────────────────────── 运行 ──────────────────────────────
@@ -335,7 +335,7 @@ class DashboardApp:
             self.queue.put(("done", rc))
 
     def _on_make_report(self):
-        """按需生成销售完成度表（可指定数据版本；2026-11-06 起不在 7 步主管线内）"""
+        """按需生成销售完成度表（可指定数据版本；不在 7 步主管线内）"""
         if self.worker is not None and self.worker.is_alive():
             messagebox.showinfo("正在运行", "等当前任务结束再生成。")
             return

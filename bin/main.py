@@ -38,13 +38,13 @@ from engine.core.utils import rel_path  # noqa: E402  日志统一显示相对�
 LOGS_DIR = BASE_DIR / "logs"
 
 # 本次运行号（与日志文件同名）：传给各步骤子进程，让它们只写中间件、
-# 由收尾统一合并成「数据校验目录唯一一份报告」（2026-09-29 用户口径）
+# 由收尾统一合并成「数据校验目录唯一一份报告」
 RUN_ID_ENV = "VD_RUN_ID"
 CURRENT_RUN_ID = ""
 
 
 # ──────────────────────────────────────────────────────────────
-# 步骤定义（7 步；销售完成度表已改为按需产物，2026-11-06）
+# 步骤定义（7 步；销售完成度表已改为按需产物）
 # ──────────────────────────────────────────────────────────────
 # 每个步骤对应一个 subprocess 命令（python -m engine.xxx.run [--type=...] 或 python scripts/xxx.py）
 CONFIG_EXCEL = "config/配置编辑器.xlsx"
@@ -105,7 +105,7 @@ STEPS = [
 STEP_KEYS = [s["key"] for s in STEPS]
 STEPS_BY_KEY = {s["key"]: s for s in STEPS}
 
-# 按需步骤：不在 7 步主流程内，但保留命令行入口（2026-11-06）
+# 按需步骤：不在 7 步主流程内，但保留命令行入口
 #   · 只支持 `--step=<key>`，不参与 `--from/--to` 区间，全量运行也不会带上；
 #   · 历史脚本/快捷方式里的 `bin/main.py --step=report` 继续可用（兼容保留）。
 STANDALONE_STEPS = [
@@ -121,7 +121,7 @@ STANDALONE_STEPS = [
 STANDALONE_KEYS = [s["key"] for s in STANDALONE_STEPS]
 ALL_STEPS_BY_KEY = {**STEPS_BY_KEY, **{s["key"]: s for s in STANDALONE_STEPS}}
 
-# 「自动同步」两步必须排在数据处理之前（2026-11-02 用户要求）：
+# 「自动同步」两步必须排在数据处理之前：
 #   scan   = 广东自有客户预扫描（运营端 + 广东公司 → 写回销售归属）
 #   config = 配置编辑器 → JSON，并顺带把归属表客户补进客户名单
 SYNC_STEP_KEYS = ("scan", "config")

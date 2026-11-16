@@ -5,7 +5,7 @@
 拼接顺序见 processors/static/js/__init__.py，改动内容请只在本文件里追加。
 """
 
-JS = r"""/* 页面切换 — 交叉淡化 + 页内逐块浮现（2026-10-10 定稿，同日二轮性能调优）
+JS = r"""/* 页面切换 — 交叉淡化 + 页内逐块浮现（能调优）
    做法：
      1) 新页先挂到旧页「下面」（旧页绝对定位 + 不透明底色盖在上面）
      2) 旧页 240ms 淡出 → 新页被逐渐揭开，全过程没有空白帧（此前"淡出→换内容→淡入"中间全白 = 白屏）
@@ -47,14 +47,14 @@ function showPage(id, instant){
     host.appendChild(node);
     if(typeof initTableCollapse==='function') initTableCollapse();   // 同帧折叠，动画途中不改版面
     // 顶层区块逐个浮现（"逐渐加载"）：只给最上面的 4 块，0/45/90/135ms 错峰。
-    // 为什么限量（2026-10-10 二轮调优）：被动画的区块每帧都要重绘，
+    // 为什么限量：被动画的区块每帧都要重绘，
     // 本项目每页都是"超宽密集表"，动 15+ 个块等于每帧重绘整页 → 切换明显掉帧；
     // 前 4 块正好是首屏可见的横幅/指标/头图，下面的大表格直接出现更稳也更快。
     if(newEl && !instant && !reduce){
       var n=0;
       [].slice.call(newEl.children).forEach(function(el){
         if(n>=4) return;
-        // 遮罩/弹窗/抽屉等覆盖层不参与浮现（2026-10-10）：
+        // 遮罩/弹窗/抽屉等覆盖层不参与浮现：
         // 它们默认 opacity:0 靠类名显隐，被淡入就会把整页压黑 —— 销售页那张全屏黑遮罩
         // （#salesModalOverlay rgba(0,0,0,.35)）就是这样被"淡入"的，切页时页面突然变黑。
         var cls=(el.className&&typeof el.className==='string')?el.className:'';

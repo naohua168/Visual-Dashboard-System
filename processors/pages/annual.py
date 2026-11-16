@@ -73,7 +73,7 @@ class AnnualPage(BaseRenderer):
             f"<th>{d}</th>" for d in DEPARTMENTS
         ) + '<th class="th-name th-total">合计</th></tr>'
 
-        # 横合计行（全量透视表求和，含折叠/未展示客户 → 与部门卡、数据总表一致，2026-10-29 口径）
+        # 横合计行（全量透视表求和，含折叠/未展示客户 → 与部门卡、数据总表一致）
         tc = [f'<td class="td-name td-total">合计</td>']
         for d in DEPARTMENTS:
             a = float(piv[d].sum()) if piv is not None and d in piv.columns else 0.0

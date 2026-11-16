@@ -66,7 +66,6 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
 
     # 保留原始数据（未 consolidate）供子公司弹窗使用
     # 季度累计为空 = 本季度还没有数据（财务端当月未更新 + 运营端未出季度内月份）。
-    # 2026-10-09 起不再回退到「当年累计」：回退会把全年累计当季报（如 2026Q4 初期
     # 季度指标 2.1 亿 vs 全年累计 6.9 亿 → 328%），与月度页「无数据即空表」口径一致。
     EMPTY_COLS = ["事业部", "金额", "客户", "法人主体", "日期"]
     q_inc_raw = data.quarterly_income
@@ -142,7 +141,7 @@ def prepare_quarterly_data(data, base_dir: Path) -> QuarterlyData:
     d.pay_piv, d.pay_tgt_grouped, all_pay = _group_by_parent(
         d.pay_piv, d.pay_tgt_grouped, d.pay_customers + d.pay_rest, base_dir
     )
-    # 非指标客户一律折叠到「查看全部」（2026-09-21 用户口径）
+    # 非指标客户一律折叠到「查看全部」
     d.inc_customers, d.inc_rest = _resplit_priority(
         all_inc, base_dir, quarterly_filter, tgt=d.inc_tgt_grouped
     )

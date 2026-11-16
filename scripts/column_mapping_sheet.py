@@ -8,7 +8,7 @@
 读写约定：
   - 一行 = 一个来源的一个标准字段
   - 列   = 数据源 | 来源 | 标准字段 | 候选列名 | 必填取值 | 当前命中(只读) | 说明
-  - **候选与取值都用「/」分隔**（2026-10-29 用户口径），如
+  - **候选与取值都用「/」分隔**，如
     `创建时间/创建日期/审核日期`、`已审核/已收款`
   - 候选列名上限 **3 个**；超过 3 个直接报错，提示删减（不做静默截断）
   - 列名本身含半角「/」时写成 `\\/`（转义），解析后还原为字面量 `/`
@@ -71,14 +71,31 @@ HIT_LOG_DIR = BASE_DIR / "logs"
 BACKUP_DIR = BASE_DIR / "logs"
 
 MAP_SHEET_NAME = "字段映射"
+# 年基线（往年同比）在 sheet 里显示的数据源名 —— 对应 JSON **顶层** `年基线数据`，
+# 不在 `数据源` 之下
+YEARLY_SRC = "年基线数据"
 KEY_COLS = ("数据源", "来源", "标准字段")
 CAND_COL = "候选列名"       # 多个候选用「/」分隔（最多 3 个）；列名含 / 时写 \/
 VALUE_COL = "必填取值"      # 保留取值（单据状态=已审核 / 委托类型=外部结算 …），多值用「/」分隔
+DIRECTION_COL = "取值方向"   # 只读：保留 / 剔除 / 只取 / —（一眼分清「取」还是「排除」）
 HIT_COL = "当前命中(只读)"
 NOTE_COL = "说明"
-CAND_MAX = 3  # 候选列上限（2026-10-29 用户口径：每字段最多 3 个候选）
+CAND_MAX = 3  # 候选列上限（每字段最多 3 个候选）
 SEP = "/"
-MAP_HEADERS = list(KEY_COLS) + [CAND_COL, VALUE_COL, HIT_COL, NOTE_COL]
+MAP_HEADERS = list(KEY_COLS) + [CAND_COL, VALUE_COL, DIRECTION_COL, HIT_COL, NOTE_COL]
+
+# 「取值方向」显示文本：把内部方向词翻译成使用者一眼能看懂的语义
+#   保留 = 只取这些值，其余（含空值）剔除
+#   剔除 = 命中即整行剔除
+#   只取 = 部门专用：只取这些事业部
+#   —    = 该字段没填取值（不限制 / 不过滤）
+DIRECTION_TEXT: dict[str, str] = {
+    "保留": "保留",
+    "剔除": "剔除",
+    "内置剔除": "剔除",
+    "事业部": "只取",
+}
+DIRECTION_EMPTY = "—"
 
 # 「必填取值」写回哪个配置键 + 方向（保留=命中即留；剔除=命中即删；事业部=只取这些事业部）
 #   默认落到 `保留取值`（{字段: [值...]}）；其余落到同级的平铺列表键：
@@ -115,6 +132,8 @@ HIT_LABELS: dict[tuple[str, str], list[str]] = {
     ("财务端", "南方韶关"): ["南方韶关收入", "南方韶关回款"],
     ("运营端", "收入"): ["运营端收入"],
     ("运营端", "回款"): ["运营端回款"],
+    (YEARLY_SRC, "收入"): ["年基线收入"],
+    (YEARLY_SRC, "回款"): ["年基线回款"],
 }
 
 
@@ -133,7 +152,11 @@ def _cell(value) -> str:
 
 
 def _iter_sources(cfg: dict):
-    """遍历配置中的数据源：(数据源名, 来源名, 来源配置dict)"""
+    """遍历配置中的数据源：(数据源名, 来源名, 来源配置dict)
+
+    顺序：`数据源` 下各来源 → 顶层 `年基线数据`（往年同比基线，收入/回款）。
+    年基线是**顶层键**而不是 `数据源` 的子项，所以单独遍历。
+    """
     for src, obj in (cfg.get("数据源") or {}).items():
         if not isinstance(obj, dict):
             continue
@@ -141,6 +164,22 @@ def _iter_sources(cfg: dict):
             if not isinstance(spec, dict) or "列映射" not in spec:
                 continue
             yield src, name, spec
+
+    yearly = cfg.get(YEARLY_SRC) or {}
+    if isinstance(yearly, dict):
+        for name, spec in yearly.items():
+            if not isinstance(spec, dict) or "列映射" not in spec:
+                continue
+            yield YEARLY_SRC, name, spec
+
+
+def _spec_of(cfg: dict, src: str, name: str) -> dict | None:
+    """按 sheet 的「数据源/来源」定位配置节点（年基线在顶层，其余在 `数据源` 下）"""
+    if src == YEARLY_SRC:
+        node = (cfg.get(YEARLY_SRC) or {}).get(name)
+    else:
+        node = (cfg.get("数据源") or {}).get(src, {}).get(name)
+    return node if isinstance(node, dict) else None
 
 
 def dept_value_names(cfg: dict) -> list[str]:
@@ -400,16 +439,21 @@ def update_column_mapping(mapping: dict, dry_run: bool = False,
     changed: list[str] = []
     for src, sources in mapping.items():
         for name, fields in sources.items():
-            old = cfg["数据源"][src][name].get("列映射", {})
-            if old != fields:
+            target = _spec_of(cfg, src, name)
+            if target is None:
+                raise ValueError(f"cleaning_config.json 里找不到来源: {src}/{name}"
+                                 f"（新增来源请先补 列映射 再刷新「{MAP_SHEET_NAME}」sheet）")
+            if target.get("列映射", {}) != fields:
                 changed.append(f"{src}.{name}")
-            cfg["数据源"][src][name]["列映射"] = fields
+            target["列映射"] = fields
 
     # 必填取值（保留取值 / 排除标记值）；kept_values=None 时不动（历史工作簿无该列）
     if kept_values is not None:
         for src, sources in mapping.items():
             for name in sources:
-                target = cfg["数据源"][src][name]
+                target = _spec_of(cfg, src, name)
+                if target is None:  # 上面已报错，这里只是保底
+                    continue
                 raw = kept_values.get(src, {}).get(name, {}) or {}
                 new_kept: dict[str, list[str]] = {}
                 new_flat: dict[str, list[str]] = {}
@@ -528,6 +572,9 @@ def build_mapping_rows(cfg: dict, hits: dict[str, dict[str, str]] | None = None)
                 raw_cfg = spec.get(val_key) if val_key in FLAT_VALUE_KEYS else kept.get(field)
                 vals = [str(v).strip() for v in (raw_cfg or []) if str(v).strip()]
             notes: list[str] = []
+            if src == YEARLY_SRC:
+                notes.append("往年同比基线：日期由「时间配置」的年基线年份/月份生成（不读源表日期列），"
+                             "不过客户白名单、金额单位为元")
             if len(all_cands) > CAND_MAX:
                 notes.append(f"⚠️ 候选已截断为 {CAND_MAX} 个（原 {len(all_cands)} 个）")
             if len(cands) == 1:
@@ -553,9 +600,34 @@ def build_mapping_rows(cfg: dict, hits: dict[str, dict[str, str]] | None = None)
                 notes.append("必填取值为空 = 不限制（取全部事业部）")
             elif field in TIME_FIELDS:
                 notes.append("时间范围由「时间配置」sheet 控制，此列留空即可")
-            row = [src, name, field, join_items(cands), join_items(vals), hit, "；".join(notes)]
+            # 「取值方向」：没填取值就显示 —（不限制），否则翻译成 保留 / 剔除 / 只取
+            dir_text = DIRECTION_TEXT.get(direction, direction) if vals else DIRECTION_EMPTY
+            row = [src, name, field, join_items(cands), join_items(vals), dir_text,
+                   hit, "；".join(notes)]
             rows.append(row)
     return rows
+
+
+def value_prompt(field: str, direction: str) -> tuple[str, str]:
+    """「必填取值」单元格的输入提示（点选单元格即弹出）——说清这个字段是「取」还是「排除」
+
+    2026-11-10 用户要求：说明要写在配置文件里，不要只写在文档/聊天里。
+    """
+    if direction == "剔除":
+        return ("【剔除】命中即整行剔除",
+                "如 排除标记=√（期初/历史迁移行）、内部交易=是；"
+                "多值用「/」分隔（OR）；清空 = 不过滤")
+    if direction == "只取":
+        return ("【只取】只保留这些事业部（其余丢弃）",
+                "简称/全称都行（先过部门映射归一）；多值用「/」分隔；清空 = 不限制")
+    if direction == "保留":
+        return ("【保留】只取这些值，其余（含空值）剔除",
+                "如 单据状态=已审核、委托类型=外部结算；多值用「/」分隔；清空 = 不过滤")
+    if field in TIME_FIELDS:
+        return ("【不限制】时间不在这里配",
+                "时间范围由「时间配置」sheet 控制，此列留空即可")
+    return ("【不限制】此字段没填取值",
+            "留空 = 清洗时不限制 / 不过滤；需要约束时按左侧「取值方向」列的提示填")
 
 
 def attach_mapping_sheet(wb, cfg: dict, hits: dict | None = None):
@@ -569,8 +641,10 @@ def attach_mapping_sheet(wb, cfg: dict, hits: dict | None = None):
     ws = wb.create_sheet(MAP_SHEET_NAME, insert_at)
 
     banner(ws, "源表列名变了就在这里改「候选列名」——多个候选用「/」分隔、按先后尝试（最多 3 个）→ 保存后运行 python bin/main.py。"
-               "「必填取值」= 该字段要求的取值（如 已审核/外部结算；部门=取哪些事业部；内部交易=是），"
-               "多值用「/」，清空=不限制/不过滤；列名本身含「/」时写 \\/；「当前命中(只读)」仅供参考。",
+               "「年基线数据」= 往年同比基线（data/raw/往年收入数据、往年回款数据）。"
+               "「必填取值」= 该字段要求的取值（如 已审核/外部结算；部门=取哪些事业部；内部交易=是），多值用「/」，清空=不限制/不过滤。"
+               "「取值方向」(只读，自动判断)=保留（只取这些值、其余剔除）/ 剔除（命中即整行剔除）/ 只取（只取这些事业部）/ —（未填=不限制）。"
+               "列名本身含「/」时写 \\/；「当前命中(只读)」仅供参考。",
            len(MAP_HEADERS))
     header_row(ws, MAP_HEADERS, row=2)
 
@@ -581,13 +655,34 @@ def attach_mapping_sheet(wb, cfg: dict, hits: dict | None = None):
             data_cell(
                 ws, r_off, col, val,
                 editable=head in (CAND_COL, VALUE_COL),
-                readonly=head in KEY_COLS or head == HIT_COL,
+                readonly=head in KEY_COLS or head in (DIRECTION_COL, HIT_COL),
                 wrap=(head in (CAND_COL, VALUE_COL, HIT_COL, NOTE_COL)),
             )
-        # 行高按「取值 / 当前命中 / 说明」的文字量自适应
-        fit_row_height(ws, r_off, [(row[4], 26), (row[5], 24), (row[6], 46)])
+        # 行高按「取值 / 当前命中 / 说明」的文字量自适应（方向列短，不参与）
+        fit_row_height(ws, r_off, [
+            (row[MAP_HEADERS.index(VALUE_COL)], 26),
+            (row[MAP_HEADERS.index(HIT_COL)], 24),
+            (row[MAP_HEADERS.index(NOTE_COL)], 46),
+        ])
 
-    set_widths(ws, [10, 12, 12, 34, 24, 24, 46])
+    set_widths(ws, [10, 12, 12, 34, 24, 20, 24, 46])
+
+    # 「必填取值」逐格输入提示（type=none 只提示不校验）：点上去就能看到是「取」还是「排除」
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    value_col_letter = get_column_letter(MAP_HEADERS.index(VALUE_COL) + 1)
+    i_dir = MAP_HEADERS.index(DIRECTION_COL)
+    dvs: dict[tuple[str, str], DataValidation] = {}
+    for r_off, row in enumerate(rows[1:], start=3):
+        title, text = value_prompt(row[2], row[i_dir])
+        dv = dvs.get((title, text))
+        if dv is None:
+            dv = DataValidation(type="none", allow_blank=True, showErrorMessage=False,
+                                promptTitle=title, prompt=text)
+            ws.add_data_validation(dv)
+            dvs[(title, text)] = dv
+        dv.add(f"{value_col_letter}{r_off}")
+
     # 筛选覆盖到最后一个字段行（编辑版为 A2:J37），不只是表头行
     ws.auto_filter.ref = f"A2:{get_column_letter(len(MAP_HEADERS))}{len(rows) + 1}"
     ws.freeze_panes = "D3"

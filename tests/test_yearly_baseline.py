@@ -92,3 +92,48 @@ def test_clean_single_no_internal_col(tmp_path):
     r = _clean_single("收入", p)
     assert len(r) == 2
     assert r["金额"].sum() == 150
+
+
+# ── 列映射配置化（2026-11-10：配置编辑器「字段映射」→ 数据源=年基线数据）──
+def test_clean_single_uses_config_mapping(tmp_path):
+    """源表列名与默认候选不同时，配置里的候选列名能命中"""
+    from engine.yearly_baseline.cleaner import _clean_single
+    p = tmp_path / "t.xlsx"
+    pd.DataFrame({
+        "事业部": ["检测工程事业部"],
+        "客户": ["A"],
+        "营业收入": [300],
+    }).to_excel(p, index=False)
+    spec = {"列映射": {"金额": ["营业收入"], "客户": ["客户"], "部门": ["事业部"]}}
+    r = _clean_single("收入", p, None, spec)
+    assert r["金额"].sum() == 300
+    assert r["客户"].iloc[0] == "A"
+    assert r["事业部"].iloc[0] == "检测"
+
+
+def test_clean_single_mapping_missing_falls_back(tmp_path):
+    """配置里没有 列映射（历史 JSON）→ 回退内置默认，行为不变"""
+    from engine.yearly_baseline.cleaner import _clean_single
+    p = tmp_path / "t.xlsx"
+    pd.DataFrame({"事业部": ["检测工程事业部"], "客户名称": ["A"], "金额": [10]}).to_excel(p, index=False)
+    r = _clean_single("收入", p, None, {"文件名": "t.xlsx"})
+    assert r["金额"].sum() == 10
+
+
+def test_clean_single_internal_marks_from_config(tmp_path):
+    """内部交易剔除取值来自 `内部交易标记值`（默认「是」）"""
+    from engine.yearly_baseline.cleaner import _clean_single
+    p = tmp_path / "t.xlsx"
+    pd.DataFrame({
+        "事业部": ["检测工程事业部", "检测工程事业部"],
+        "客户": ["A", "B"],
+        "金额": [100, 50],
+        "内部交易": ["Y", "N"],
+    }).to_excel(p, index=False)
+    spec = {
+        "列映射": {"金额": ["金额"], "客户": ["客户"], "部门": ["事业部"], "内部交易": ["内部交易"]},
+        "内部交易标记值": ["Y"],
+    }
+    r = _clean_single("收入", p, None, spec)
+    assert len(r) == 1
+    assert r["客户"].iloc[0] == "B"

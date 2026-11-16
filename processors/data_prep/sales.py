@@ -157,7 +157,7 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
     all_sales_pay = set(d.sales_pay.keys()) | set(d.sales_targets.keys()) | set(d.sales_payment_targets.keys())
     all_sales_inc.discard("待确认")
     all_sales_pay.discard("待确认")
-    # 排序键加"姓名"做稳定次序（2026-10-10 修）：只按指标降序时，同指标销售的先后
+    # 排序键加"姓名"做稳定次序：只按指标降序时，同指标销售的先后
     # 取决于上面那两个 set 的迭代顺序，会随进程哈希种子变化 → 每次渲染行序都不同。
     d.sales_list = sorted(
         [s for s in all_sales_inc if s],
@@ -274,7 +274,7 @@ def prepare_sales_data(data, base_dir: Path) -> SalesData:
                                 if isinstance(dept_cfg, dict):
                                     sales_set.update(str(s).strip() for s in dept_cfg.keys())
                 # 记录 (子公司, 销售) → 父组：重叠客户（同子公司归属多父组）按销售区分
-                # 必须按确定性顺序遍历（2026-10-10 修）：sales_owned_subs 是"以销售为键"的字典，
+                # 必须按确定性顺序遍历：sales_owned_subs 是"以销售为键"的字典
                 # 迭代 set 会让键序随进程哈希种子变化 → 销售页 JSON 每次渲染字节都不同。
                 for s_name in sorted(sales_set):
                     d.sub_sales_to_parent[(sub_key, s_name)] = parent

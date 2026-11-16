@@ -75,7 +75,7 @@ def main():
 
     if refresh_notes:
         path = refresh_note_sheet()
-        print(f"✅ 已刷新「说明」sheet 新增分节（其余 sheet 未改动）: {path.relative_to(BASE_DIR)}")
+        print(f"✅ 已同步「说明」sheet 的代码维护分节（其余 sheet 未改动）: {path.relative_to(BASE_DIR)}")
         return 0
 
     if init_map:

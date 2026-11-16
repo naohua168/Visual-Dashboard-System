@@ -165,7 +165,7 @@ def cmd_list() -> int:
 
 
 def cmd_report(argv: list[str] | None = None) -> int:
-    """按需生成「销售完成度汇总表」（可指定数据版本；2026-11-06 起不在 7 步主管线内）"""
+    """按需生成「销售完成度汇总表」（可指定数据版本；不在 7 步主管线内）"""
     from bin.runner import run_report
 
     snapshot = None

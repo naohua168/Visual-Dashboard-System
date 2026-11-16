@@ -59,7 +59,6 @@ def main():
             return 1
 
         if not inc_files and not pay_files:
-            # 2026-09-29 修复：原先两个 glob 都为空会让 results 未绑定 → UnboundLocalError
             print("  ❌ 目录下没有可用的 xlsx（往年收入数据/往年回款数据 或目录本身）: %s" % p)
             return 1
 
@@ -67,7 +66,6 @@ def main():
             if not files:
                 print("  ⚠️ %s: 无源文件，跳过" % label)
                 continue
-            # 2026-09-29 修复：同一类型下**所有**文件都处理（原先只取第一个），按类型合并后写一份
             frames: dict[str, list] = {}
             for fp in files:
                 print("  📄 %s: %s" % (label, fp.name))

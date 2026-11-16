@@ -38,7 +38,7 @@ def filter_sg_by_legal(df: pd.DataFrame, metric: str):
         return df, []
     if not {"客户", "法人主体", "事业部"} <= set(df.columns):
         return df, []
-    # 法人主体按匹配键判定（全角半角/空白差异不影响，2026-09-29）
+    # 法人主体按匹配键判定（全角半角/空白差异不影响）
     sg_rows = df[df["法人主体"].map(is_sg_legal)]
     if len(sg_rows) == 0:
         return df, []
@@ -124,7 +124,7 @@ def _gd_multi_sub_to_keep() -> set[str]:
     """广东自有客户组中"多组配置"的子公司集合（这些公司按法人主体过滤）
 
     仅广东自有配置的子公司（不在其他任何组中）→ 无歧义，全部保留。
-    返回**匹配键集合**（全角半角/空白差异不影响比对，2026-09-29）。
+    返回**匹配键集合**（全角半角/空白差异不影响比对）。
     """
     import json
     path = PROJECT_ROOT / "config" / "清洗配置" / "客户销售归属.json"
@@ -145,7 +145,7 @@ def _gd_multi_sub_to_keep() -> set[str]:
 def _byd_multi_subs() -> set[str]:
     """同时配置在「比亚迪汽车工业有限公司」与「比亚迪电池」两个父组下的子公司（配置驱动）
 
-    返回**匹配键集合**（两侧写法不同的同一家公司也能识别，2026-09-29）。
+    返回**匹配键集合**（两侧写法不同的同一家公司也能识别）。
     """
     import json
     path = PROJECT_ROOT / "config" / "清洗配置" / "客户销售归属.json"
@@ -349,7 +349,7 @@ def _consolidate_target(tgt_df: pd.DataFrame) -> pd.DataFrame:
     dept_cols = [c for c in DEPARTMENTS if c in df.columns]
     if dept_cols:
         # sort=False 保留指标表原始行序（聚合后的公司顺序 = 指标表首次出现顺序）
-        # 销售列可缺省（2026-09-24 用户口径：客户列直接写 '母公司·销售' 时不需要销售列）
+        # 销售列可缺省（客户列直接写 '母公司·销售' 时不需要销售列）
         keys = ["客户"] + (["销售"] if "销售" in df.columns else [])
         df = df.groupby(keys, as_index=False, dropna=False, sort=False)[dept_cols].sum()
     return df
@@ -373,10 +373,10 @@ def _build_subs_with_data(
         if df is None or len(df) == 0 or "客户" not in df.columns:
             continue
         work = df
-        # 保留 法人主体 列：多组子公司（比亚迪等）需按法人主体判定归属（2026-09-28）
+        # 保留 法人主体 列：多组子公司（比亚迪等）需按法人主体判定归属
         keys = ["客户"] + (["法人主体"] if "法人主体" in work.columns else [])
         if "金额" in work.columns:
-            # 金额非 0（无论正负）都算"有数据"（2026-09-18 用户口径）
+            # 金额非 0（无论正负）都算"有数据"
             work = work.groupby(keys, as_index=False, dropna=False)["金额"].sum()
             work = work[work["金额"] != 0]
         if len(work) == 0:
@@ -536,7 +536,7 @@ def _build_subs_detail(
         sales_map = split_map.get(parent_name, {}) if sales is not None else {}
 
         # 1) 母公司本部（原始数据中直接挂在母公司名下、未拆分给任何子公司的金额）
-        # 展示规则（2026-09-18 用户最终口径）：**只要有数据无论正负都展示**；
+        # 展示规则：**只要有数据无论正负都展示**
         # 仅"4 部门金额全为 0 且无任何指标"才隐藏。负数（红冲/退款）、正负抵消都算有数据。
         # 拆分键（如 科技公司·王海龙）：本部目标只取该销售名下的目标，避免两位销售互相混入
         parent_act_data = actual.get(parent_name, {})
@@ -563,7 +563,7 @@ def _build_subs_detail(
             sub_detail[f"{parent_name}（本部）"] = row
 
         # 2) 子公司明细
-        # 展示规则（2026-09-18 用户最终口径）：**只要有数据无论正负都展示**（逐部门看金额 ≠ 0）；
+        # 展示规则：**只要有数据无论正负都展示**（逐部门看金额 ≠ 0）
         # 仅"4 部门金额全为 0 且无任何指标"才隐藏（负数、正负抵消同样视为有数据）。
         all_subs = children_map.get(parent_name, [])
         subs = [s for s in all_subs if s != parent_name]

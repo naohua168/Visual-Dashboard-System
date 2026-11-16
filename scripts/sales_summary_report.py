@@ -34,7 +34,7 @@ from engine.core.output_paths import (  # noqa: E402  （输出按年月分类 /
 )
 from engine.core.utils import rel_path  # noqa: E402  （提示路径统一相对项目根显示）
 
-DEPTS = br.departments()        # 部门列表来自 业务规则.json（2026-09-29）
+DEPTS = br.departments()        # 部门列表来自 业务规则.json
 DEFAULT_TARGET_MULT = 10000.0   # 手工指标表默认单位 = 万元（可由配置 `金额乘数` 覆盖）
 
 # 取不到配置时的回落路径（与 cleaning_config.json 的默认值一致）
@@ -62,7 +62,7 @@ def _first_xlsx(folder_rel: str, fallback_name: str) -> Path:
 
 
 def resolve_paths() -> dict[str, Path]:
-    """输入文件路径：全部来自 cleaning_config.json（输出/手工指标表），不再写死（2026-09-29）"""
+    """输入文件路径：全部来自 cleaning_config.json（输出/手工指标表），不再写死"""
     cfg = _load_cfg()
     out: dict[str, Path] = {}
     for key, (section, sub, folder_rel, fallback_name) in _FALLBACK.items():

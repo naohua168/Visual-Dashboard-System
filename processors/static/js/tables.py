@@ -16,7 +16,7 @@ function initTableCollapse(){
     wraps.push(w);
   });
   if(!wraps.length)return;
-  // 读-写分离（2026-10-10 二轮调优）：原来"读一个 scrollHeight → 立刻改一次 DOM"交替进行，
+  // 读-写分离：原来"读一个 scrollHeight → 立刻改一次 DOM"交替进行，
   // 每次读都会把刚写完的整页重新排版一遍（N 张表 = N 次整页重排），换页长任务主要来自这里。
   // 现在先把高度一次性读完，再集中写 class/按钮。
   var heights=wraps.map(function(w){return w.scrollHeight;});

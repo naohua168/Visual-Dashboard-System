@@ -25,14 +25,14 @@ from ..core.name_key import (
 from ..core.business_rules import is_gd_legal
 from ..core.utils import log_step, rel_path
 
-# 4 大事业部（列顺序来自 业务规则.json → 部门.列表，2026-09-29）
+# 4 大事业部（列顺序来自 业务规则.json → 部门.列表）
 DEPARTMENTS = br.departments()
 
 # 比亚迪汽车工业有限公司 下属需按法人主体区分销售的子公司
 # 规则：仅当某子公司同时存在 "广东汽车检测中心" 法人主体（→黄浩浩）与
 #       非 "广东汽车检测中心" 法人主体（→周涵林）时，才做此区分；
 #       单边存在时保持原拆分结果不动。
-# 2026-09-29：清单 / 销售名 / 法人主体名外置到 `config/清洗配置/业务规则.json`
+# 清单 / 销售名 / 法人主体名外置到 `config/清洗配置/业务规则.json`
 # （engine/core/business_rules.py 读取，缺项回落到此处等价的内置默认值）；
 # 下面这些模块常量保留为别名，供其它模块与测试引用。
 BYD_SUB_COMPANIES = br.byd_subs()
@@ -129,7 +129,7 @@ def _load_attribution() -> dict[str, dict[str, dict]]:
 
 
 # 广东法人主体 → 归属"广东自有客户"父组（其余法人主体归其他父组）
-# 2026-09-29：法人主体名 / 父组名外置到 业务规则.json（这里保留别名，比较走 is_gd_legal）
+# 法人主体名 / 父组名外置到 业务规则.json（这里保留别名，比较走 is_gd_legal）
 GD_LEGAL_ENTITY = br.legal_gd()
 GD_PARENT_GROUP = br.parent_gd_self()
 OTHER_PARENT_GROUP = br.parent_other()
@@ -270,7 +270,7 @@ def run_split(file_type, config=None):
         legal_entity = str(row.get("法人主体", "")).strip()
         parent_name, cust_data = _select_parent_group(cust_groups, legal_entity)
 
-        # 「广东自有客户」门控（2026-09-21 用户口径）：
+        # 「广东自有客户」门控：
         #   该组只收 法人主体 = 广东汽车检测中心有限公司 的行。
         #   同一客户在其它法人（如 南方韶关）下的行不归销售 → 保持"待确认"，
         #   否则会出现"韶关的行业绩算给了广东自有销售"的口径错配。

@@ -20,7 +20,7 @@ from ..core.utils import (
 from ..core.config import get_data_path
 
 
-# ── 排除标记（2026-09-24 用户口径）────────────────────────────────
+# ── 排除标记 ────────────────────────────────
 # 源表「初始化 / 是否初始化」= √ 的行是**期初/历史单据迁移**（单据编号内嵌 2021/2023 年，
 # 创建时间集中在同一次导入），不计入当月收入/回款。
 # 配置驱动，候选列名可在「配置编辑器.xlsx → 字段映射」sheet 维护：
@@ -75,7 +75,7 @@ def _filter_by_whitelist(df, matcher, src_config, label):
     miss = marked["客户"].isna()
     n_miss = int(miss.sum())
     if n_miss:
-        # 2026-09-29 起落盘：客户名/金额/日期/来源（金额为源表口径，未乘金额乘数）
+        # 落盘：客户名/金额/日期/来源（金额为源表口径，未乘金额乘数）
         amt_col = "金额" if "金额" in df.columns else None
         date_col = "日期" if "日期" in df.columns else None
         rows = []
@@ -125,7 +125,7 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     df = filter_by_kept_values(df, src_config, f"财务端{file_type}")
 
     # 日期筛选：`日期字段组` 内所有字段都必须落在时间范围内
-    # （回款 = 业务日期 AND 收款日期 都在窗口内才收录，2026-09-18 口径）
+    # （回款 = 业务日期 AND 收款日期 都在窗口内才收录）
     for f in src_config.get("日期字段组", ["日期"]):
         if f not in df.columns:
             log_step(f"财务端{file_type}",
@@ -164,7 +164,7 @@ def clean_financial_main(config, mapper, matcher, file_type, time_range):
     return df
 
 
-# ── 金额乘数：源表金额 → 元（2026-09-28）──────────────────────────
+# ── 金额乘数：源表金额 → 元 ──────────────────────────
 # 广东/湖南 = 10000（万元）；南方韶关 = 1（整文件已是「元」，收入+回款）
 _DEFAULT_AMOUNT_MULT = 10000.0
 
@@ -215,7 +215,7 @@ def clean_guangdong(config, matcher, time_range, file_type):
     mult = _amount_multiplier(src_config, file_type)
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * mult
     df["事业部"] = src_config["事业部固定"]
-    # 法人主体：默认广东汽车检测中心，可由配置覆盖（2026-09-29 外置）
+    # 法人主体：默认广东汽车检测中心，可由配置覆盖
     df["法人主体"] = src_config.get("法人主体", "广东汽车检测中心有限公司")
 
     df = _filter_by_whitelist(df, matcher, src_config, f"广东{file_type}")
@@ -254,7 +254,7 @@ def clean_hunan(config, matcher, time_range, file_type):
     mult = _amount_multiplier(src_config, file_type)
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce").fillna(0.0) * mult
     df["事业部"] = src_config["事业部固定"]
-    # 法人主体：默认中汽院（湖南），可由配置覆盖（2026-09-29 外置）
+    # 法人主体：默认中汽院（湖南），可由配置覆盖
     df["法人主体"] = src_config.get("法人主体", "中汽院智能网联汽车检测中心（湖南）有限公司")
 
     df = _filter_by_whitelist(df, matcher, src_config, f"湖南{file_type}")
@@ -283,7 +283,7 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     两种格式：
       - 有表头（当前）: 列映射 客户/日期/金额
       - 无表头（历史兼容）: 配置 "无表头": true + "列位置" {客户:0, 日期:1, 金额:2}
-    金额按 `金额乘数` 换算为元（2026-09-28 起**整文件已是「元」**→ 乘数 1；按 Sheet 分列配置的字典写法仍支持）；
+    金额按 `金额乘数` 换算为元（整文件已是「元」→ 乘数 1；按 Sheet 分列配置的字典写法仍支持）；
     回款 Sheet 可能为空，返回空 DataFrame 即可。
     """
     src_config = config["数据源"]["财务端"]["南方韶关"]
@@ -337,7 +337,7 @@ def clean_shaoguan(config, matcher, time_range, file_type):
     log_step(f"南方韶关{file_type}", f"日期筛选后: {len(out)}行")
 
     # 金额换算为元：倍数由配置 `金额乘数` 决定
-    # （2026-09-28 起整个文件已是「元」→ ×1；改成按 Sheet 的字典可支持单 Sheet 万元）
+    # （整个文件已是「元」→ ×1）
     mult = _amount_multiplier(src_config, file_type)
     out["金额"] = pd.to_numeric(out["金额"], errors="coerce").fillna(0.0) * mult
     out["事业部"] = src_config["事业部固定"]

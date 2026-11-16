@@ -6,7 +6,7 @@ GLOBAL_OV_CSS = """
    ═══════════════════════════════════════════════════════════════ */
 
 /* Overview 页背景：统一浅色，与其他页面保持一致 */
-/* 注意：这里不要再写 position（2026-10-10）—— id 选择器会压过 .page-leaving 的绝对定位，
+/* 注意：这里不要再写 position—— id 选择器会压过 .page-leaving 的绝对定位，
    导致从总览页切走时旧页留在文档流里、与新页上下排成两栏。定位统一由基础 .page 负责。 */
 .page#overview{
   background:transparent;

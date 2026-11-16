@@ -12,14 +12,18 @@ import pytest
 
 from scripts.column_mapping_sheet import (
     CAND_MAX,
+    DIRECTION_COL,
+    DIRECTION_EMPTY,
     MAP_HEADERS,
     VALUE_COL,
+    YEARLY_SRC,
     _iter_sources,
     build_mapping_rows,
     excel_to_column_mapping,
     excel_to_kept_values,
     read_latest_hits,
     update_column_mapping,
+    value_prompt,
 )
 
 MIN_CFG = {
@@ -111,6 +115,56 @@ class TestBuildRows:
         i = MAP_HEADERS.index(VALUE_COL)
         got = {r[2]: r[i] for r in rows[1:]}
         assert got == {"单据状态": "已审核", "委托类型": "外部结算"}
+
+    def test_direction_column_says_keep_or_drop(self):
+        """「取值方向」列（2026-11-10）：一眼分清「取」还是「排除」"""
+        cfg = {"数据源": {"财务端": {"收入": {
+            "列映射": {"金额": ["金额"], "部门": ["事业部"], "排除标记": ["初始化"],
+                       "单据状态": ["单据状态"], "内部交易": ["内部交易"]},
+            "保留取值": {"单据状态": ["已审核"]},
+            "排除标记值": ["√"],
+            "内部交易标记值": ["是"],
+            "事业部取值": ["检测工程事业部"],
+        }}}}
+        rows = build_mapping_rows(cfg)
+        i = MAP_HEADERS.index(DIRECTION_COL)
+        got = {r[2]: r[i] for r in rows[1:]}
+        assert got["金额"] == DIRECTION_EMPTY      # 未配置取值 → —
+        assert got["单据状态"] == "保留"            # 只取这些值，其余剔除
+        assert got["部门"] == "只取"                # 只取这些事业部
+        assert got["排除标记"] == "剔除"            # 命中即整行剔除
+        assert got["内部交易"] == "剔除"
+
+    def test_value_direction_empty_when_not_configured(self):
+        """清空取值（显式空列表）→ 方向显示 —（不限制）"""
+        cfg = {"数据源": {"财务端": {"收入": {
+            "列映射": {"部门": ["事业部"]},
+            "事业部取值": [],
+        }}}}
+        rows = build_mapping_rows(cfg)
+        row = next(r for r in rows[1:] if r[2] == "部门")
+        assert row[MAP_HEADERS.index(VALUE_COL)] == ""
+        assert row[MAP_HEADERS.index(DIRECTION_COL)] == DIRECTION_EMPTY
+
+
+class TestValuePrompt:
+    """「必填取值」单元格提示：说明写在配置文件里，不必翻文档"""
+
+    def test_prompt_prefix_matches_direction(self):
+        assert value_prompt("排除标记", "剔除")[0].startswith("【剔除】")
+        assert value_prompt("单据状态", "保留")[0].startswith("【保留】")
+        assert value_prompt("部门", "只取")[0].startswith("【只取】")
+        assert value_prompt("金额", DIRECTION_EMPTY)[0].startswith("【不限制】")
+
+    def test_drop_prompt_mentions_whole_row(self):
+        _, text = value_prompt("内部交易", "剔除")
+        assert "整行剔除" in value_prompt("内部交易", "剔除")[0]
+        assert "清空" in text
+
+    def test_date_prompt_points_to_time_sheet(self):
+        title, text = value_prompt("日期", DIRECTION_EMPTY)
+        assert "时间" in title
+        assert "时间配置" in text
 
 
 CAND_COL_IDX = MAP_HEADERS.index("候选列名")  # 候选/取值的列位置（表结构变更时自动跟随）
@@ -492,6 +546,73 @@ class TestHitLogParsing:
 
 
 # ──────────────────────────────────────────────────────────────
+# 年基线数据（往年同比）：JSON 顶层键，不在 `数据源` 之下（2026-11-10 补齐）
+# ──────────────────────────────────────────────────────────────
+YEARLY_CFG = {
+    "数据源": {
+        "财务端": {
+            "收入": {"文件名": "收入.xlsx", "列映射": {"金额": ["不含税金额"]}},
+        }
+    },
+    "年基线数据": {
+        "_说明": "往年同比基线",
+        "收入": {
+            "文件夹": "data/raw/往年收入数据",
+            "文件名": "x.xlsx",
+            "列映射": {"金额": ["收入", "金额"], "客户": ["客户"], "部门": ["事业部"]},
+            "事业部取值": [],
+            "内部交易标记值": ["是"],
+        },
+        "回款": {
+            "文件夹": "data/raw/往年回款数据",
+            "文件名": "y.xlsx",
+            "列映射": {"金额": ["到款"], "客户": ["客户"], "部门": ["事业部"]},
+        },
+    },
+}
+
+
+class TestYearlySource:
+    def test_iter_sources_includes_yearly_last(self):
+        got = [(s, n) for s, n, _ in _iter_sources(YEARLY_CFG)]
+        assert (YEARLY_SRC, "收入") in got and (YEARLY_SRC, "回款") in got
+        assert got.index(("财务端", "收入")) < got.index((YEARLY_SRC, "收入"))
+
+    def test_iter_sources_skips_yearly_without_mapping(self):
+        """历史 JSON 没有 列映射 → 不生成行（等 --init-map 前先补 JSON）"""
+        cfg = {"年基线数据": {"收入": {"文件夹": "x", "文件名": "y"}}}
+        assert list(_iter_sources(cfg)) == []
+
+    def test_build_rows_contains_yearly(self):
+        rows = build_mapping_rows(YEARLY_CFG)
+        yearly = [r for r in rows[1:] if r[0] == YEARLY_SRC]
+        assert [r[2] for r in yearly] == ["金额", "客户", "部门", "金额", "客户", "部门"]
+        assert yearly[0][3] == "收入 / 金额"
+
+    def test_update_writes_top_level_key(self, tmp_path):
+        p = tmp_path / "cleaning_config.json"
+        p.write_text(json.dumps(YEARLY_CFG, ensure_ascii=False, indent=2), encoding="utf-8")
+        mapping = {YEARLY_SRC: {"收入": {"金额": ["营业收入"], "客户": ["客户"], "部门": ["事业部"]}}}
+        _, changed = update_column_mapping(mapping, cfg_path=p, backup_dir=tmp_path / "logs")
+        saved = json.loads(p.read_text(encoding="utf-8"))
+        assert saved["年基线数据"]["收入"]["列映射"]["金额"] == ["营业收入"]
+        assert saved["年基线数据"]["收入"]["文件名"] == "x.xlsx"      # 其余键原样保留
+        assert saved["数据源"]["财务端"]["收入"]["列映射"] == {"金额": ["不含税金额"]}
+        assert "年基线数据.收入" in changed
+
+    def test_kept_values_written_for_yearly(self, tmp_path):
+        """内部交易标记值 / 事业部取值 落到年基线节点下"""
+        p = tmp_path / "cleaning_config.json"
+        p.write_text(json.dumps(YEARLY_CFG, ensure_ascii=False, indent=2), encoding="utf-8")
+        mapping = {YEARLY_SRC: {"收入": dict(YEARLY_CFG["年基线数据"]["收入"]["列映射"])}}
+        kept = {YEARLY_SRC: {"收入": {"内部交易": ["是"], "部门": []}}}
+        update_column_mapping(mapping, kept_values=kept, cfg_path=p, backup_dir=tmp_path / "logs")
+        saved = json.loads(p.read_text(encoding="utf-8"))
+        assert saved["年基线数据"]["收入"]["内部交易标记值"] == ["是"]
+        assert saved["年基线数据"]["收入"]["事业部取值"] == []
+
+
+# ──────────────────────────────────────────────────────────────
 # 真实配置文件一致性：配置编辑器.xlsx ↔ cleaning_config.json
 # ──────────────────────────────────────────────────────────────
 REAL_ROOT = Path(__file__).parent.parent
@@ -518,14 +639,28 @@ class TestRealConfigConsistency:
             )
 
     def test_department_and_internal_trade_show_values(self):
-        """部门（事业部全称）/ 内部交易（是）的取值要体现在表里（只读展示）"""
+        """部门（事业部全称）/ 内部交易（是）的取值要体现在表里（只读展示）
+
+        年基线数据例外：`事业部取值` 显式留空 = 不限制（往年基线不做事业部过滤，
+        与改造前行为一致），那两行的「必填取值」就是空的。
+        """
         cfg = json.loads(REAL_CFG.read_text(encoding="utf-8"))
         rows = build_mapping_rows(cfg)
         i = MAP_HEADERS.index(VALUE_COL)
-        dept_rows = [r for r in rows[1:] if r[2] == "部门"]
+        dept_rows = [r for r in rows[1:] if r[2] == "部门" and r[0] != YEARLY_SRC]
         assert dept_rows and all(r[i] for r in dept_rows), "部门 应显示事业部全称"
+        yearly_dept = [r for r in rows[1:] if r[2] == "部门" and r[0] == YEARLY_SRC]
+        assert yearly_dept and all(r[i] == "" for r in yearly_dept), "年基线的部门取值留空 = 不限制"
         internal_rows = [r for r in rows[1:] if r[2] == "内部交易"]
         assert internal_rows and all(r[i] == "是" for r in internal_rows)
+
+    def test_value_cells_carry_keep_drop_prompt(self):
+        """「必填取值」单元格带输入提示：在配置文件里就说清「取 / 排除」（2026-11-10）"""
+        ws = openpyxl.load_workbook(REAL_EDITOR)["字段映射"]
+        titles = [str(dv.promptTitle or "") for dv in ws.data_validations.dataValidation]
+        assert any("剔除" in t for t in titles), "缺少【剔除】提示"
+        assert any("保留" in t for t in titles), "缺少【保留】提示"
+        assert any("只取" in t for t in titles), "缺少【只取】提示"
 
     def test_shaoguan_amount_is_yuan(self):
         """2026-09-28 起 南方韶关 整文件（收入+回款）单位为「元」→ 金额乘数 1"""

@@ -84,7 +84,7 @@ PERIOD_ORDER = ("monthly", "quarterly", "annual")
 
 
 DATA_CATEGORY = "数据"          # 数据总表所在类别（只用于找快照，不写这里）
-MATRIX_CATEGORY = "客户矩阵"    # 矩阵导出独立成类（2026-11-06 用户要求）
+MATRIX_CATEGORY = "客户矩阵"    # 矩阵导出独立成类
 
 
 def data_root(base_dir: Path) -> Path:

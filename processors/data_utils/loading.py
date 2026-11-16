@@ -226,7 +226,7 @@ _ATTRIBUTION_FLAT: dict | None = None
 def _build_cust_parent_map(base_dir: Path):
     """从客户销售归属.json 构建 子公司→母公司 映射
 
-    返回 KeyedLookup：`映射.get(客户名)` 自动忽略全角半角/空白差异（2026-09-29）。
+    返回 KeyedLookup：`映射.get(客户名)` 自动忽略全角半角/空白差异。
     """
     import json
     path = base_dir / "config" / "清洗配置" / "客户销售归属.json"

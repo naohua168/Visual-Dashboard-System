@@ -1,14 +1,14 @@
 # Author: naohua168 <bai_bai168@qq.com>
 """扫描「广东自有客户」应自动归入的公司，并写回配置编辑器（Excel）
 
-口径（2026-09-21 用户确认；2026-11-02 按 `业务规则.json → 广东自有归入._说明` 补齐来源）：
+口径（6-11-02 按 `业务规则.json → 广东自有归入._说明` 补齐来源）：
   · **候选来源 = 运营端 收入/回款（.xls）+ 财务端「广东公司.xlsx」（收入/回款两个 Sheet）**
     —— 2026-11-02 之前只扫运营端，与业务规则的说明不一致，现按说明统一
   · 法人主体 = 广东汽车检测中心有限公司（运营端看 法人主体/核算单位/所属单位 列；
     财务端「广东公司.xlsx」整表视为该法人，取值来自 `数据源.财务端.广东公司.法人主体`，
     若配置成别的法人则整表跳过）
   · **不属于任何销售**：客户名在 `客户销售归属.json` 的所有父组里都没出现过（公司级判定）
-  · **公司级**排除内部交易（2026-09-22 用户口径）：只要该公司在运营端有**任意一行**内部交易标记
+  · **公司级**排除内部交易：只要该公司在运营端有**任意一行**内部交易标记
     （`是否属于内部单位/内部款项` == 是），或出现在内部交易排除名单
     （`部门事业部映射.json → excluded_internal_companies`）→ **整家公司不进入候选**
     （广东公司表若有同类列，按同一口径处理）
@@ -42,7 +42,7 @@ from engine.core.business_rules import is_gd_legal  # noqa: E402
 from engine.core.config import get_data_path, load_config  # noqa: E402
 from engine.core.name_key import key_set, match_key  # noqa: E402
 
-# 2026-09-29 起：法人主体 / 父组 / 销售 / 部门 / 黑名单 / 列名候选 / 内部交易标记值
+# 法人主体 / 父组 / 销售 / 部门 / 黑名单 / 列名候选 / 内部交易标记值
 # 全部配置驱动（config/清洗配置/业务规则.json → 广东自有归入），人员或口径调整不必改代码。
 GD_LEGAL = br.legal_gd()
 GD_PARENT = br.parent_gd_self()
@@ -145,7 +145,7 @@ def collect_from_operations(cfg) -> dict[str, dict]:
             cust = _pick_col(df.columns, CUST_COLS)
             if not legal or not cust:
                 continue
-            # 法人主体按匹配键判定（全角半角/空白差异不影响，2026-09-29）
+            # 法人主体按匹配键判定（全角半角/空白差异不影响）
             sub = df[df[legal].map(is_gd_legal)].copy()
             if sub.empty:
                 continue
@@ -276,7 +276,7 @@ def collect_candidates(cfg) -> dict[str, dict]:
 def plan_additions(cands: dict[str, dict], configured: set[str], state: dict) -> tuple[list[tuple[str, dict]], list[str]]:
     """返回 (需要新增的 [(客户名, 概览)], 被跳过的原因列表)"""
     todo, skipped = [], []
-    # 已配置 / 曾经归入 / 黑名单 一律按匹配键判定（全角半角、空白差异不影响，2026-09-29）
+    # 已配置 / 曾经归入 / 黑名单 一律按匹配键判定（全角半角、空白差异不影响）
     configured_keys = {match_key(x) for x in configured}
     state_keys = {match_key(x) for x in state}
     blacklist_keys = {match_key(x) for x in BLACKLIST_NAMES}
@@ -308,7 +308,7 @@ def append_to_excel(names: list[str], note: str) -> int:
     if "销售归属" not in wb.sheetnames:
         raise RuntimeError("配置编辑器缺少「销售归属」sheet")
     ws = wb["销售归属"]
-    # 已存在判定按匹配键（同一家公司写成全角/半角括号时不再重复追加，2026-09-29）
+    # 已存在判定按匹配键（同一家公司写成全角/半角括号时不再重复追加）
     existing_keys = {match_key(r[1]) for r in ws.iter_rows(min_row=2, values_only=True) if r[1]}
 
     rows = []

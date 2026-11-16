@@ -30,7 +30,7 @@ from .paths import CLEANING_CFG
 def _parse_month_range(raw: str) -> list[int]:
     """解析月份范围列：'1-8' / '1,8' → [1, 8]
 
-    容错（2026-10-10）：全角数字/全角逗号、'1月-8月'、'1~8' / '1～8' / '1到8' 都认。
+    容错：全角数字/全角逗号、'1月-8月'、'1~8' / '1～8' / '1到8' 都认。
     """
     raw = str(raw).strip().translate(_FULLWIDTH_MAP).strip("[]").replace("，", ",")
     raw = raw.replace("～", "~").replace("到", "~").replace("月", " ")
@@ -53,7 +53,7 @@ def _parse_month_range(raw: str) -> list[int]:
     return nums
 
 
-# ── 日期文本的宽松解析（2026-10-10 增加容错）──────────────────────────────
+# ── 日期文本的宽松解析 ──────────────────────────────
 # 背景：结束日期被填成 `2026/9/31 23:59:59`（斜杠 + 单位月，且 9 月没有 31 号），
 # 解析直接抛错 → 流水线在第①步「配置同步」就中断（logs/run_20261010_143802.log）。
 # 现在：常见写法都认（斜杠/点号/中文年月日/单位月/全角/可省秒），非法日历日期按该月
@@ -231,7 +231,7 @@ def excel_to_time_config(sheet) -> dict:
                 # 常规时间范围：开始/结束日期
                 if not start or not end:
                     raise ValueError(f"{name}: 手填日期模式需填「开始日期」和「结束日期」")
-                # 日期容错（2026-10-10）：斜杠/点号/中文年月日/单位月/全角/序列号都认；
+                # 日期容错：斜杠/点号/中文年月日/单位月/全角/序列号都认
                 # 非法日历日期（9/31）按月末截断并提示；解析结果规范化后写入 JSON
                 cfg = {
                     "start_date": normalize_date_text(start, field=f"{name} 开始日期"),

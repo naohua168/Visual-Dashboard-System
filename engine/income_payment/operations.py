@@ -158,7 +158,7 @@ def clean_operations_single(config, mapper, file_type):
             accounting_col = candidate
             break
     if accounting_col:
-        # 法人主体按匹配键判定（全角半角/空白差异不影响，2026-09-29）
+        # 法人主体按匹配键判定（全角半角/空白差异不影响）
         n_gd = df[accounting_col].map(is_gd_legal).sum()
         n_sz = df[accounting_col].map(is_sz_legal).sum()
         n_other = len(df) - n_gd - n_sz
